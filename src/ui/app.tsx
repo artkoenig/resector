@@ -133,7 +133,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
           <input focused value={draft()} onInput={setDraft} flexGrow={1} />
         </box>
       </Show>
-      <StatusLine gate={gate} mode={mode()} />
+      <Footer gate={gate} mode={mode()} />
     </box>
   );
 }
@@ -177,12 +177,19 @@ function contextBar(gate: Gate, width: number): { char: string; color: string }[
 
 const KEYS = 'Enter send · Tab write · ↑↓ select · ⌥↑↓ move · r rename · d remove · p pin · Space mark · u undo · q quit';
 
-function StatusLine(props: { gate: Gate; mode: Mode }) {
-  const text = () => {
-    if (props.gate.streaming()) return { text: 'model is responding … Esc abort', tone: 'warn' as const };
-    if (props.mode === 'input') return { text: 'Enter adds a User block (not sent) · Tab/Esc back', tone: 'info' as const };
-    if (props.mode === 'rename') return { text: 'Enter sets title (display only, never sent; empty = reset) · Tab/Esc cancel', tone: 'info' as const };
-    return props.gate.status() ?? { text: KEYS, tone: 'info' as const };
+// Status line of the last action, then the key hints, which stay visible.
+function Footer(props: { gate: Gate; mode: Mode }) {
+  const status = () => (props.gate.streaming() ? { text: 'model is responding …', tone: 'warn' as const } : props.gate.status());
+  const keys = () => {
+    if (props.gate.streaming()) return 'Esc abort';
+    if (props.mode === 'input') return 'Enter adds a User block (not sent) · Tab/Esc back';
+    if (props.mode === 'rename') return 'Enter sets title (display only, never sent; empty = reset) · Tab/Esc cancel';
+    return KEYS;
   };
-  return <text fg={TONE[text().tone]}>{` ${text().text}`}</text>;
+  return (
+    <>
+      <text fg={TONE[status()?.tone ?? 'info']}>{` ${status()?.text ?? ''}`}</text>
+      <text fg={TEMPLATE_COLOR}>{` ${keys()}`}</text>
+    </>
+  );
 }

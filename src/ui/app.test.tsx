@@ -239,3 +239,29 @@ test('the header Context bar highlights the selected block', async () => {
   expect(system).toHaveLength(1);
   expect(user[0]).toBeGreaterThan(system[0]!);
 });
+
+test('the key hints stay visible next to a status', async () => {
+  await withUsers('hi');
+  fake.reply({ chunks: ['ok'] });
+  ui.mockInput.pressEnter();
+  const frame = await frameMatching(ui, f => f.includes('answer complete'));
+  expect(frame).toContain('Enter send · Tab write');
+});
+
+test('a Context changed since the last request can be sent without a new User block', async () => {
+  await withUsers('a', 'b');
+  fake.reply({ chunks: ['x'] });
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('answer complete'));
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('nothing to send'));
+  await press('up');
+  await press('up');
+  await press('d');
+  await frameMatching(ui, f => f.includes('removed: a'));
+  fake.reply({ chunks: ['y'] });
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('answer complete') && /y\s+\d+/.test(f));
+  expect(fake.chatRequests).toHaveLength(2);
+  expect((fake.chatRequests[1] as { messages: { content: string }[] }).messages.map(m => m.content)).toEqual(['You are an agent.', 'b', 'x']);
+});

@@ -30,6 +30,8 @@ export function createGate({ log, profile, systemPrompt, reconnect, ...options }
   // Marked blocks (Space) for Compaction; UI state, not logged.
   const [marked, setMarked] = createSignal<ReadonlySet<number>>(new Set());
   const [backend, setBackend] = createSignal(options.backend);
+  // Messages right after the last answer; a Context changed since then may be sent again as is.
+  const [answered, setAnswered] = createSignal<Message[] | null>(null);
 
   const append = (event: SessionEvent) => {
     log.append(event);
@@ -123,7 +125,8 @@ export function createGate({ log, profile, systemPrompt, reconnect, ...options }
 
   async function send() {
     if (streaming()) return;
-    if (sent().filter(b => b.pin !== 'bottom').at(-1)?.kind !== 'User') {
+    const changed = answered() !== null && !sameMessages(answered()!, messages());
+    if (!changed && sent().filter(b => b.pin !== 'bottom').at(-1)?.kind !== 'User') {
       setStatus({ text: 'nothing to send – Tab to write', tone: 'info' });
       return;
     }
@@ -145,6 +148,7 @@ export function createGate({ log, profile, systemPrompt, reconnect, ...options }
       const result = await backend().chat(request, { signal: abort.signal, onDelta });
       setStreaming(null);
       finish(result);
+      setAnswered(messages());
     } catch (e) {
       setStreaming(null);
       setStatus({ text: `backend error: ${errorText(e)}`, tone: 'error' });
