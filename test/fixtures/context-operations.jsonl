@@ -1,0 +1,18 @@
+{"type":"SessionCreated","profile":"qwen3-8b","protocol":"native"}
+{"type":"BlockAdded","id":1,"kind":"System","origin":"config","content":"You are a coding agent."}
+{"type":"BlockAdded","id":2,"kind":"User","origin":"user","content":"Project rules: use bun, no semicolons."}
+{"type":"BlockAdded","id":3,"kind":"User","origin":"user","content":"Why does the build fail?"}
+{"type":"RequestSent","hash":"1a2b","tokens":58}
+{"type":"BlockAdded","id":4,"kind":"Assistant","origin":"model","content":"The tsconfig excludes src/ui.","cutOff":true}
+{"type":"ResponseReceived","usage":null,"cached":null}
+{"type":"Pin","id":2,"at":"top"}
+{"type":"Pin","id":2,"at":"bottom"}
+{"type":"BlockAdded","id":5,"kind":"User","origin":"user","content":"Fix it."}
+{"type":"Move","id":5,"after":1}
+{"type":"Undo","eventId":10}
+{"type":"Rename","id":3,"title":"build failure"}
+{"type":"Remove","id":4}
+{"type":"RequestSent","hash":"3c4d","tokens":61}
+{"type":"BlockAdded","id":6,"kind":"Assistant","origin":"model","content":"Done: src/ui is included again."}
+{"type":"ResponseReceived","usage":{"prompt_tokens":61,"completion_tokens":9},"cached":40}
+{"type":"SessionRenamed","title":"tsconfig fix"}

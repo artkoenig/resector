@@ -1,0 +1,5 @@
+{"type":"SessionCreated","profile":"gone","protocol":"native"}
+{"type":"BlockAdded","id":1,"kind":"System","origin":"config","content":"You are terse."}
+{"type":"BlockAdded","id":2,"kind":"User","origin":"user","content":"hi"}
+{"type":"ProfileFallback","profile":"local"}
+{"type":"Remove","id":2}

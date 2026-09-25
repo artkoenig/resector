@@ -15,13 +15,14 @@ test('a new session holds its Model Profile and the System prompt', () => {
 
 test('the title is the first line of the first User message, shortened (FR-34)', () => {
   const long = 'x'.repeat(70);
-  expect(summarize([...start, user(2, '\n  Fix the build \nplease'), user(3, 'other')]).title).toBe('Fix the build');
+  expect(summarize([...start, user(2, '  \n  Fix the build \nplease'), user(3, 'other')]).title).toBe('Fix the build');
+  expect(summarize([...start, user(2, ' \n ')]).title).toBe('(new session)');
   expect(summarize([...start, user(2, long)]).title).toBe('x'.repeat(59) + '…');
   expect(summarize([...start, user(2, 'x'.repeat(60))]).title).toBe('x'.repeat(60));
 });
 
 test('a session rename wins; an empty one resets to the first User message', () => {
-  const renamed = [...start, user(2, 'hi'), { type: 'SessionRenamed', title: 'greeting' } as const];
+  const renamed: SessionEvent[] = [...start, user(2, 'hi'), { type: 'SessionRenamed', title: 'greeting' }, { type: 'Rename', id: 2, title: 'block title' }];
   expect(summarize(renamed)).toMatchObject({ title: 'greeting', renamed: true });
   expect(summarize([...renamed, { type: 'SessionRenamed', title: '' }])).toMatchObject({ title: 'hi', renamed: false });
 });

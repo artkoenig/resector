@@ -1,0 +1,151 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`fixture profile-fallback.jsonl replays to its Context and request 1`] = `
+{
+  "context": {
+    "blocks": [
+      {
+        "content": "You are terse.",
+        "cutOff": false,
+        "id": 1,
+        "kind": "System",
+        "moved": false,
+        "origin": "config",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "title": null,
+      },
+      {
+        "content": "hi",
+        "cutOff": false,
+        "id": 2,
+        "kind": "User",
+        "moved": false,
+        "origin": "user",
+        "pin": null,
+        "pinChanged": false,
+        "removed": true,
+        "title": null,
+      },
+    ],
+    "nextId": 3,
+    "profile": "local",
+    "protocol": "native",
+  },
+  "request": [
+    {
+      "content": "You are terse.",
+      "role": "system",
+    },
+  ],
+  "summary": {
+    "blocks": 1,
+    "profile": "local",
+    "renamed": false,
+    "title": "hi",
+    "tokens": null,
+  },
+}
+`;
+
+exports[`fixture context-operations.jsonl replays to its Context and request 1`] = `
+{
+  "context": {
+    "blocks": [
+      {
+        "content": "You are a coding agent.",
+        "cutOff": false,
+        "id": 1,
+        "kind": "System",
+        "moved": false,
+        "origin": "config",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "title": null,
+      },
+      {
+        "content": "Why does the build fail?",
+        "cutOff": false,
+        "id": 3,
+        "kind": "User",
+        "moved": false,
+        "origin": "user",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "title": "build failure",
+      },
+      {
+        "content": "Fix it.",
+        "cutOff": false,
+        "id": 5,
+        "kind": "User",
+        "moved": false,
+        "origin": "user",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "title": null,
+      },
+      {
+        "content": "Done: src/ui is included again.",
+        "cutOff": false,
+        "id": 6,
+        "kind": "Assistant",
+        "moved": false,
+        "origin": "model",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "title": null,
+      },
+      {
+        "content": "Project rules: use bun, no semicolons.",
+        "cutOff": false,
+        "id": 2,
+        "kind": "User",
+        "moved": false,
+        "origin": "user",
+        "pin": "bottom",
+        "pinChanged": false,
+        "removed": false,
+        "title": null,
+      },
+    ],
+    "nextId": 7,
+    "profile": "qwen3-8b",
+    "protocol": "native",
+  },
+  "request": [
+    {
+      "content": "You are a coding agent.",
+      "role": "system",
+    },
+    {
+      "content": "Why does the build fail?",
+      "role": "user",
+    },
+    {
+      "content": "Fix it.",
+      "role": "user",
+    },
+    {
+      "content": "Done: src/ui is included again.",
+      "role": "assistant",
+    },
+    {
+      "content": "Project rules: use bun, no semicolons.",
+      "role": "user",
+    },
+  ],
+  "summary": {
+    "blocks": 5,
+    "profile": "qwen3-8b",
+    "renamed": true,
+    "title": "tsconfig fix",
+    "tokens": 61,
+  },
+}
+`;
