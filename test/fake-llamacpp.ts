@@ -55,7 +55,8 @@ export function startFakeLlamaCpp({ jinja = true, nCtx = 4096, model = 'qwen3-8b
         chatRequests.push(body);
         const reply = replies.shift();
         if (!reply) return error('no scripted reply');
-        return new Response(stream(reply, req.signal), { headers: { 'content-type': 'text/event-stream' } });
+        const final = { choices: [], usage: reply.usage ?? null, timings: { cache_n: reply.cacheN ?? 0 } };
+        return new Response(stream(reply, req.signal, final), { headers: { 'content-type': 'text/event-stream' } });
       }
       return new Response('not found', { status: 404 });
     },
@@ -69,7 +70,8 @@ export function startFakeLlamaCpp({ jinja = true, nCtx = 4096, model = 'qwen3-8b
   };
 }
 
-function stream(reply: Reply, signal: AbortSignal): ReadableStream<Uint8Array> {
+// OpenAI-compatible chat stream; `final` is the usage chunk after the finish reason.
+export function stream(reply: Reply, signal: AbortSignal, final: unknown): ReadableStream<Uint8Array> {
   const enc = new TextEncoder();
   const data = (o: unknown) => enc.encode(`data: ${JSON.stringify(o)}\n\n`);
   return new ReadableStream({
@@ -82,7 +84,7 @@ function stream(reply: Reply, signal: AbortSignal): ReadableStream<Uint8Array> {
         return;
       }
       ctrl.enqueue(data({ choices: [{ index: 0, delta: {}, finish_reason: reply.finish ?? 'stop' }] }));
-      ctrl.enqueue(data({ choices: [], usage: reply.usage ?? null, timings: { cache_n: reply.cacheN ?? 0 } }));
+      ctrl.enqueue(data(final));
       ctrl.enqueue(enc.encode('data: [DONE]'));
       ctrl.close();
     },

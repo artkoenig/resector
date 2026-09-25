@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { testRender } from '@opentui/solid';
 import { startFakeLlamaCpp } from '../../test/fake-llamacpp';
+import { startFakeOmlx } from '../../test/fake-omlx';
 import type { LocalServer } from '../adapters/backend/discover';
 import { configPaths } from '../adapters/fs/config';
 import { createSessionLog } from '../adapters/store/session-log';
@@ -85,11 +86,26 @@ test('first start offers models of backends not supported yet, but does not let 
   }
 });
 
+test('first start: an oMLX server on the LM Studio port is recognised, chosen and opened with its window', async () => {
+  const omlx = startFakeOmlx({ models: [{ id: 'Qwen3-8B-4bit', maxModelLen: 8192 }] });
+  try {
+    const { paths } = await launch({ servers: () => [{ backend: 'lmstudio', endpoint: omlx.url }] });
+    expect(await frameMatching(f => f.includes('Qwen3-8B-4bit'))).toMatch(/oMLX\s+Qwen3-8B-4bit\s+http:\/\/localhost:\d+\s*$/m);
+    ui.mockInput.pressEnter();
+    expect(await frameMatching(f => f.includes('/ 8k'))).toMatch(/^ Qwen3-8B-4bit +/m);
+    expect(JSON.parse(readFileSync(paths.global, 'utf8')).profiles).toEqual({
+      'Qwen3-8B-4bit': { backend: 'omlx', endpoint: omlx.url, model: 'Qwen3-8B-4bit' },
+    });
+  } finally {
+    omlx.stop();
+  }
+});
+
 test('first start without any local model server fails with a hint', async () => {
   const { paths, fatal } = await launch({ servers: () => [{ backend: 'llamacpp', endpoint: 'http://localhost:1' }] });
   await until(() => fatal.length > 0);
   expect(fatal).toEqual([
-    `no model server found on localhost:8080 (llama.cpp), :11434 (Ollama), :1234 (LM Studio): start one or write ${paths.global}`,
+    `no model server found on localhost:8080 (llama.cpp), :11434 (Ollama), :1234 (LM Studio, oMLX): start one or write ${paths.global}`,
   ]);
   expect(existsSync(paths.global)).toBe(false);
 });

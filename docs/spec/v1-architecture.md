@@ -24,7 +24,7 @@ src/
     toolcall/              parse tool calls (native + text-xml), malformed detection, split thinking
     config/                JSONC load, merge, schema, permission tightening
   adapters/                I/O at the edge
-    backend/               llamacpp | ollama | lmstudio (chat, tokenize, props)
+    backend/               llamacpp | ollama | lmstudio | omlx (chat, tokenize, props)
     bash/                  process runner (timeout, kill, stdin /dev/null)
     fs/                    @file read, environment probe, AGENTS.md
     store/                 session files, lock files, session index
@@ -75,6 +75,7 @@ fold(log) → Context
 | llama.cpp | `/apply-template` + `/tokenize` (`with_pieces`), `/v1/chat/completions/input_tokens`; requires `--jinja`; window from `/props` (per slot) | yes |
 | Ollama | `_debug_render_only` + local tokenizer on the same GGUF; window from `/api/ps`; native `/api/chat` with `truncate:false`, `num_ctx` | no → drift |
 | LM Studio | SDK `applyPromptTemplate` + `countTokens`; tool overhead measured once with `max_tokens:1`; window from `/api/v1/models` | no → drift |
+| oMLX | `/v1/messages/count_tokens` (Anthropic format: System → `system`, rest → `messages`; chat template + generation prompt applied, `tools` accepted); window from `max_model_len` in `/v1/models`; OpenAI-compatible `/v1/chat/completions`, cached tokens from `usage.prompt_tokens_details` | yes (tool overhead not counted until tool definitions are sent → drift) |
 
 Per-block split via offset mapping / prefix differences; remainder = `Template` row. After each response: drift = `usage.prompt_tokens` − pre-count; last drift is subtracted from the window for inexact backends.
 
@@ -117,4 +118,5 @@ Per-block split via offset mapping / prefix differences; remainder = `Template` 
 - No official Stryker Bun runner.
 - Ollama `_debug_render_only` is undocumented and may change.
 - LM Studio: slot splitting and whether `applyPromptTemplate` accepts tools are unverified.
+- oMLX shares port 1234 with LM Studio; first start tells them apart by `owned_by: "omlx"` in `/v1/models`. On a chat template error oMLX counts a plain concatenation instead (silent drift).
 - Cache prediction is approximate for SWA/recurrent models and templates that rewrite earlier turns.

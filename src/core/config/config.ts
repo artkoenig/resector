@@ -4,11 +4,16 @@ import { parse, printParseErrorCode, type ParseError } from 'jsonc-parser';
 import { z } from 'zod';
 
 
-const BackendKindSchema = z.enum(['llamacpp', 'ollama', 'lmstudio']);
+const BackendKindSchema = z.enum(['llamacpp', 'ollama', 'lmstudio', 'omlx']);
 export type BackendKind = z.infer<typeof BackendKindSchema>;
 
-// Where each backend listens by default; also the ports scanned at first start (FR-45).
-export const DEFAULT_ENDPOINTS: Record<BackendKind, string> = { llamacpp: 'http://localhost:8080', ollama: 'http://localhost:11434', lmstudio: 'http://localhost:1234' };
+// Where each backend listens by default; also the ports scanned at first start (FR-45). LM Studio and oMLX share 1234.
+export const DEFAULT_ENDPOINTS: Record<BackendKind, string> = {
+  llamacpp: 'http://localhost:8080',
+  ollama: 'http://localhost:11434',
+  lmstudio: 'http://localhost:1234',
+  omlx: 'http://localhost:1234',
+};
 
 const ProfileSchema = z.strictObject({
   backend: BackendKindSchema,
