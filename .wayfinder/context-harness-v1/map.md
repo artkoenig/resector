@@ -43,13 +43,7 @@ Umsetzbare **Spec für v1** (PRD + Architektur + Glossar) eines textbasierten Co
 
 ## Not yet specified
 
-- System-Prompt-Design für kleine Modelle (Länge, Inhalt, selbst als editierbarer Block).
-- Default-Kürzung großer Tool-Outputs (Truncation, Paging) bevor sie in den Context gehen.
-- Konfiguration: Model Profiles, Keybindings, Dateiformat/Ort.
-- Session-Verwaltung: Fortsetzen, Forken, Undo von Context-Edits.
-- Datei-Snapshots vs. Live-Datei: veraltete Datei-Inhalte im Context erkennen/markieren.
-- Teststrategie & Distribution/Packaging.
-- Zusammenführung aller Entscheidungen in das finale Spec-Dokument.
+<!-- alles bisherige in Tickets 012–018 überführt -->
 
 ## Out of scope
 
