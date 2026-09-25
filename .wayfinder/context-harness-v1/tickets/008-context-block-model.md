@@ -4,7 +4,7 @@ title: Context-Block-Domänenmodell
 labels: [wayfinder:grilling]
 parent: context-harness-v1
 status: open
-assignee:
+assignee: artkoenig
 blocked_by: []
 ---
 
