@@ -577,3 +577,8 @@ test('the mouse wheel over the block table selects the previous or next block', 
   await ui.mockMouse.scroll(10, y, 'down');
   await frameMatching(ui, f => /── #4 User/.test(f));
 });
+
+test('an Assistant block of only whitespace is titled (empty)', async () => {
+  await asked(['ls'], { text: '\n\n\n' });
+  expect(line(ui.captureCharFrame(), /Assistant/)).toMatch(/Assistant\s+\(empty\)/);
+});

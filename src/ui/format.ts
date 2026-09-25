@@ -15,7 +15,8 @@ export function titleOf(block: Titled, blocks: readonly Pick<Block, 'id' | 'cont
   if (block.kind === 'System') return 'System prompt';
   if (block.kind === 'Tools') return toolNames(block.content);
   if (block.kind === 'Tool Result') return `→ ${firstLine(blocks.find(b => b.id === block.call)?.content ?? '')}`;
-  return firstLine(block.content);
+  // Only whitespace (e.g. the text before a model's tool calls): nothing to read, the template may drop it.
+  return firstLine(block.content) || '(empty)';
 }
 
 // FR-5: changes since the last request (pin set/changed, moved), then persistent status flags.
