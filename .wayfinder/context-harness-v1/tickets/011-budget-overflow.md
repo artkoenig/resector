@@ -4,7 +4,7 @@ title: Budget-Überschreitung am Gate
 labels: [wayfinder:grilling]
 parent: context-harness-v1
 status: open
-assignee:
+assignee: artkoenig
 blocked_by: [002, 008]
 ---
 
