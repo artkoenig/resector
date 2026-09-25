@@ -19,3 +19,5 @@ Muss ein bash-Call vor Ausführung bestätigt werden (immer / nie / regelbasiert
 - bash (`tool/shell.ts`): Befehl per tree-sitter in Einzelkommandos zerlegt, jedes einzeln geprüft. „Always“ merkt Präfix per Arity-Tabelle + ` *` (z. B. `git checkout *`). Pfade außerhalb des Projekts → zusätzlich `external_directory`.
 - Antworten: `once` / `always` (in-memory, nicht persistiert) / `reject` optional mit Nachricht → geht als Feedback ans Modell; reject lehnt alle offenen Anfragen der Session ab.
 - Kein Sandboxing.
+
+Aus [Konfiguration](014-configuration.md): Projekt-Config (`.resector/config.jsonc`) überschreibt global per deep merge – darf sie `permission` lockern (Risiko: fremdes Repo)?
