@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 3 * * *' # nightly full mutation run
+
+jobs:
+  gate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/cache@v4
+        with:
+          path: .stryker-tmp/incremental.json
+          key: stryker-${{ matrix.os }}-${{ github.sha }}
+          restore-keys: stryker-${{ matrix.os }}-
+      - run: bun install --frozen-lockfile
+      - run: bun run gate
+        if: github.event_name != 'schedule'
+      - run: bun run mutate:full
+        if: github.event_name == 'schedule'

@@ -104,7 +104,7 @@ Per-block split via offset mapping / prefix differences; remainder = `Template` 
 - Fake backend: scriptable OpenAI-compatible Bun HTTP server (streaming, tool calls, malformed calls, `length` cut-off) for tool-loop integration tests incl. `Esc` and `max_tokens`.
 - TUI: few text-frame snapshots via OpenTUI test renderer (Gate, compaction review, `/sessions`, budget overflow).
 - Live suite `bun test:live` (opt-in, before release) against local llama.cpp with a small model: drift, cache, templates.
-- Gates: `bun test --coverage` (LCOV) → `crap-ts --fail-above 8`; Stryker (community Bun runner `@hughescr/stryker-bun-runner`, fallback Jest runner) 100 % on `src/core`, incremental on PRs, full nightly/pre-release; dependency-cruiser; jscpd report. `bun run gate` runs all locally.
+- Gates: `bun test --coverage` (LCOV) → `scripts/crap.ts` (complexity from the TypeScript 5.9 AST, line coverage from LCOV; fails above 8 — `crap-ts` needs Istanbul `fnMap`, which Bun does not emit); Stryker (community Bun runner `@hughescr/stryker-bun-runner`, fallback Jest runner) 100 % on `src/core`, incremental on PRs, full nightly/pre-release; dependency-cruiser; jscpd report. `bun run gate` runs all locally.
 - CI: GitHub Actions, macOS + Linux.
 
 ## 8. Distribution
