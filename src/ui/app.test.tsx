@@ -567,3 +567,13 @@ test('more rows than fit: rows never overlap, the list follows the selection, Te
   expect(line(frame, /System prompt/)).toMatch(/1\s+System\s+System prompt\s+12\b/);
   expect(frame).toMatch(/Template +BOS/);
 });
+
+test('the mouse wheel over the block table selects the previous or next block', async () => {
+  await withUsers('note 3', 'note 4');
+  await frameMatching(ui, f => /── #4 User/.test(f));
+  const y = ui.captureCharFrame().split('\n').findIndex(l => l.includes('note 3'));
+  await ui.mockMouse.scroll(10, y, 'up');
+  await frameMatching(ui, f => /── #3 User/.test(f));
+  await ui.mockMouse.scroll(10, y, 'down');
+  await frameMatching(ui, f => /── #4 User/.test(f));
+});

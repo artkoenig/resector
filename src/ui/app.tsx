@@ -1,5 +1,5 @@
 // The one screen (FR-1): header · block table · preview · input line · status line.
-import type { ScrollBoxRenderable } from '@opentui/core';
+import type { MouseEvent, ScrollBoxRenderable } from '@opentui/core';
 import { useKeyboard, useTerminalDimensions } from '@opentui/solid';
 import { createEffect, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import type { Kind } from '../core/log/events';
@@ -145,6 +145,11 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     Math.max(1, size().height - 3 - previewHeight() - suggestions().length - 2 - linesOf(` ${status()?.text ?? ''}`, width()) - linesOf(` ${keys()}`, width()));
   // The rows shown: a window around the selection.
   const visibleRows = () => around(rows(), rows().findIndex(r => r.id === gate.selected() && !r.removed), capacity());
+  // The wheel over the block table moves the selection, like ↑↓ (also while busy).
+  const wheel = (event: MouseEvent) => {
+    const step = WHEEL[event.scroll?.direction ?? ''];
+    if (step) gate.select(step);
+  };
   const titleWidth = () => Math.max(8, width() - FIXED_COLUMNS);
   const selectedRow = () => rows().find(r => r.id === gate.selected() && !r.removed);
 
@@ -152,7 +157,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     <box flexDirection="column" width="100%" height="100%">
       <Header gate={gate} width={width()} />
       <text fg={TEMPLATE_COLOR} flexShrink={0}>{`     #  ${'Kind'.padEnd(11)}  ${cell('Title', titleWidth())}  Tokens  ${gate.approximate() ? 'Cache≈' : 'Cache '} Flags`}</text>
-      <box flexDirection="column" flexGrow={1} overflow="hidden">
+      <box flexDirection="column" flexGrow={1} overflow="hidden" onMouseScroll={wheel}>
         <For each={visibleRows()}>
           {row => (
             <text flexShrink={0} bg={!row.removed && row.id === gate.selected() ? SELECTED_BG : undefined} fg={row.removed ? TEMPLATE_COLOR : undefined}>
@@ -242,6 +247,7 @@ function contextBar(gate: Gate, width: number): { char: string; color: string }[
 }
 
 const BUSY_KEYS = new Set(['up', 'down', 'shift+up', 'shift+down', 'pageup', 'pagedown', 'q']);
+const WHEEL: Record<string, number> = { up: -1, down: 1 };
 
 const modifierOf = (key: { option?: boolean; meta: boolean; shift: boolean }) => (key.option || key.meta ? 'alt+' : key.shift ? 'shift+' : '');
 
