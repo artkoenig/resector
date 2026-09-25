@@ -8,6 +8,7 @@ export const KIND_COLOR: Record<Kind, string> = {
   Assistant: '#5fd7d7',
   'Tool Call': '#ffd75f',
   'Tool Result': '#bcbcbc',
+  Note: '#ff875f',
 };
 export const DIM = '#808080';
 export const FREE_COLOR = '#444444';

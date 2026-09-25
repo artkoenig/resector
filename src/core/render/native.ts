@@ -30,9 +30,11 @@ function addCall({ messages }: Request, ids: Map<number, string>, b: Block) {
 }
 
 type Add = (request: Request, ids: Map<number, string>, b: Block) => void;
+const user: Add = (r, _, b) => void r.messages.push({ role: 'user', content: b.content });
 const ADD: Record<Block['kind'], Add> = {
   System: (r, _, b) => void r.messages.push({ role: 'system', content: b.content }),
-  User: (r, _, b) => void r.messages.push({ role: 'user', content: b.content }),
+  User: user,
+  Note: user,
   Assistant: (r, _, b) => void r.messages.push({ role: 'assistant', content: b.content }),
   Tools: (r, _, b) => void (r.tools = (JSON.parse(b.content) as ToolDefinition['function'][]).map(f => ({ type: 'function', function: f }))),
   'Tool Call': addCall,
@@ -57,6 +59,6 @@ export function renderPrefixes(context: Context): Request[] {
 }
 
 // native Tool Protocol (architecture §4 "Rendering"): Tools Block → tools field; Assistant text and its
-// Tool Calls → one assistant message with tool_calls; each Tool Result → a tool message; a bottom pin is
-// a user-role Note (FR-10).
+// Tool Calls → one assistant message with tool_calls; each Tool Result → a tool message; a Note and a
+// bottom pin are user-role messages (FR-9, FR-10).
 export const renderNative = (context: Context): Request => renderPrefixes(context).at(-1) ?? EMPTY_REQUEST;

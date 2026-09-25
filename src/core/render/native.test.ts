@@ -102,3 +102,13 @@ test('an empty Context renders an empty request', () => {
   expect(renderNative(fold([created]))).toEqual({ messages: [], tools: [] });
   expect(renderPrefixes(fold([created]))).toEqual([]);
 });
+
+test('a Note from a Tool Pair is a user message, never tool syntax; the other calls keep theirs', () => {
+  const context = fold([...loop, { type: 'PairToNote', id: 9, call: 5 }]);
+  expect(renderNative(context).messages.slice(1)).toEqual([
+    { role: 'user', content: 'look' },
+    { role: 'assistant', content: 'checking', tool_calls: [call(0, 'pwd')] },
+    { role: 'tool', tool_call_id: 'call_0', content: '/p' },
+    { role: 'user', content: '[Tool bash: ls]\na b' },
+  ]);
+});

@@ -594,3 +594,192 @@ exports[`fixture edit-revisions.jsonl replays to its Context and request 1`] = `
   },
 }
 `;
+
+exports[`fixture tool-pair.jsonl replays to its Context and request 1`] = `
+{
+  "context": {
+    "blocks": [
+      {
+        "content": "You are a coding agent.",
+        "cutOff": false,
+        "id": 1,
+        "kind": "System",
+        "moved": false,
+        "origin": "config",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "revised": false,
+        "revision": 1,
+        "title": null,
+      },
+      {
+        "content": 
+"[
+  {
+    "name": "bash",
+    "description": "Run a shell command in the project root. Returns combined stdout/stderr and the exit code.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "command"
+      ]
+    }
+  }
+]"
+,
+        "cutOff": false,
+        "id": 2,
+        "kind": "Tools",
+        "moved": false,
+        "origin": "config",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "revised": false,
+        "revision": 1,
+        "title": null,
+      },
+      {
+        "content": 
+"[Tool bash: ls]
+README.md src
+[exit 0]"
+,
+        "cutOff": false,
+        "id": 9,
+        "kind": "Note",
+        "moved": false,
+        "origin": "tool",
+        "pin": "top",
+        "pinChanged": true,
+        "removed": false,
+        "revised": false,
+        "revision": 1,
+        "source": "ls",
+        "title": null,
+      },
+      {
+        "content": "What is here?",
+        "cutOff": false,
+        "id": 3,
+        "kind": "User",
+        "moved": false,
+        "origin": "user",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "revised": false,
+        "revision": 1,
+        "title": null,
+      },
+      {
+        "content": "Looking.",
+        "cutOff": false,
+        "id": 4,
+        "kind": "Assistant",
+        "moved": false,
+        "origin": "model",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "revised": false,
+        "revision": 1,
+        "title": null,
+      },
+      {
+        "content": "cat README.md",
+        "cutOff": false,
+        "id": 6,
+        "kind": "Tool Call",
+        "moved": false,
+        "origin": "model",
+        "pending": false,
+        "pin": null,
+        "pinChanged": false,
+        "removed": true,
+        "revised": false,
+        "revision": 1,
+        "title": null,
+      },
+      {
+        "call": 6,
+        "content": 
+"# Demo
+[exit 0]"
+,
+        "cutOff": false,
+        "id": 8,
+        "kind": "Tool Result",
+        "moved": false,
+        "origin": "tool",
+        "pin": null,
+        "pinChanged": false,
+        "removed": true,
+        "revised": false,
+        "revision": 1,
+        "title": null,
+      },
+    ],
+    "nextId": 10,
+    "profile": "local",
+    "protocol": "native",
+  },
+  "request": {
+    "messages": [
+      {
+        "content": "You are a coding agent.",
+        "role": "system",
+      },
+      {
+        "content": 
+"[Tool bash: ls]
+README.md src
+[exit 0]"
+,
+        "role": "user",
+      },
+      {
+        "content": "What is here?",
+        "role": "user",
+      },
+      {
+        "content": "Looking.",
+        "role": "assistant",
+      },
+    ],
+    "tools": [
+      {
+        "function": {
+          "description": "Run a shell command in the project root. Returns combined stdout/stderr and the exit code.",
+          "name": "bash",
+          "parameters": {
+            "properties": {
+              "command": {
+                "type": "string",
+              },
+            },
+            "required": [
+              "command",
+            ],
+            "type": "object",
+          },
+        },
+        "type": "function",
+      },
+    ],
+  },
+  "summary": {
+    "blocks": 5,
+    "profile": "local",
+    "renamed": false,
+    "title": "What is here?",
+    "tokens": 120,
+  },
+}
+`;

@@ -16,16 +16,23 @@ const fixed = (block: Block) => ({ error: `${NAME[block.kind]} is fixed` });
 const AWAITS = { error: 'Tool Call awaits approval – y run once · n reject · e edit' };
 // Why an operation may not touch the block, if not.
 const guard = (block: Block) => (isFixed(block) ? fixed(block) : block.pending ? AWAITS : null);
-const UNDOABLE = new Set<SessionEvent['type']>(['Move', 'Pin', 'Unpin', 'Remove', 'Rename', 'Edit']);
+const UNDOABLE = new Set<SessionEvent['type']>(['Move', 'Pin', 'Unpin', 'Remove', 'Rename', 'Edit', 'PairToNote']);
+
+const isTool = (block: Block | undefined) => block?.kind === 'Tool Call' || block?.kind === 'Tool Result';
+// Tool Call and Tool Result behave as a unit once the call has run (FR-9).
+export const inPair = (block: Block) => block.kind === 'Tool Result' || (block.kind === 'Tool Call' && !block.pending);
 
 export function move({ blocks }: Context, block: Block, dir: -1 | 1): Outcome {
   const blocked = guard(block);
   if (blocked) return blocked;
   const live = blocks.filter(b => !b.removed);
-  const neighbour = live[live.indexOf(block) + dir];
+  let far = live.indexOf(block) + dir;
+  const neighbour = live[far];
   // Blocks move only inside their area: top pins, unpinned, bottom pins; System stays first.
   if (!neighbour || isFixed(neighbour) || neighbour.pin !== block.pin) return { error: 'boundary reached (fixed / pinned area)' };
-  const after = dir === 1 ? neighbour : blocks[blocks.indexOf(neighbour) - 1]!;
+  // The calls and results of an answer are passed as a whole: a block between them breaks the protocol.
+  while (isTool(live[far]) && isTool(live[far + dir])) far += dir;
+  const after = dir === 1 ? live[far]! : blocks[blocks.indexOf(live[far]!) - 1]!;
   return { event: { type: 'Move', id: block.id, after: after.id } };
 }
 
@@ -53,6 +60,14 @@ const FIRST_REVISION = 1;
 export function editable(block: Block): string | null {
   if (block.kind === 'Tools') return 'Tools Block is not editable';
   return block.kind === 'Tool Call' && !block.pending ? 'executed Tool Calls are immutable' : null;
+}
+
+// Moving or pinning a Tool Pair turns it into Note `id` first (FR-9).
+export function toNote(block: Block, id: number): Outcome {
+  const blocked = guard(block);
+  if (blocked) return blocked;
+  if (!inPair(block)) return { error: 'not a Tool Pair' };
+  return { event: { type: 'PairToNote', id, call: block.kind === 'Tool Call' ? block.id : block.call! } };
 }
 
 // e: the edited text becomes a new Revision, numbered after every Revision logged, undone ones too.

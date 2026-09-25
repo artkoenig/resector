@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
-import { approvable, edit, isFixed, move, nextCall, pin, reject, remove, rename, toolResult, undo } from './operations';
+import { approvable, edit, isFixed, inPair, move, nextCall, pin, reject, remove, rename, toNote, toolResult, undo } from './operations';
 
 const session = (...then: SessionEvent[]): SessionEvent[] => [
   { type: 'SessionCreated', profile: 'default', protocol: 'native' },
@@ -159,4 +159,30 @@ test('editable: all kinds but the Tools Block and executed Tool Calls (FR-8)', (
   expect(editOf(events, 8, 'ls -a')).toEqual({ event: { type: 'Edit', id: 8, revision: 2, content: 'ls -a' } });
   expect(editOf(events, 7, 'short')).toEqual({ event: { type: 'Edit', id: 7, revision: 2, content: 'short' } });
   expect(editOf(events, 1, 'new sys')).toEqual({ event: { type: 'Edit', id: 1, revision: 2, content: 'new sys' } });
+});
+
+test('a Tool Pair is an executed Tool Call or a Tool Result (FR-9)', () => {
+  const events = session(call(6), answered(7, 6), call(8));
+  expect([6, 7, 8, 2].map(id => inPair(at(events, id)[1]))).toEqual([true, true, false, false]);
+});
+
+test('toNote turns the pair of either block into a Note; not a pending call or another block', () => {
+  const events = session(call(6), answered(7, 6), call(8));
+  for (const id of [6, 7]) expect(toNote(at(events, id)[1], 9)).toEqual({ event: { type: 'PairToNote', id: 9, call: 6 } });
+  expect(toNote(at(events, 8)[1], 9)).toEqual(AWAITS);
+  expect(toNote(at(events, 2)[1], 9)).toEqual({ error: 'not a Tool Pair' });
+});
+
+test('undo cancels a PairToNote', () => {
+  expect(undo(session(call(6), answered(7, 6), { type: 'PairToNote', id: 8, call: 6 }))).toEqual({ event: { type: 'Undo', eventId: 7 } });
+});
+
+test('a block moves past the Tool Calls and Tool Results of an answer as a whole, never between them', () => {
+  const events = session(call(6), call(7), answered(8, 6), answered(9, 7), { type: 'BlockAdded', id: 10, kind: 'User', origin: 'user', content: 'd' });
+  expect(move(...at(events, 10), -1)).toEqual({ event: { type: 'Move', id: 10, after: 4 } });
+  expect(move(...at(events, 4), 1)).toEqual({ event: { type: 'Move', id: 4, after: 9 } });
+  const last = session(call(6), answered(7, 6));
+  expect(move(...at(last, 4), 1)).toEqual({ event: { type: 'Move', id: 4, after: 7 } });
+  const struck = [...events, { type: 'Remove', id: 9 } as SessionEvent];
+  expect(move(...at(struck, 4), 1)).toEqual({ event: { type: 'Move', id: 4, after: 8 } });
 });

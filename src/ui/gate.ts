@@ -5,7 +5,7 @@ import type { Backend, ChatResult, Counted } from '../core/backend';
 import { warmRows } from '../core/cache/cache';
 import * as ops from '../core/context/operations';
 import type { Kind, SessionEvent, SessionLog } from '../core/log/events';
-import { afterCalls, fold, type Block } from '../core/log/fold';
+import { afterCalls, fold, pairOf, type Block } from '../core/log/fold';
 import { renderNative, renderPrefixes, sentBlocks, type Request } from '../core/render/native';
 import { answerBlocks } from '../core/toolcall/answer';
 import type { Runner } from '../core/toolcall/bash';
@@ -41,6 +41,8 @@ export type Running = { call: Block; output: string; started: number; abort: Abo
 // The row of an answer or result not in the Context yet, shown before the block `before` (null: at the end).
 export type Live = { id: number; kind: Kind; content: string; before: number | null };
 
+// Undone operations whose event type does not read as one.
+const UNDONE: Partial<Record<SessionEvent['type'], string>> = { PairToNote: 'Tool Pair → Note' };
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const APPROVE = 'y run once · n reject · e edit';
 // The prediction checked against the server (FR-41); a server reusing more than predicted is harmless.
@@ -57,6 +59,8 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
   // Marked blocks (Space) for Compaction; UI state, not logged.
   const [marked, setMarked] = createSignal<ReadonlySet<number>>(new Set());
   const [backend, setBackend] = createSignal(options.backend);
+  // Moving or pinning a Tool Pair asks first: the operation and block awaiting the same key again (FR-9).
+  const [confirming, setConfirming] = createSignal<string | null>(null);
 
   const append = (event: SessionEvent) => {
     log.append(event);
@@ -126,15 +130,32 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
     setStatus(text ? { text, tone: 'info' } : null);
   }
 
+  // A Tool Pair is moved or pinned as a Note: the first press asks, the same key again converts it,
+  // then the operation acts on the Note (FR-9). `action` names the operation, `key` its key.
+  function viaNote(action: string, key: string, then: () => void) {
+    const block = selectedBlock();
+    if (!block || !ops.inPair(block)) return then();
+    const asked = `${action} ${block.id}`;
+    if (confirming() !== asked) {
+      setConfirming(asked);
+      return setStatus({ text: `⇄ This turns the Tool Pair into a Note – press ${key} again to confirm, any other key cancels`, tone: 'warn' });
+    }
+    setConfirming(null);
+    const id = nextId();
+    if (!apply(ops.toNote(block, id))) return;
+    setSelected(id);
+    then();
+  }
   const PINNED = { top: 'pinned ⤒ top', bottom: 'pinned ⤓ bottom (sent as user-role Note at the end)' };
-  const move = (dir: -1 | 1) => operate(b => ops.move(context(), b, dir), () => null);
+  const move = (dir: -1 | 1) => viaNote(`move ${dir}`, dir < 0 ? '⌥↑' : '⌥↓', () => operate(b => ops.move(context(), b, dir), () => null));
   // A block as it is now, after an operation.
   const blockOf = (id: number) => context().blocks.find(b => b.id === id)!;
   const pinned = ({ pin }: Block) => (pin ? PINNED[pin] : 'unpinned');
-  const pin = () => operate(ops.pin, b => pinned(blockOf(b.id)));
+  const pin = () => viaNote('pin', 'p', () => operate(ops.pin, b => pinned(blockOf(b.id))));
+  const whole = (b: Block) => (ops.inPair(b) ? ' (whole Tool Pair)' : '');
   function remove() {
     const at = rows().indexOf(selected());
-    operate(ops.remove, b => `removed: ${titleOf(b)} · struck through until sent · u = undo`);
+    operate(ops.remove, b => `removed: ${titleOf(b, context().blocks)}${whole(b)} · struck through until sent · u = undo`);
     setMarked(new Set([...marked()].filter(id => sent().some(b => b.id === id))));
     selectAt(at);
   }
@@ -144,7 +165,7 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
     const { type } = events()[result.event.eventId]!;
     apply(result);
     keepSelection();
-    setStatus({ text: `undone: ${type.toLowerCase()} (counter-event in Session Log)`, tone: 'info' });
+    setStatus({ text: `undone: ${UNDONE[type] ?? type.toLowerCase()} (counter-event in Session Log)`, tone: 'info' });
   }
   const rename = (title: string) =>
     operate(b => ops.rename(b, title), () => (title.trim() ? 'renamed (display only – Context and cache unchanged)' : 'title reset'));
@@ -164,12 +185,13 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
   }
   // Text selected with the mouse, copied on release.
   const copy = (text: string) => clipboard(text).then(() => setStatus({ text: `copied ${text.length} chars`, tone: 'info' }));
+  // A Tool Pair is marked as a whole: it is compacted only as a whole (FR-9); a pending Tool Call not at all.
   function toggleMark() {
     const block = selectedBlock();
-    if (!block || ops.isFixed(block)) return;
-    const next = new Set(marked());
-    if (!next.delete(block.id)) next.add(block.id);
-    setMarked(next);
+    if (!block || ops.isFixed(block) || block.pending) return;
+    const pair = pairOf(context().blocks, block.id);
+    const on = !marked().has(block.id);
+    setMarked(new Set([...marked()].filter(id => !pair.includes(id)).concat(on ? pair : [])));
   }
 
   // The status line for the Tool Call to decide on next (FR-23).
@@ -340,6 +362,11 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
     edit: () => void edit(),
     copy: (text: string) => void copy(text),
     toggleMark,
+    // Any other key than the one asked for cancels the confirmation.
+    cancelConfirm: () => {
+      if (confirming()) setStatus(null);
+      setConfirming(null);
+    },
     clearMarks: () => setMarked(new Set<number>()),
   };
 }

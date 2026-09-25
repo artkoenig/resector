@@ -5,16 +5,17 @@ import { toolNames } from '../core/toolcall/bash';
 export const formatTokens = (t: number): string =>
   t >= 1024 && t % 1024 === 0 ? `${t / 1024}k` : t >= 1000 ? `${(t / 1000).toFixed(1)}k` : String(t);
 
-type Titled = Pick<Block, 'kind' | 'content'> & Partial<Pick<Block, 'title' | 'call'>>;
+type Titled = Pick<Block, 'kind' | 'content'> & Partial<Pick<Block, 'title' | 'call' | 'source'>>;
 const firstLine = (text: string) => (text.split('\n').find(l => l.trim()) ?? '').trim();
 
 // FR-4: display label only, never sent. A rename wins; default = first non-empty line of the content;
-// origin titles: `System prompt`, the tool names, `→ <call>` (the call from `blocks`).
+// origin titles: `System prompt`, the tool names, `→ <call>` (the call from `blocks`), `⇄ <call>` (a Note from a Tool Pair).
 export function titleOf(block: Titled, blocks: readonly Pick<Block, 'id' | 'content'>[] = []): string {
   if (block.title) return block.title;
   if (block.kind === 'System') return 'System prompt';
   if (block.kind === 'Tools') return toolNames(block.content);
   if (block.kind === 'Tool Result') return `→ ${firstLine(blocks.find(b => b.id === block.call)?.content ?? '')}`;
+  if (block.source !== undefined) return `⇄ ${firstLine(block.source)}`;
   // Only whitespace (e.g. the text before a model's tool calls): nothing to read, the template may drop it.
   return firstLine(block.content) || '(empty)';
 }

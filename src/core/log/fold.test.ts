@@ -169,7 +169,49 @@ test('a Tool Call awaits approval until it has a Tool Result, also a removed one
   expect(block(events, 3).pending).toBe(false);
   expect(block(events, 4).pending).toBe(true);
   expect(block(events, 2).pending).toBeUndefined();
-  expect(block([...events, { type: 'Remove', id: 5 }, sent], 3).pending).toBe(false);
+  expect(block([...events, { type: 'Remove', id: 5 }], 3).pending).toBe(false);
+});
+
+test('Remove takes the whole Tool Pair, from either block (FR-9)', () => {
+  const events = session(1, call(3, 'ls'), result(4, 3), call(5, 'pwd'));
+  for (const id of [3, 4]) {
+    const removed = [...events, { type: 'Remove', id } as SessionEvent];
+    expect([3, 4].map(b => block(removed, b).removed)).toEqual([true, true]);
+    expect(ids([...removed, sent])).toEqual([1, 2, 5]);
+  }
+  expect(block([...events, { type: 'Remove', id: 2 }], 3).removed).toBe(false);
+});
+
+const toNote = (id: number, of: number): SessionEvent => ({ type: 'PairToNote', id, call: of });
+
+test('PairToNote turns the Tool Pair into a Note after the calls and results of its answer: `[Tool bash: <cmd>]` + result (FR-9)', () => {
+  const events = session(1, call(3, 'ls'), call(4, 'pwd'), result(5, 3), result(6, 4), toNote(7, 3));
+  expect(ids(events)).toEqual([1, 2, 4, 6, 7]);
+  expect(block(events, 7)).toEqual({
+    id: 7, kind: 'Note', origin: 'tool', content: '[Tool bash: ls]\nout 3', source: 'ls', cutOff: false,
+    title: null, pin: null, removed: false, moved: false, pinChanged: false, revision: 1, revised: false,
+  });
+  expect(ids([...events, sent])).toEqual([1, 2, 4, 6, 7]);
+  expect(ids(session(1, call(3, 'ls'), call(4, 'pwd'), result(5, 3), result(6, 4), toNote(7, 4)))).toEqual([1, 2, 3, 5, 7]);
+  expect(fold(events).nextId).toBe(8);
+});
+
+test('a Tool Result edited in place stays the result of its call', () => {
+  const events = session(1, call(3, 'ls'), result(4, 3), edit(4, 2, 'short'));
+  expect(block(events, 4)).toMatchObject({ kind: 'Tool Result', call: 3, content: 'short' });
+  expect(ids(events)).toEqual([1, 2, 3, 4]);
+});
+
+test('the Note carries the result as edited in place; undo brings the pair back', () => {
+  const events = session(1, call(3, 'ls'), result(4, 3), edit(4, 2, 'short'), toNote(5, 3));
+  expect(block(events, 5).content).toBe('[Tool bash: ls]\nshort');
+  expect(ids([...events, { type: 'Undo', eventId: 6 }])).toEqual([1, 2, 3, 4]);
+});
+
+test('a Note from a pinned pair keeps the pin', () => {
+  const events = session(2, call(4, 'ls'), result(5, 4), { type: 'Pin', id: 4, at: 'top' }, toNote(6, 4));
+  expect(ids(events)).toEqual([1, 6, 2, 3]);
+  expect(block(events, 6).pin).toBe('top');
 });
 
 const edit = (id: number, revision: number, content: string): SessionEvent => ({ type: 'Edit', id, revision, content });

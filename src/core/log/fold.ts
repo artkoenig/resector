@@ -9,6 +9,8 @@ export type Block = {
   // Tool Result only: its Tool Call, and how the run stopped early.
   call?: number;
   stopped?: Stopped;
+  // Note from a Tool Pair only: the pair's command, for its title.
+  source?: string;
   // Tool Call only: no Tool Result yet, so it awaits approval (FR-23).
   pending?: boolean;
   title: string | null;
@@ -47,6 +49,16 @@ export function afterCalls(blocks: Pick<Block, 'id' | 'kind'>[], call: number): 
   return at;
 }
 
+// The Tool Pair of a Tool Call or Tool Result: both block ids, the call first; any other block alone.
+export function pairOf(blocks: Pick<Block, 'id' | 'kind' | 'call'>[], id: number): number[] {
+  const block = blocks.find(b => b.id === id)!;
+  if (block.kind === 'Tool Result') return [block.call!, id];
+  const result = blocks.find(b => b.call === id);
+  return result ? [id, result.id] : [id];
+}
+
+const NEW_ENTRY = { title: null, removed: false, moved: false, pinChanged: false, revision: 1, hidden: false, sentPin: null, sentRevision: 1 };
+
 function setPin(state: State, id: number, pin: Pin | null) {
   const e = entry(state, id);
   take(state, id);
@@ -55,11 +67,13 @@ function setPin(state: State, id: number, pin: Pin | null) {
   insert(state, pin === 'top' ? afterTop(state) : pin === 'bottom' ? state.order.length : firstBottom(state), id);
 }
 
+const pairIn = (state: State, id: number) => pairOf([...state.entries.values()], id);
+
 const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   BlockAdded: (state, e) => {
     const block = { id: e.id, kind: e.kind, origin: e.origin, content: e.content, cutOff: e.cutOff === true,
       ...(e.call !== undefined && { call: e.call }), ...(e.stopped && { stopped: e.stopped }) };
-    state.entries.set(e.id, { ...block, title: null, pin: null, removed: false, moved: false, pinChanged: false, revision: 1, hidden: false, sentPin: null, sentRevision: 1 });
+    state.entries.set(e.id, { ...block, ...NEW_ENTRY, pin: null });
     const at = e.call === undefined ? firstBottom(state) : afterCalls(state.order.map(id => entry(state, id)), e.call);
     insert(state, at, e.id);
   },
@@ -72,7 +86,16 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   Pin: (state, e) => setPin(state, e.id, e.at),
   Unpin: (state, e) => setPin(state, e.id, null),
   ProfileFallback: (state, e) => void (state.profile = e.profile),
-  Remove: (state, e) => void (entry(state, e.id).removed = true),
+  Remove: (state, e) => pairIn(state, e.id).forEach(id => (entry(state, id).removed = true)),
+  // The pair is gone at once, not struck through: its Note follows the calls and results of its answer,
+  // so the other calls of the answer keep their results right after them.
+  PairToNote: (state, e) => {
+    const [call, result] = pairIn(state, e.call).map(id => entry(state, id));
+    const content = `[Tool bash: ${call!.content}]\n${result!.content}`;
+    state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'tool', content, source: call!.content, cutOff: false, ...NEW_ENTRY, pin: call!.pin });
+    insert(state, afterCalls(state.order.map(id => entry(state, id)), e.call), e.id);
+    for (const b of [call!, result!]) Object.assign(b, { removed: true, hidden: true });
+  },
   Rename: (state, e) => void (entry(state, e.id).title = e.title || null),
   RequestSent: state => {
     for (const e of state.entries.values()) Object.assign(e, { hidden: e.removed, moved: false, pinChanged: false, sentPin: e.pin, sentRevision: e.revision });

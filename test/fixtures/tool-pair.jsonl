@@ -1,0 +1,15 @@
+{"type":"SessionCreated","profile":"local","protocol":"native"}
+{"type":"BlockAdded","id":1,"kind":"System","origin":"config","content":"You are a coding agent."}
+{"type":"BlockAdded","id":2,"kind":"Tools","origin":"config","content":"[\n  {\n    \"name\": \"bash\",\n    \"description\": \"Run a shell command in the project root. Returns combined stdout/stderr and the exit code.\",\n    \"parameters\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"command\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"command\"\n      ]\n    }\n  }\n]"}
+{"type":"BlockAdded","id":3,"kind":"User","origin":"user","content":"What is here?"}
+{"type":"RequestSent","hash":"a1","tokens":120}
+{"type":"BlockAdded","id":4,"kind":"Assistant","origin":"model","content":"Looking."}
+{"type":"BlockAdded","id":5,"kind":"Tool Call","origin":"model","content":"ls"}
+{"type":"BlockAdded","id":6,"kind":"Tool Call","origin":"model","content":"cat README.md"}
+{"type":"ResponseReceived","usage":{"prompt_tokens":120,"completion_tokens":20},"cached":0}
+{"type":"BlockAdded","id":7,"kind":"Tool Result","origin":"tool","content":"README.md\nsrc\n[exit 0]","call":5}
+{"type":"BlockAdded","id":8,"kind":"Tool Result","origin":"tool","content":"# Demo\n[exit 0]","call":6}
+{"type":"Edit","id":7,"revision":2,"content":"README.md src\n[exit 0]"}
+{"type":"PairToNote","id":9,"call":5}
+{"type":"Pin","id":9,"at":"top"}
+{"type":"Remove","id":8}

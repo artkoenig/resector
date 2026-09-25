@@ -120,6 +120,8 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     escape: gate.clearMarks,
     q: props.onQuit,
   };
+  // The key pressed last in the Context: only the same key again confirms (FR-9).
+  let lastKey = '';
   // Keys of the command suggestions win while any are shown.
   const suggestionKey = (name: string) => (suggestion() ? suggestionKeys[name] : undefined);
   useKeyboard(key => {
@@ -130,6 +132,8 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     } else if (mode() !== 'context') inputKeys[key.name]?.();
     else {
       const name = modifierOf(key) + key.name;
+      if (name !== lastKey) gate.cancelConfirm();
+      lastKey = name;
       // Streaming or running: only looking around (select, scroll, quit); Esc aborts, the Context stays as sent.
       const action = gate.busy() ? (name === 'escape' ? gate.abort : BUSY_KEYS.has(name) ? contextKeys[name] : undefined) : contextKeys[name];
       // Handled here only: `r` must not also type into the input it focuses.

@@ -676,3 +676,59 @@ test('text selected with the mouse is copied to the clipboard on release', async
   await ui.flush();
   expect(copied).toEqual(['You are']);
 });
+
+test('d removes a Tool Pair as a whole; Space marks it as a whole (FR-9)', async () => {
+  const { events } = await asked(['echo hi']);
+  await press('y');
+  let frame = await frameMatching(ui, f => f.includes('tool loop paused'));
+  await press(' ');
+  frame = await frameMatching(ui, f => /●\s+5\s+Tool Result/.test(f));
+  expect(line(frame, /Tool Call/)).toMatch(/●\s+4\s+Tool Call/);
+  await press('d');
+  frame = await frameMatching(ui, f => f.includes('(whole Tool Pair)'));
+  expect(line(frame, /Tool Call/)).toMatch(/^ {8}Tool Call\s+echo hi\s+removed/);
+  expect(line(frame, /Tool Result/)).toMatch(/^ {8}Tool Result\s+→ echo hi\s+removed/);
+  expect(events().at(-1)).toEqual({ type: 'Remove', id: 5 });
+});
+
+test('⌥↑ on a Tool Pair asks; any other key cancels; the same key again turns it into a Note and moves it (FR-9)', async () => {
+  const { events } = await asked(['echo hi'], { text: 'Look.' });
+  await press('y');
+  await frameMatching(ui, f => f.includes('tool loop paused'));
+  await press('up', { meta: true });
+  await frameMatching(ui, f => f.includes('press ⌥↑ again to confirm'));
+  await press('x');
+  await press('up', { meta: true });
+  await frameMatching(ui, f => f.includes('press ⌥↑ again to confirm'));
+  expect(events().at(-1).type).toBe('BlockAdded');
+  await press('up', { meta: true });
+  let frame = await frameMatching(ui, f => /4\s+Note\s+⇄ echo hi.*⇄/.test(f));
+  expect(order(frame)).toEqual(['1 System', '2 bash', '3 go', '4 ⇄', '5 Look.']);
+  expect(frame).not.toContain('Tool Result');
+  expect(events().slice(-2)).toEqual([{ type: 'PairToNote', id: 7, call: 5 }, { type: 'Move', id: 7, after: 3 }]);
+  fake.reply({ chunks: ['ok'] });
+  ui.mockInput.pressEnter();
+  frame = await frameMatching(ui, f => f.includes('answer complete'));
+  expect((fake.chatRequests[1] as Sent).messages.slice(1)).toEqual([
+    { role: 'user', content: 'go' },
+    { role: 'user', content: '[Tool bash: echo hi]\nhi\n[exit 0]' },
+    { role: 'assistant', content: 'Look.' },
+  ]);
+});
+
+test('p on a Tool Pair asks, p again pins its Note; u brings the pair back', async () => {
+  await asked(['echo hi']);
+  await press('y');
+  await frameMatching(ui, f => f.includes('tool loop paused'));
+  await press('up');
+  await press('p');
+  await frameMatching(ui, f => f.includes('press p again to confirm'));
+  await press('p');
+  let frame = await frameMatching(ui, f => f.includes('pinned ⤒ top'));
+  expect(order(frame)).toEqual(['1 System', '2 bash', '3 ⇄', '4 go']);
+  expect(line(frame, /Note/)).toMatch(/⤒/);
+  await press('u');
+  await press('u');
+  frame = await frameMatching(ui, f => f.includes('undone: Tool Pair → Note'));
+  expect(order(frame)).toEqual(['1 System', '2 bash', '3 go', '4 Call', '5 Result']);
+});
