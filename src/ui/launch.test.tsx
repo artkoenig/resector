@@ -148,9 +148,10 @@ test('/reload re-reads the config and reconnects; an invalid config keeps the cu
   expect(await frameMatching(ui, f => f.includes('/ 3k'))).toContain('config reloaded');
   put(paths.global, '{ "profiles": ');
   await command('/reload');
-  // The config path is long enough to wrap the status line, so whitespace is ignored.
+  // The config path is long enough to wrap in the error band, so whitespace and the band's ┃ are ignored.
   const frame = (await frameMatching(ui, f => f.includes('reload failed'))).replace(/\s+/g, '');
-  expect(frame).toMatch(/\/3k.*✗reloadfailed┃.*config\.jsonc:1:\d+:ValueExpected/);
+  expect(frame).toMatch(/\/3k.*✗reloadfailed┃/);
+  expect(frame.replace(/┃/g, '')).toMatch(/config\.jsonc:1:\d+:ValueExpected/);
 });
 
 const chat = (profile: string): SessionEvent[] => [

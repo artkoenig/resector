@@ -120,6 +120,9 @@ export function Sessions(props: SessionsProps) {
   const capacity = () =>
     Math.max(1, size().height - 2 - 1 - 1 - 1 - PREVIEW_BLOCKS - (editing() ? 1 : 0) - footerLines(footerStatus()?.text ?? '', hints(), size().width));
   const visible = () => around(list(), index(), capacity());
+  // A profile that no longer exists is flagged ⚠ in the error colour.
+  const profileOf = (s: StoredSession) =>
+    props.profiles.includes(s.profile) ? { text: s.profile, fg: undefined } : { text: `⚠ ${s.profile}`, fg: TONE.error };
   const context = (s: StoredSession) => {
     const window = props.windowOf(s.profile);
     const tokens = s.tokens === null ? '–' : formatTokens(s.tokens);
@@ -147,9 +150,7 @@ export function Sessions(props: SessionsProps) {
               <span style={{ fg: TONE.error }}>{`${s.locked ? '⊘' : ' '}  `}</span>
               <span>{`${cell(s.title, titleWidth())} `}</span>
               <span style={{ fg: MUTED }}>{`${ago(s.updated).padEnd(10)} `}</span>
-              <span style={{ fg: props.profiles.includes(s.profile) ? undefined : TONE.error }}>
-                {`${cell(props.profiles.includes(s.profile) ? s.profile : `⚠ ${s.profile}`, 20)} `}
-              </span>
+              <span style={{ fg: profileOf(s).fg }}>{`${cell(profileOf(s).text, 20)} `}</span>
               <span style={{ fg: context(s).warn ? TONE.warn : undefined }}>{`${context(s).text.padEnd(14)} `}</span>
               <span style={{ fg: MUTED }}>{right(String(s.blocks), 6)}</span>
             </text>

@@ -182,16 +182,16 @@ export function App(props: GateOptions & { onQuit: () => void }) {
       <box flexDirection="column" flexGrow={1} overflow="hidden" onMouseScroll={wheel}>
         <For each={visibleRows()}>
           {row => (
-            <text flexShrink={0} bg={isSelected(row) ? SELECTED_BG : undefined} fg={row.removed ? MUTED : TEXT}>
+            <text flexShrink={0} bg={isSelected(row) ? SELECTED_BG : undefined} fg={rowFg(row).text}>
               <span style={{ fg: ACCENT }}>{`${isSelected(row) ? '┃' : ' '} ${gate.marked().has(row.id) ? '●' : ' '}`}</span>
               <span style={{ fg: isSelected(row) ? TEXT : MUTED }}>{`${right(row.n, 3)}  `}</span>
-              <span style={{ fg: row.removed ? MUTED : KIND_COLOR[row.kind], strikethrough: row.removed }}>{row.kind.padEnd(11)}</span>
+              <span style={{ fg: rowFg(row).kind, strikethrough: row.removed }}>{row.kind.padEnd(11)}</span>
               <span>{'  '}</span>
               <span style={{ strikethrough: row.removed }}>{cell(row.title, titleWidth())}</span>
               <span>{'  '}</span>
-              <span style={{ fg: row.live ? TONE.warn : MUTED }}>{right(row.tokens, 6)}</span>
+              <span style={{ fg: rowFg(row).tokens }}>{right(row.tokens, 6)}</span>
               <span style={{ fg: CACHE_COLOR[row.cache] }}>{`    ${row.cache.padEnd(1)}    `}</span>
-              <span style={{ fg: row.removed ? MUTED : TONE.warn }}>{row.flags}</span>
+              <span style={{ fg: rowFg(row).flags }}>{row.flags}</span>
             </text>
           )}
         </For>
@@ -323,6 +323,12 @@ const modifierOf = (key: { option?: boolean; meta: boolean; shift: boolean }) =>
 
 const LOOK_KEYS: Hint[] = [['q', 'quit']];
 const KEYS: Hint[] = [['⌥↑↓', 'move'], ['e', 'edit'], ['r', 'rename'], ['d', 'remove'], ['p', 'pin'], ['space', 'mark'], ['u', 'undo'], ['q', 'quit']];
+
+// Colours of a row: a removed one is muted throughout.
+const rowFg = (row: Row) =>
+  row.removed
+    ? { text: MUTED, kind: MUTED, tokens: MUTED, flags: MUTED }
+    : { text: TEXT, kind: KIND_COLOR[row.kind], tokens: row.live ? TONE.warn : MUTED, flags: TONE.warn };
 
 // Status line: a running command, the streaming answer (both with the row's spinner), else the last action.
 function statusOf(gate: Gate, spin: string): Status | null {
