@@ -299,7 +299,7 @@ test('the Cache column shows ● for rows before the invalidation point, ○ fro
   expect(cache(frame)).toEqual(['1●', '2●', '3●', '4○', '5○']);
 });
 
-test('a server reusing fewer tokens than predicted is reported; the prediction is approximate from then on (NFR-2)', async () => {
+test('a server reusing fewer tokens than predicted is reported (FR-41)', async () => {
   await withUsers('hi there');
   fake.reply({ chunks: ['hello'] });
   ui.mockInput.pressEnter();
@@ -311,7 +311,7 @@ test('a server reusing fewer tokens than predicted is reported; the prediction i
   const frame = await frameMatching(ui, f => f.includes('server reused'));
   // BOS + System 12 + Tools 36 + User 8 + <|im_start|> assistant \n hello
   expect(frame).toContain('answer complete · ⚠ cache: predicted 61 · server reused 3');
-  expect(line(frame, /Kind/)).toMatch(/Tokens\s+Cache≈\s+Flags/);
+  expect(line(frame, /Kind/)).toMatch(/Tokens +Cache +Flags/);
 });
 
 test('the key hints stay visible next to a status', async () => {

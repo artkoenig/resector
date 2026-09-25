@@ -57,8 +57,6 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
   // Marked blocks (Space) for Compaction; UI state, not logged.
   const [marked, setMarked] = createSignal<ReadonlySet<number>>(new Set());
   const [backend, setBackend] = createSignal(options.backend);
-  // Set once the server reused fewer tokens than predicted: the prediction is approximate (NFR-2).
-  const [mispredicted, setMispredicted] = createSignal(false);
 
   const append = (event: SessionEvent) => {
     log.append(event);
@@ -194,7 +192,6 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
     if (next) setSelected(next.id);
     const status = answerStatus(result, notRun, next);
     const miss = cacheMiss(result);
-    if (miss) setMispredicted(true);
     setStatus(miss ? { text: `${status.text} · ⚠ ${miss}`, tone: 'warn' } : status);
   }
 
@@ -328,7 +325,6 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
     window: () => backend().window,
     // Whether a sent block is still cached; null while counting.
     warm: (id: number) => warm()?.[sent().findIndex(b => b.id === id)] ?? null,
-    approximate: () => mispredicted() || split()?.cached.exact === false,
     profile: () => context().profile,
     submit,
     send,

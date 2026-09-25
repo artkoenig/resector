@@ -97,7 +97,7 @@ A text-based (TUI) coding agent whose core is the **Review Gate**: a pause befor
 - **FR-38** Model Profile fields: `name`, `backend` (`llamacpp`|`ollama`|`lmstudio`|`omlx`), `endpoint`, `model`, `window` (auto, overridable), `tokenizer` (auto, override path), `toolProtocol` (`native`|`text-xml`), `resultFormat` (`native`|`toon`), `sampling`, `thinking`, `compactionProfile`, `systemPrompt`.
 - **FR-39** *Dropped:* no profile switch within a session; the Model Profile (and thus the Tool Protocol) is fixed at session creation, except the resume fallback of FR-35.
 - **FR-40** llamacpp backend: check `--jinja` at startup; error with hint if missing.
-- **FR-41** After each response, compare the predicted cache reuse with the cached tokens the server reports; if the server reused fewer, warn in the status line (`cache: predicted X · server reused Y`) and label the Cache column approximate (`Cache≈`) for the rest of the session.
+- **FR-41** After each response, compare the predicted cache reuse with the cached tokens the server reports; if the server reused fewer, warn in the status line (`cache: predicted X · server reused Y`). The Cache column header stays `Cache` (no `≈` label).
 
 ### 4.10 Configuration
 
@@ -117,7 +117,7 @@ A text-based (TUI) coding agent whose core is the **Review Gate**: a pause befor
 ## 5. Non-functional requirements
 
 - **NFR-1** Token counts are exact on llama.cpp and oMLX; Ollama/LM Studio best effort with visible drift.
-- **NFR-2** Cache invalidation prediction is exact for plain-attention models on llama.cpp; approximate (and labelled so) for SWA/recurrent models.
+- **NFR-2** Cache invalidation prediction is exact for plain-attention models on llama.cpp; approximate for SWA/recurrent models (reported per FR-41, not labelled).
 - **NFR-3** Nothing inside a session is ever deleted: every operation is an append-only event; undo is a counter-event.
 - **NFR-4** Quality gates (block merge): CRAP ≤ 8 per function (all code); mutation score 100 % incl. NoCoverage for Core, suppressions only with reason comment; dependency-cruiser: Core never imports UI. jscpd reports duplication (non-blocking).
 - **NFR-5** Distribution: single binaries via `bun build --compile` (darwin-arm64/x64, linux-x64/arm64), GitHub Releases + Homebrew tap. `resector --version`. MIT licence; repo public at v1 release.
