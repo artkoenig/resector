@@ -4,7 +4,7 @@ title: Veraltete Datei-Inhalte im Context
 labels: [wayfinder:grilling]
 parent: context-harness-v1
 status: open
-assignee:
+assignee: artkoenig
 blocked_by: []
 ---
 
