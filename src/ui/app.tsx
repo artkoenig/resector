@@ -181,7 +181,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
         <Show when={selectedRow()}>
           {(row: () => Row) => (
             <>
-              <text fg={FREE_COLOR} flexShrink={0}>{cell(`── #${row().n} ${row().kind} · ${row().title} `, width()).replace(/  +$/, m => ' ' + '─'.repeat(m.length - 1))}</text>
+              <text fg={FREE_COLOR} flexShrink={0}>{`── Content ${'─'.repeat(Math.max(0, width() - 11))}`}</text>
               <scrollbox ref={preview} flexGrow={1}>
                 <text fg="#bcbcbc">{row().content}</text>
               </scrollbox>

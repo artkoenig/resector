@@ -62,7 +62,8 @@ test('the Gate shows every Context Block with its exact tokens and the Template 
   expect(line(frame, /Kind/)).toMatch(/#\s+Kind\s+Title\s+Tokens\s+Cache\s+Flags/);
   expect(line(frame, /System prompt/)).toMatch(/1\s+System\s+System prompt\s+12\b/);
   expect(line(frame, /Template/)).toMatch(/Template\s.*\s4\b/);
-  expect(line(frame, /──/)).toMatch(/── #1 System · System prompt/);
+  expect(line(frame, /──/)).toMatch(/^── Content ─+$/);
+  expect(previewed(frame)).toBe('You are an agent.');
   expect(frame).toContain('You are an agent.');
   expect(events()).toEqual([
     { type: 'SessionCreated', profile: 'default', protocol: 'native' },
@@ -135,11 +136,11 @@ test('while the answer streams, ↑↓ select and the preview scrolls; the Conte
   let frame = await frameMatching(ui, f => /4\s+Assistant\s+Hal/.test(f));
   expect(frame).toContain('Esc abort · ↑↓ select · PgUp/PgDn scroll · q quit');
   await press('up');
-  frame = await frameMatching(ui, f => /── #3 User · hi there/.test(f));
+  frame = await frameMatching(ui, f => previewed(f) === 'hi there');
   await press('d');
   await press('p');
   await press('down');
-  frame = await frameMatching(ui, f => /── #4 Assistant/.test(f));
+  frame = await frameMatching(ui, f => previewed(f).startsWith('Hal'));
   expect(frame).not.toContain('removed');
   expect(events().at(-1).type).toBe('RequestSent');
   await escape();
@@ -232,7 +233,7 @@ test('Space marks and unmarks the selected block; the selection stays', async ()
   await withUsers('one', 'two');
   await press(' ');
   let frame = await frameMatching(ui, f => /●\s+4\s+User\s+two/.test(f));
-  expect(line(frame, /──/)).toMatch(/#4 User · two/);
+  expect(previewed(frame)).toBe('two');
   await press(' ');
   frame = await frameMatching(ui, f => !f.includes('●'));
   expect(line(frame, /two/)).toMatch(/^ {3} +4\s+User/);
@@ -401,6 +402,12 @@ test('Tab completes a command; /rename sets the session title, empty resets it (
   expect(events().at(-1)).toEqual({ type: 'SessionRenamed', title: '' });
 });
 
+// The first line of the Content preview: shows which block is selected.
+const previewed = (frame: string) => {
+  const lines = frame.split('\n');
+  return (lines[lines.findIndex(l => l.startsWith('── Content')) + 1] ?? '').slice(0, -1).trim(); // last column: scrollbar
+};
+
 async function until(condition: () => boolean) {
   while (!condition()) await Bun.sleep(10);
 }
@@ -409,18 +416,17 @@ test('the preview scrolls with PgUp/PgDn and ⇧↑↓; a newly selected block s
   await start();
   const words = Array.from({ length: 90 }, (_, i) => `w${String(i + 1).padStart(2, '0')}`).join(' ');
   await write(words);
-  let frame = await frameMatching(ui, f => /── #3 User/.test(f) && !f.includes('… / 4k'));
-  const below = (f: string) => f.split('\n').slice(f.split('\n').findIndex(l => l.includes('──')) + 1);
-  expect(below(frame)[0]).toMatch(/^w01 /);
+  let frame = await frameMatching(ui, f => previewed(f).startsWith('w01') && !f.includes('… / 4k'));
+  expect(previewed(frame)).toMatch(/^w01 /);
   expect(frame).not.toContain('w90');
   ui.mockInput.pressKey('\u001B[6~');
   frame = await frameMatching(ui, f => f.includes('w90'));
-  expect(below(frame)[0]).not.toMatch(/^w01 /);
+  expect(previewed(frame)).not.toMatch(/^w01 /);
   ui.mockInput.pressArrow('up', { shift: true });
   frame = await frameMatching(ui, f => !f.includes('w90'));
   await press('\u001B[A');
   await press('\u001B[B');
-  frame = await frameMatching(ui, f => /── #3 User/.test(f) && /^w01 /.test(below(f)[0] ?? ''));
+  frame = await frameMatching(ui, f => /^w01 /.test(previewed(f)));
   expect(frame).not.toContain('w90');
 });
 
@@ -444,7 +450,7 @@ test('the Tools Block (bash) is always sent and fixed (FR-12)', async () => {
   await frameMatching(ui, f => f.includes('answer complete'));
   expect((fake.chatRequests[0] as Sent).tools!.map(t => t.function.name)).toEqual(['bash']);
   for (const k of ['up', 'up']) await press(k);
-  await frameMatching(ui, f => /── #2 Tools · bash/.test(f));
+  await frameMatching(ui, f => previewed(f) === '[');
   await press('d');
   await frameMatching(ui, f => f.includes('Tools Block cannot be removed'));
   await press('down', { meta: true });
@@ -503,7 +509,7 @@ test('several calls are decided one by one in order; results keep call order (FR
   await press('up');
   await press('y');
   frame = await frameMatching(ui, f => f.includes('? approve: echo two'));
-  expect(line(frame, /── #/)).toMatch(/#5 Tool Call · echo two/);
+  expect(previewed(frame)).toBe('echo two');
   await press('n');
   frame = await frameMatching(ui, f => f.includes('tool loop paused'));
   expect(frame).toMatch(/4\s+Tool Call\s+echo one[^]*5\s+Tool Call\s+echo two[^]*6\s+Tool Result\s+→ echo one[^]*7\s+Tool Result\s+→ echo two/);
@@ -561,7 +567,7 @@ test('more rows than fit: rows never overlap, the list follows the selection, Te
   expect(shown).toEqual(Array.from({ length: shown.length }, (_, i) => shown[0]! + i));
   expect(shown.length).toBeLessThan(14);
   for (let i = 0; i < 13; i++) await press('up');
-  frame = await frameMatching(ui, f => /── #1 System/.test(f));
+  frame = await frameMatching(ui, f => previewed(f) === 'You are an agent.');
   shown = numbers(frame);
   expect(shown[0]).toBe(1);
   expect(line(frame, /System prompt/)).toMatch(/1\s+System\s+System prompt\s+12\b/);
@@ -570,12 +576,12 @@ test('more rows than fit: rows never overlap, the list follows the selection, Te
 
 test('the mouse wheel over the block table selects the previous or next block', async () => {
   await withUsers('note 3', 'note 4');
-  await frameMatching(ui, f => /── #4 User/.test(f));
+  await frameMatching(ui, f => previewed(f) === 'note 4');
   const y = ui.captureCharFrame().split('\n').findIndex(l => l.includes('note 3'));
   await ui.mockMouse.scroll(10, y, 'up');
-  await frameMatching(ui, f => /── #3 User/.test(f));
+  await frameMatching(ui, f => previewed(f) === 'note 3');
   await ui.mockMouse.scroll(10, y, 'down');
-  await frameMatching(ui, f => /── #4 User/.test(f));
+  await frameMatching(ui, f => previewed(f) === 'note 4');
 });
 
 test('an Assistant block of only whitespace is titled (empty)', async () => {
