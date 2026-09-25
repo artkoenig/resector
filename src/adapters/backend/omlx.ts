@@ -2,11 +2,50 @@
 // /v1/messages/count_tokens, which applies the model's chat template with the generation prompt.
 import type { Backend, CacheHit } from '../../core/backend';
 import { commonPrefix } from '../../core/cache/cache';
-import type { Message } from '../../core/render/native';
+import { EMPTY_REQUEST as EMPTY, type Message, type Request } from '../../core/render/native';
 import { splitTokens } from '../../core/tokens/split';
-import { httpClient, streamChat } from './openai';
+import { answerMessage, httpClient, streamChat } from './openai';
 
 const TRAILER: Message = { role: 'user', content: '' };
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+// An assistant message that `whole` continues with further tool calls of the same answer.
+const begins = (part: Message, whole: Message | undefined) =>
+  part.role === 'assistant' && whole?.role === 'assistant' && part.content === whole.content &&
+  (part.tool_calls ?? []).every((c, i) => same(c, whole.tool_calls?.[i]));
+// Whether `history` renders like `prefix` up to its end: same messages (the last one may go on), same
+// tools once it has any.
+const within = (history: Request, prefix: Request) =>
+  (!prefix.tools.length || same(prefix.tools, history.tools)) &&
+  prefix.messages.every((m, i) => same(m, history.messages[i]) || (i === prefix.messages.length - 1 && begins(m, history.messages[i])));
+
+// count_tokens takes the Anthropic Messages format: System → `system`, tool calls → tool_use blocks,
+// tool messages → tool_result blocks of one user message, tools with `input_schema`.
+type AnthropicMessage = { role: string; content: unknown };
+
+// Appends one chat message in the Anthropic format; consecutive tool results share one user message.
+function addAnthropic(converted: AnthropicMessage[], m: Message) {
+  if (m.role === 'tool') {
+    const result = { type: 'tool_result', tool_use_id: m.tool_call_id, content: m.content };
+    const previous = converted.at(-1);
+    if (previous?.role === 'user' && Array.isArray(previous.content)) previous.content.push(result);
+    else converted.push({ role: 'user', content: [result] });
+  } else if (m.role === 'assistant' && m.tool_calls) {
+    const uses = m.tool_calls.map(c => ({ type: 'tool_use', id: c.id, name: c.function.name, input: JSON.parse(c.function.arguments) }));
+    converted.push({ role: 'assistant', content: [...(m.content ? [{ type: 'text', text: m.content }] : []), ...uses] });
+  } else converted.push({ role: m.role, content: m.content });
+}
+
+function anthropic({ messages, tools }: Request) {
+  const [first, ...rest] = messages;
+  const system = first?.role === 'system';
+  const converted: AnthropicMessage[] = [];
+  for (const m of system ? rest : messages) addAnthropic(converted, m);
+  return {
+    ...(system && { system: first.content }),
+    messages: converted,
+    ...(tools.length && { tools: tools.map(({ function: f }) => ({ name: f.name, description: f.description, input_schema: f.parameters })) }),
+  };
+}
 
 type ModelList = { data: { id: string; max_model_len?: number | null }[] };
 
@@ -26,12 +65,9 @@ export async function connectOmlx(endpoint: string, { window, model, sampling }:
   // Every count includes the generation prompt. Counted prefixes end in an empty user turn, since
   // some templates (Qwen3-2507) cannot render a prompt without user message and oMLX then silently
   // counts a plain concatenation; both cancel out in the prefix differences and land in the Template
-  // row. Tool definitions are not sent yet, so their overhead is not counted.
-  const tokens = async (messages: Message[]): Promise<number> => {
-    const [first, ...rest] = messages;
-    const body = first?.role === 'system' ? { model, system: first.content, messages: rest } : { model, messages };
-    return (await post<{ input_tokens: number }>('/v1/messages/count_tokens', body)).input_tokens;
-  };
+  // row.
+  const tokens = async (request: Request): Promise<number> =>
+    (await post<{ input_tokens: number }>('/v1/messages/count_tokens', { model, ...anthropic(request) })).input_tokens;
 
   // Prefix cache (architecture §4): oMLX predicts its hits itself with the admin cache probe, in whole
   // cache blocks. The probe sees a request's blocks only a moment after its answer, so the unchanged
@@ -47,15 +83,17 @@ export async function connectOmlx(endpoint: string, { window, model, sampling }:
       return null;
     });
   };
-  let lastRequest: Message[] = [];
-  let lastExchange: Message[] = [];
-  // Tokens of the leading messages equal to `history`.
-  const unchanged = (history: Message[], messages: Message[], blocks: number[]) =>
-    blocks.slice(0, commonPrefix(history, messages, (a, b) => a.role === b.role && a.content === b.content)).reduce((sum, n) => sum + n, 0);
-  const predict = async (messages: Message[], blocks: number[]): Promise<CacheHit> => {
-    const hit = await probe(messages);
-    if (!hit) return { tokens: unchanged(lastExchange, messages, blocks), exact: false };
-    const recent = unchanged(lastRequest, messages, blocks);
+  let lastRequest: Request = EMPTY;
+  let lastExchange: Request = EMPTY;
+  // Tokens of the leading blocks whose rendering `history` already starts with.
+  const unchanged = (history: Request, prefixes: Request[], blocks: number[]) => {
+    const changed = prefixes.findIndex(p => !within(history, p));
+    return blocks.slice(0, changed < 0 ? blocks.length : changed).reduce((sum, n) => sum + n, 0);
+  };
+  const predict = async (prefixes: Request[], blocks: number[]): Promise<CacheHit> => {
+    const hit = await probe((prefixes.at(-1) ?? EMPTY).messages);
+    if (!hit) return { tokens: unchanged(lastExchange, prefixes, blocks), exact: false };
+    const recent = unchanged(lastRequest, prefixes, blocks);
     return { tokens: Math.max(hit.ssd_hit_tokens, recent - (recent % hit.block_size)), exact: true };
   };
   // The prediction of the last count: the Gate counts a request right before sending it.
@@ -64,21 +102,22 @@ export async function connectOmlx(endpoint: string, { window, model, sampling }:
   return {
     window: size,
 
-    async count(messages) {
-      const prefix = (n: number) => tokens([...messages.slice(0, n), TRAILER]);
-      const [empty, ...prefixes] = await Promise.all(Array.from({ length: messages.length + 1 }, (_, n) => prefix(n)));
+    async count(requests) {
+      const whole = requests.at(-1) ?? EMPTY;
+      const prefix = (r: Request) => tokens({ ...r, messages: [...r.messages, TRAILER] });
+      const [empty, ...prefixes] = await Promise.all([EMPTY, ...requests].map(prefix));
       // Without user message the smallest renderable request is the one with the empty user turn.
-      const total = messages.some(m => m.role === 'user') ? await tokens(messages) : (prefixes.at(-1) ?? empty!);
+      const total = whole.messages.some(m => m.role === 'user') ? await tokens(whole) : (prefixes.at(-1) ?? empty!);
       const split = splitTokens({ empty: empty!, prefixes, total });
-      last = { key: JSON.stringify(messages), cached: await predict(messages, split.blocks) };
+      last = { key: JSON.stringify(whole), cached: await predict(requests, split.blocks) };
       return { ...split, cached: last.cached };
     },
 
-    async chat(messages, options) {
-      const predicted = last?.key === JSON.stringify(messages) && last.cached.exact ? last.cached.tokens : null;
-      const result = await streamChat({ name: 'oMLX', request }, { model, ...sampling }, messages, options);
-      lastRequest = messages;
-      lastExchange = [...messages, { role: 'assistant', content: result.content }];
+    async chat(chat, options) {
+      const predicted = last?.key === JSON.stringify(chat) && last.cached.exact ? last.cached.tokens : null;
+      const result = await streamChat({ name: 'oMLX', request }, { model, ...sampling }, chat, options);
+      lastRequest = chat;
+      lastExchange = { ...chat, messages: [...chat.messages, answerMessage(result)] };
       return { ...result, predicted };
     },
   };

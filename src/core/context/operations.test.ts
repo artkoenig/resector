@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
-import { move, pin, remove, rename, undo } from './operations';
+import { approvable, isFixed, move, nextCall, pin, reject, remove, rename, toolResult, undo } from './operations';
 
 const session = (...then: SessionEvent[]): SessionEvent[] => [
   { type: 'SessionCreated', profile: 'default', protocol: 'native' },
@@ -75,4 +75,54 @@ test('undo names the latest Context operation not yet undone', () => {
 test('undo has nothing to cancel without Context operations', () => {
   expect(undo(session())).toEqual({ error: 'nothing to undo' });
   expect(undo(session({ type: 'Remove', id: 2 }, { type: 'Undo', eventId: 5 }))).toEqual({ error: 'nothing to undo' });
+});
+
+const tools: SessionEvent = { type: 'BlockAdded', id: 5, kind: 'Tools', origin: 'config', content: '[]' };
+const call = (id: number): SessionEvent => ({ type: 'BlockAdded', id, kind: 'Tool Call', origin: 'model', content: `cmd ${id}` });
+const answered = (id: number, of: number): SessionEvent => ({ type: 'BlockAdded', id, kind: 'Tool Result', origin: 'tool', content: 'out', call: of });
+const AWAITS = { error: 'Tool Call awaits approval – y run once · n reject' };
+
+test('the Tools Block is fixed like System (FR-12)', () => {
+  const [context, block] = at(session(tools), 5);
+  expect(isFixed(block)).toBe(true);
+  expect(move(context, block, -1)).toEqual({ error: 'Tools Block is fixed' });
+  expect(pin(block)).toEqual({ error: 'Tools Block is fixed' });
+  expect(remove(block)).toEqual({ error: 'Tools Block cannot be removed' });
+  expect(isFixed(at(session(), 2)[1])).toBe(false);
+});
+
+test('a Tool Call awaiting approval is not moved, pinned or removed', () => {
+  const events = session(call(6));
+  expect(move(...at(events, 6), -1)).toEqual(AWAITS);
+  expect(pin(at(events, 6)[1])).toEqual(AWAITS);
+  expect(remove(at(events, 6)[1])).toEqual(AWAITS);
+  expect(remove(at([...events, answered(7, 6)], 6)[1])).toEqual({ event: { type: 'Remove', id: 6 } });
+});
+
+test('Tool Calls are approved one by one in order (FR-24)', () => {
+  const events = session(call(6), call(7), answered(8, 6), call(9));
+  expect(nextCall(fold(events))?.id).toBe(7);
+  expect(approvable(...at(events, 7))).toBeNull();
+  expect(approvable(...at(events, 9))).toBe('approve the earlier Tool Call first');
+  expect(approvable(...at(events, 6))).toBe('not awaiting approval');
+  expect(approvable(...at(events, 2))).toBe('not awaiting approval');
+  expect(nextCall(fold(session()))).toBeUndefined();
+});
+
+test('reject answers the call with a Tool Result "rejected by user" (FR-23)', () => {
+  const events = session(call(6), call(7));
+  expect(reject(...at(events, 6), 8)).toEqual({
+    event: { type: 'BlockAdded', id: 8, kind: 'Tool Result', origin: 'tool', content: 'rejected by user', call: 6 },
+  });
+  expect(reject(...at(events, 7), 8)).toEqual({ error: 'approve the earlier Tool Call first' });
+});
+
+test('a run becomes the Tool Result of its call, flagged when stopped', () => {
+  const [, block] = at(session(call(6)), 6);
+  expect(toolResult(block, 7, { output: 'x', exit: 0, stopped: null }, 120)).toEqual({
+    type: 'BlockAdded', id: 7, kind: 'Tool Result', origin: 'tool', content: 'x\n[exit 0]', call: 6,
+  });
+  expect(toolResult(block, 7, { output: '', exit: null, stopped: 'killed' }, 120)).toEqual({
+    type: 'BlockAdded', id: 7, kind: 'Tool Result', origin: 'tool', content: '[killed]', call: 6, stopped: 'killed',
+  });
 });

@@ -3,16 +3,20 @@ import { createEffect, createMemo, createSignal } from 'solid-js';
 import type { Backend, ChatResult, Counted } from '../core/backend';
 import { warmRows } from '../core/cache/cache';
 import * as ops from '../core/context/operations';
-import type { SessionEvent, SessionLog } from '../core/log/events';
-import { fold, type Block } from '../core/log/fold';
-import { renderNative, sentBlocks, type Message } from '../core/render/native';
+import type { Kind, SessionEvent, SessionLog } from '../core/log/events';
+import { afterCalls, fold, type Block } from '../core/log/fold';
+import { renderNative, renderPrefixes, sentBlocks, type Request } from '../core/render/native';
+import { answerBlocks } from '../core/toolcall/answer';
+import type { Runner } from '../core/toolcall/bash';
 import { errorText, titleOf } from './format';
 
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
 // events: the Session Log so far (new or resumed); reconnect: re-reads the config and opens the session's
 // Model Profile again (/reload, FR-44); openSessions: shows /sessions; notice: initial status line.
+// runner: runs approved bash calls (FR-21).
 export type GateOptions = {
   backend: Backend;
+  runner: Runner;
   log: SessionLog;
   events: SessionEvent[];
   reconnect: () => Promise<Backend>;
@@ -29,16 +33,22 @@ export const COMMANDS = [
 type CommandName = (typeof COMMANDS)[number]['name'];
 // In-flight answer; never persisted until complete or aborted (FR-37).
 export type Streaming = { text: string; abort: AbortController };
+// Approved Tool Call running; its output so far is shown, the result is logged when it ends.
+export type Running = { call: Block; output: string; started: number; abort: AbortController };
+// The row of an answer or result not in the Context yet, shown before the block `before` (null: at the end).
+export type Live = { id: number; kind: Kind; content: string; before: number | null };
 
-const sameMessages = (a: Message[], b: Message[]) => JSON.stringify(a) === JSON.stringify(b);
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const APPROVE = 'y run once · n reject';
 // The prediction checked against the server (FR-41); a server reusing more than predicted is harmless.
 const cacheMiss = ({ predicted, cached }: ChatResult) =>
   predicted !== null && cached !== null && cached < predicted ? `cache: predicted ${predicted} · server reused ${cached}` : null;
 
-export function createGate({ log, reconnect, openSessions, ...options }: GateOptions) {
+export function createGate({ log, reconnect, openSessions, runner, ...options }: GateOptions) {
   const [events, setEvents] = createSignal(options.events);
-  const [counted, setCounted] = createSignal<{ messages: Message[]; split: Counted } | null>(null);
+  const [counted, setCounted] = createSignal<{ prefixes: Request[]; split: Counted } | null>(null);
   const [streaming, setStreaming] = createSignal<Streaming | null>(null);
+  const [running, setRunning] = createSignal<Running | null>(null);
   const [status, setStatus] = createSignal<Status | null>(options.notice ?? null);
   const [selected, setSelected] = createSignal(1);
   // Marked blocks (Space) for Compaction; UI state, not logged.
@@ -53,24 +63,34 @@ export function createGate({ log, reconnect, openSessions, ...options }: GateOpt
   };
   const context = createMemo(() => fold(events()));
   const sent = createMemo(() => sentBlocks(context()));
-  // Unchanged messages (e.g. after a rename) keep the memo value, so nothing is recounted.
-  const messages = createMemo(() => renderNative(context()), [], { equals: sameMessages });
-  // Token split of the current messages only; a stale split would misalign rows after a move.
-  const split = () => (counted()?.messages === messages() ? counted()!.split : null);
+  // An unchanged request (e.g. after a rename) keeps the memo value, so nothing is recounted.
+  const prefixes = createMemo(() => renderPrefixes(context()), [], { equals: same });
+  const request = () => prefixes().at(-1)!;
+  // Token split of the current request only; a stale split would misalign rows after a move.
+  const split = () => (counted()?.prefixes === prefixes() ? counted()!.split : null);
   // Per sent block, in Context order: still in the server's prefix cache (FR-3).
   const warm = createMemo(() => (split() ? warmRows(split()!.blocks, split()!.cached.tokens) : null));
   const nextId = () => context().nextId;
   // Messages right after the last answer; a Context changed since then may be sent again as is.
-  const answered = createMemo(() => {
+  const lastAnswer = createMemo(() => {
     const last = events().findLastIndex(e => e.type === 'ResponseReceived');
     return last < 0 ? null : renderNative(fold(events().slice(0, last + 1)));
   });
-  // Selectable rows in order: sent blocks; the streaming answer sits before the bottom pins.
+  // The streaming answer sits before the bottom pins; a running call's result where it will be added.
+  const live = createMemo((): Live | null => {
+    const s = streaming();
+    if (s) return { id: nextId(), kind: 'Assistant', content: s.text, before: sent().find(b => b.pin === 'bottom')?.id ?? null };
+    const r = running();
+    const blocks = context().blocks;
+    return r && { id: nextId(), kind: 'Tool Result', content: r.output, before: blocks[afterCalls(blocks, r.call.id)]?.id ?? null };
+  });
+  // Selectable rows in order: sent blocks and the live row.
   const rows = createMemo(() => {
     const ids = sent().map(b => b.id);
-    if (!streaming()) return ids;
-    const bottom = sent().findIndex(b => b.pin === 'bottom');
-    ids.splice(bottom < 0 ? ids.length : bottom, 0, nextId());
+    const l = live();
+    if (!l) return ids;
+    const at = l.before === null ? -1 : ids.indexOf(l.before);
+    ids.splice(at < 0 ? ids.length : at, 0, l.id);
     return ids;
   });
   const selectedBlock = (): Block | undefined => sent().find(b => b.id === selected());
@@ -78,9 +98,9 @@ export function createGate({ log, reconnect, openSessions, ...options }: GateOpt
   const keepSelection = () => rows().includes(selected()) || selectAt(rows().length - 1);
 
   createEffect(() => {
-    const current = messages();
+    const current = prefixes();
     backend().count(current).then(
-      s => messages() === current && setCounted({ messages: current, split: s }),
+      s => prefixes() === current && setCounted({ prefixes: current, split: s }),
       e => setStatus({ text: String(e), tone: 'error' }),
     );
   });
@@ -133,42 +153,109 @@ export function createGate({ log, reconnect, openSessions, ...options }: GateOpt
     setMarked(next);
   }
 
+  // The status line for the Tool Call to decide on next (FR-23).
+  const askFor = (call: Block): Status => ({ text: `? approve: ${titleOf(call)} – ${APPROVE}`, tone: 'warn' });
+
+  // The status line after an answer: how it ended, else the call to decide on next.
+  function answerStatus(result: ChatResult, notRun: string | null, next: Block | undefined): Status {
+    if (result.finish === 'aborted') return { text: '⚠ aborted – partial answer kept (cut off)', tone: 'warn' };
+    if (result.finish === 'length') return { text: '⚠ cut off at max_tokens', tone: 'warn' };
+    if (notRun) return { text: `⚠ tool call not run: ${notRun}`, tone: 'warn' };
+    return next ? askFor(next) : { text: 'answer complete', tone: 'ok' };
+  }
+
+  // The answer's text and Tool Calls become blocks; the first call to decide on is selected.
   function finish(result: ChatResult) {
-    const cutOff = result.finish !== 'stop';
-    append({ type: 'BlockAdded', id: nextId(), kind: 'Assistant', origin: 'model', content: result.content, ...(cutOff && { cutOff }) });
+    const { events, notRun } = answerBlocks(result, nextId());
+    events.forEach(append);
     append({ type: 'ResponseReceived', usage: result.usage, cached: result.cached });
-    const status: Status =
-      result.finish === 'aborted' ? { text: '⚠ aborted – partial answer kept (cut off)', tone: 'warn' }
-      : cutOff ? { text: '⚠ cut off at max_tokens', tone: 'warn' }
-      : { text: 'answer complete', tone: 'ok' };
+    const next = ops.nextCall(context());
+    if (next) setSelected(next.id);
+    const status = answerStatus(result, notRun, next);
     const miss = cacheMiss(result);
     if (miss) setMispredicted(true);
     setStatus(miss ? { text: `${status.text} · ⚠ ${miss}`, tone: 'warn' } : status);
   }
 
+  // After a decision: the next call awaiting approval, else back at the Gate – approval never sends (FR-23).
+  function decided(result: Block) {
+    const next = ops.nextCall(context());
+    setSelected(next?.id ?? result.id);
+    const ended = result.stopped ? `⚠ ${result.stopped}` : null;
+    if (next) setStatus(ended ? { text: `${ended} · ${askFor(next).text}`, tone: 'warn' } : askFor(next));
+    else setStatus({ text: `${ended ?? 'tool loop paused'} – review the results, Enter sends`, tone: ended ? 'warn' : 'ok' });
+  }
+  const resultOf = (call: Block) => context().blocks.find(b => b.call === call.id)!;
+  // The selected Tool Call, if it may be decided on now.
+  function decidable(): Block | null {
+    const block = selectedBlock();
+    const error = block ? ops.approvable(context(), block) : 'not awaiting approval';
+    if (error) setStatus({ text: error, tone: 'info' });
+    return error ? null : block!;
+  }
+
+  // y: run the call once (FR-21); its output streams into a live Tool Result row.
+  async function approve() {
+    const call = decidable();
+    if (!call) return;
+    const abort = new AbortController();
+    setRunning({ call, output: '', started: Date.now(), abort });
+    setSelected(nextId());
+    setStatus(null);
+    try {
+      const onOutput = (text: string) => setRunning({ ...running()!, output: running()!.output + text });
+      const run = await runner.run(call.content, { signal: abort.signal, onOutput });
+      setRunning(null);
+      append(ops.toolResult(call, nextId(), run, runner.timeout));
+      decided(resultOf(call));
+    } catch (e) {
+      setRunning(null);
+      setSelected(call.id);
+      setStatus({ text: `bash failed: ${errorText(e)}`, tone: 'error' });
+    }
+  }
+
+  // n: not run; the result says "rejected by user" (FR-23).
+  function reject() {
+    const call = decidable();
+    if (call && apply(ops.reject(context(), call, nextId()))) decided(resultOf(call));
+  }
+
+  // Why the Context cannot be sent now, or null: calls await approval, or the model has answered
+  // and nothing changed since.
+  function unsendable(): Status | null {
+    const pending = ops.nextCall(context());
+    if (pending) setSelected(pending.id);
+    if (pending) return { text: `Tool Calls await approval – ${APPROVE} on the ? approve row`, tone: 'warn' };
+    const changed = lastAnswer() !== null && !same(lastAnswer(), request());
+    const last = sent().filter(b => b.pin !== 'bottom').at(-1)?.kind;
+    return changed || last === 'User' || last === 'Tool Result' ? null : { text: 'nothing to send – Tab to write', tone: 'info' };
+  }
+
   async function send() {
-    if (streaming()) return;
-    const changed = answered() !== null && !sameMessages(answered()!, messages());
-    if (!changed && sent().filter(b => b.pin !== 'bottom').at(-1)?.kind !== 'User') {
-      setStatus({ text: 'nothing to send – Tab to write', tone: 'info' });
+    if (streaming() || running()) return;
+    const blocked = unsendable();
+    if (blocked) {
+      setStatus(blocked);
       return;
     }
-    const request = messages();
+    const requested = prefixes();
+    const payload = requested.at(-1)!;
     const abort = new AbortController();
     setStreaming({ text: '', abort });
     setStatus(null);
     try {
-      const { total } = await backend().count(request);
+      const { total } = await backend().count(requested);
       if (abort.signal.aborted) {
         setStreaming(null);
         setStatus({ text: 'send cancelled', tone: 'info' });
         return;
       }
-      append({ type: 'RequestSent', hash: Bun.hash(JSON.stringify(request)).toString(16), tokens: total });
+      append({ type: 'RequestSent', hash: Bun.hash(JSON.stringify(payload)).toString(16), tokens: total });
       setMarked(new Set<number>());
       setSelected(nextId());
       const onDelta = (d: string) => setStreaming({ text: streaming()!.text + d, abort });
-      const result = await backend().chat(request, { signal: abort.signal, onDelta });
+      const result = await backend().chat(payload, { signal: abort.signal, onDelta });
       setStreaming(null);
       finish(result);
     } catch (e) {
@@ -206,6 +293,12 @@ export function createGate({ log, reconnect, openSessions, ...options }: GateOpt
     sent,
     split,
     streaming,
+    running,
+    live,
+    // Streaming or running: only Esc (abort, kill) acts.
+    nextCall: () => ops.nextCall(context()),
+    busy: () => streaming() !== null || running() !== null,
+    timeout: runner.timeout,
     status,
     rows,
     selected,
@@ -218,7 +311,9 @@ export function createGate({ log, reconnect, openSessions, ...options }: GateOpt
     profile: () => context().profile,
     submit,
     send,
-    abort: () => streaming()?.abort.abort(),
+    abort: () => (streaming() ?? running())?.abort.abort(),
+    approve: () => void approve(),
+    reject,
     select: (delta: number) => selectAt(rows().indexOf(selected()) + delta),
     move,
     pin,

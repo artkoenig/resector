@@ -38,9 +38,9 @@ Core has no I/O; adapters are injected. UI depends on Core, never the reverse.
 ## 3. Session Log & Context
 
 - File: `~/.local/share/resector/sessions/<project-hash>/<id>.jsonl`, one event per line, plus `<id>.lock`.
-- Events: `SessionCreated{profile, protocol}`, `BlockAdded{id, kind, origin: user|model|tool|file|environment|compaction, content, cutOff?}`, `Edit{id, revision, content}`, `Move{id, after}`, `Pin{id, top|bottom}`, `Unpin`, `Remove`, `Compact{sources, instruction, noteId}`, `Rename{id, title}` (block, display only), `SessionRenamed{title}`, `ProfileFallback{profile}`, `AllowRuleAdded{pattern}`, `RequestSent{hash, tokens}`, `ResponseReceived{usage, cached}`, `Undo{eventId}`.
+- Events: `SessionCreated{profile, protocol}`, `BlockAdded{id, kind, origin: user|model|tool|file|environment|compaction, content, cutOff?, call?, stopped?: killed|timeout}` (`call`: a Tool Result's Tool Call), `Edit{id, revision, content}`, `Move{id, after}`, `Pin{id, top|bottom}`, `Unpin`, `Remove`, `Compact{sources, instruction, noteId}`, `Rename{id, title}` (block, display only), `SessionRenamed{title}`, `ProfileFallback{profile}`, `AllowRuleAdded{pattern}`, `RequestSent{hash, tokens}`, `ResponseReceived{usage, cached}`, `Undo{eventId}`.
 - **Context = fold(events)**. Undo is a counter-event; nothing is deleted within a session. Deleting a session removes its file.
-- Block storage is protocol-neutral: Tool Call = `{name, args}`, Tool Result = text. Thinking, Assistant text and each Tool Call are separate blocks; the renderer merges them into one message.
+- Block storage is protocol-neutral: Tool Call = its bash command (the only tool), Tool Result = text (output, then `[exit N]`, `[killed]` or `[timeout after N s]`), Tools Block = tool definitions as JSON. Thinking, Assistant text and each Tool Call are separate blocks; the renderer merges them into one message. Tool Results follow all Tool Calls of their answer, in call order. A Tool Call without Tool Result awaits approval.
 - Only a Tool Call in state *pending approval* accepts `Edit`.
 - Responses are appended when complete or aborted (`cut off`); in-flight streams are never persisted.
 
@@ -62,7 +62,7 @@ fold(log) → Context
 
 ### Rendering
 
-- `native`: Assistant text + Tool Calls → one assistant message with `tool_calls`; each Tool Result → `tool` message; Tools Block → `tools` field.
+- `native`: Assistant text + Tool Calls → one assistant message with `tool_calls` (ids `call_<n>` by position in the message, as a server numbers its answer, so the answer and its next rendering are the same tokens); each Tool Result → `tool` message; Tools Block → `tools` field. Per-block tokens come from rendering the first 1, 2, … blocks.
 - `text-xml`: calls as `<function=…><parameter=…>` (Qwen3-Coder syntax) in assistant text; results as user message `<tool_response>…</tool_response>`; Tools Block as compact signatures appended to the system message (own row at the Gate, tokens via prefix difference).
 - Thinking: parsed from `reasoning_content` (llama.cpp `--reasoning-format`, Ollama `thinking`) or `<think>…</think>` in the stream; rendered back as `reasoning_content` of its assistant message where the backend accepts it, else inline `<think>`. The chat template may drop it; the token split then yields 0 → `✂ template`.
 - Profile `thinking` maps to the backend: `chat_template_kwargs.enable_thinking` (on/off), `reasoning_effort` (low/medium/high).

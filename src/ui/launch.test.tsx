@@ -153,17 +153,17 @@ test('/reload re-reads the config and reconnects; an invalid config keeps the cu
 
 const chat = (profile: string): SessionEvent[] => [
   ...newSession(profile, 'You are terse.'),
-  { type: 'BlockAdded', id: 2, kind: 'User', origin: 'user', content: 'hi there' },
+  { type: 'BlockAdded', id: 3, kind: 'User', origin: 'user', content: 'hi there' },
   { type: 'RequestSent', hash: 'h', tokens: 20 },
-  { type: 'BlockAdded', id: 3, kind: 'Assistant', origin: 'model', content: 'hello' },
+  { type: 'BlockAdded', id: 4, kind: 'Assistant', origin: 'model', content: 'hello' },
   { type: 'ResponseReceived', usage: null, cached: null },
 ];
 
 test('-c replays the last Session Log and lands at the Gate; unchanged, nothing is sent (FR-32, FR-35)', async () => {
   const { root } = await launch({ config: url => profileConfig(url), sessions: { ses_a: chat('local') }, resume: true });
   const frame = await frameMatching(ui, f => f.includes('resumed "hi there"'));
-  expect(frame).toMatch(/2\s+User\s+hi there/);
-  expect(frame).toMatch(/3\s+Assistant\s+hello/);
+  expect(frame).toMatch(/3\s+User\s+hi there/);
+  expect(frame).toMatch(/4\s+Assistant\s+hello/);
   expect(readFileSync(join(root, 'sessions', 'ses_a.lock'), 'utf8')).toBe(String(process.pid));
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('nothing to send'));
@@ -222,14 +222,14 @@ test('/sessions lists the project sessions newest first with marker, profile, Co
     await sessionsView({ ses_a: titled('local', 'fix the build', 1900), ses_b: titled('gone', 'old question'), ses_c: titled('local', 'busy') }, { ses_c: other.pid });
     const frame = await frameMatching(ui, f => f.includes('busy'));
     expect(frame).toContain('Sessions · 4 sessions');
-    expect(line(frame, /\(new session\)/)).toMatch(/^ ● +\(new session\) +now +local +– +1\b/);
-    expect(line(frame, /fix the build/)).toMatch(/fix the build +1h ago +local +1\.9k\/2k +3\b/);
-    expect(line(frame, /old question/)).toMatch(/old question +2h ago +⚠ gone +20 +3\b/);
+    expect(line(frame, /\(new session\)/)).toMatch(/^ ● +\(new session\) +now +local +– +2\b/);
+    expect(line(frame, /fix the build/)).toMatch(/fix the build +1h ago +local +1\.9k\/2k +4\b/);
+    expect(line(frame, /old question/)).toMatch(/old question +2h ago +⚠ gone +20 +4\b/);
     expect(line(frame, /busy/)).toMatch(/^ {2}⊘ +busy/);
     expect(frame).toContain('↑↓ select · Enter open · r rename · d delete · n new · / filter · Esc back');
     await key('down');
     const preview = await frameMatching(ui, f => f.includes('Preview · ses_a'));
-    expect(preview).toMatch(/3 +Assistant +hello/);
+    expect(preview).toMatch(/4 +Assistant +hello/);
   } finally {
     other.kill();
   }
@@ -244,7 +244,7 @@ test('Enter opens the selected session; the lock moves with it; Esc goes back', 
   await key('down');
   await key('enter');
   const frame = await frameMatching(ui, f => f.includes('resumed "fix the build"'));
-  expect(frame).toMatch(/2\s+User\s+fix the build/);
+  expect(frame).toMatch(/3\s+User\s+fix the build/);
   expect(readdirSync(join(root, 'sessions')).filter(f => f.endsWith('.lock'))).toEqual(['ses_a.lock']);
 });
 

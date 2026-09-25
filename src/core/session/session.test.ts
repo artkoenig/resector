@@ -1,16 +1,18 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
+import { TOOLS } from '../toolcall/bash';
 import { newSession, summarize } from './session';
 
 const start = newSession('qwen', 'You are an agent.');
 const user = (id: number, content: string): SessionEvent => ({ type: 'BlockAdded', id, kind: 'User', origin: 'user', content });
 
-test('a new session holds its Model Profile and the System prompt', () => {
+test('a new session holds its Model Profile, the System prompt and the Tools Block', () => {
   expect(start).toEqual([
     { type: 'SessionCreated', profile: 'qwen', protocol: 'native' },
     { type: 'BlockAdded', id: 1, kind: 'System', origin: 'config', content: 'You are an agent.' },
+    { type: 'BlockAdded', id: 2, kind: 'Tools', origin: 'config', content: TOOLS },
   ]);
-  expect(summarize(start)).toEqual({ title: '(new session)', renamed: false, profile: 'qwen', blocks: 1, tokens: null });
+  expect(summarize(start)).toEqual({ title: '(new session)', renamed: false, profile: 'qwen', blocks: 2, tokens: null });
 });
 
 test('the title is the first line of the first User message, shortened (FR-34)', () => {

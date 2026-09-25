@@ -1,6 +1,7 @@
 // Sessions (FR-32–FR-35): a new Session Log, how a session is referred to, and its summary in /sessions.
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
+import { TOOLS } from '../toolcall/bash';
 
 export type SessionSummary = { title: string; renamed: boolean; profile: string; blocks: number; tokens: number | null };
 
@@ -14,6 +15,8 @@ type RequestSent = Extract<SessionEvent, { type: 'RequestSent' }>;
 export const newSession = (profile: string, systemPrompt: string): SessionEvent[] => [
   { type: 'SessionCreated', profile, protocol: 'native' },
   { type: 'BlockAdded', id: 1, kind: 'System', origin: 'config', content: systemPrompt },
+  // Always sent, never edited (FR-12).
+  { type: 'BlockAdded', id: 2, kind: 'Tools', origin: 'config', content: TOOLS },
 ];
 
 // Title = the last session rename, else the first line of the first User message (FR-34).

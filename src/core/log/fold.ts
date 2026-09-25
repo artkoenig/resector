@@ -1,4 +1,4 @@
-import type { Kind, Origin, Pin, SessionEvent, ToolProtocol } from './events';
+import type { Kind, Origin, Pin, SessionEvent, Stopped, ToolProtocol } from './events';
 
 export type Block = {
   id: number;
@@ -6,6 +6,11 @@ export type Block = {
   origin: Origin;
   content: string;
   cutOff: boolean;
+  // Tool Result only: its Tool Call, and how the run stopped early.
+  call?: number;
+  stopped?: Stopped;
+  // Tool Call only: no Tool Result yet, so it awaits approval (FR-23).
+  pending?: boolean;
   title: string | null;
   pin: Pin | null;
   // Struck through until the next request, then hidden.
@@ -30,7 +35,14 @@ const firstBottom = (state: State) => {
   return i === -1 ? state.order.length : i;
 };
 const afterTop = (state: State) =>
-  state.order.findLastIndex(id => entry(state, id).kind === 'System' || entry(state, id).pin === 'top') + 1;
+  state.order.findLastIndex(id => ['System', 'Tools'].includes(entry(state, id).kind) || entry(state, id).pin === 'top') + 1;
+// Where a Tool Result goes: after its Tool Call and the calls and results following it (FR-24), so
+// all calls of one answer precede their results, as the request sends them.
+export function afterCalls(blocks: Pick<Block, 'id' | 'kind'>[], call: number): number {
+  let at = blocks.findIndex(b => b.id === call) + 1;
+  while (blocks[at]?.kind === 'Tool Call' || blocks[at]?.kind === 'Tool Result') at++;
+  return at;
+}
 
 function setPin(state: State, id: number, pin: Pin | null) {
   const e = entry(state, id);
@@ -42,9 +54,11 @@ function setPin(state: State, id: number, pin: Pin | null) {
 
 const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   BlockAdded: (state, e) => {
-    const block = { id: e.id, kind: e.kind, origin: e.origin, content: e.content, cutOff: e.cutOff === true };
+    const block = { id: e.id, kind: e.kind, origin: e.origin, content: e.content, cutOff: e.cutOff === true,
+      ...(e.call !== undefined && { call: e.call }), ...(e.stopped && { stopped: e.stopped }) };
     state.entries.set(e.id, { ...block, title: null, pin: null, removed: false, moved: false, pinChanged: false, hidden: false, sentPin: null });
-    insert(state, firstBottom(state), e.id);
+    const at = e.call === undefined ? firstBottom(state) : afterCalls(state.order.map(id => entry(state, id)), e.call);
+    insert(state, at, e.id);
   },
   Move: (state, e) => {
     take(state, e.id);
@@ -84,6 +98,10 @@ export function fold(events: SessionEvent[]): Context {
     if (skip.has(i)) return;
     (APPLY[e.type] as Apply<typeof e.type> | undefined)?.(state, e as never);
   });
-  const blocks = state.order.map(id => entry(state, id)).filter(e => !e.hidden).map(({ hidden, sentPin, ...block }) => block);
+  const answered = new Set([...state.entries.values()].map(e => e.call));
+  const blocks = state.order
+    .map(id => entry(state, id))
+    .filter(e => !e.hidden)
+    .map(({ hidden, sentPin, ...block }) => (block.kind === 'Tool Call' ? { ...block, pending: !answered.has(block.id) } : block));
   return { profile: state.profile, protocol: first.protocol, blocks, nextId: Math.max(0, ...state.entries.keys()) + 1 };
 }

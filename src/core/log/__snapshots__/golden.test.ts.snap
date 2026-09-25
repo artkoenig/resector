@@ -33,12 +33,15 @@ exports[`fixture profile-fallback.jsonl replays to its Context and request 1`] =
     "profile": "local",
     "protocol": "native",
   },
-  "request": [
-    {
-      "content": "You are terse.",
-      "role": "system",
-    },
-  ],
+  "request": {
+    "messages": [
+      {
+        "content": "You are terse.",
+        "role": "system",
+      },
+    ],
+    "tools": [],
+  },
   "summary": {
     "blocks": 1,
     "profile": "local",
@@ -118,34 +121,317 @@ exports[`fixture context-operations.jsonl replays to its Context and request 1`]
     "profile": "qwen3-8b",
     "protocol": "native",
   },
-  "request": [
-    {
-      "content": "You are a coding agent.",
-      "role": "system",
-    },
-    {
-      "content": "Why does the build fail?",
-      "role": "user",
-    },
-    {
-      "content": "Fix it.",
-      "role": "user",
-    },
-    {
-      "content": "Done: src/ui is included again.",
-      "role": "assistant",
-    },
-    {
-      "content": "Project rules: use bun, no semicolons.",
-      "role": "user",
-    },
-  ],
+  "request": {
+    "messages": [
+      {
+        "content": "You are a coding agent.",
+        "role": "system",
+      },
+      {
+        "content": "Why does the build fail?",
+        "role": "user",
+      },
+      {
+        "content": "Fix it.",
+        "role": "user",
+      },
+      {
+        "content": "Done: src/ui is included again.",
+        "role": "assistant",
+      },
+      {
+        "content": "Project rules: use bun, no semicolons.",
+        "role": "user",
+      },
+    ],
+    "tools": [],
+  },
   "summary": {
     "blocks": 5,
     "profile": "qwen3-8b",
     "renamed": true,
     "title": "tsconfig fix",
     "tokens": 61,
+  },
+}
+`;
+
+exports[`fixture tool-loop.jsonl replays to its Context and request 1`] = `
+{
+  "context": {
+    "blocks": [
+      {
+        "content": "You are a coding agent.",
+        "cutOff": false,
+        "id": 1,
+        "kind": "System",
+        "moved": false,
+        "origin": "config",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "title": null,
+      },
+      {
+        "content": 
+"[
+  {
+    "name": "bash",
+    "description": "Run a shell command in the project root. Returns combined stdout/stderr and the exit code.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "command"
+      ]
+    }
+  }
+]"
+,
+        "cutOff": false,
+        "id": 2,
+        "kind": "Tools",
+        "moved": false,
+        "origin": "config",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "title": null,
+      },
+      {
+        "content": "Which tests fail?",
+        "cutOff": false,
+        "id": 3,
+        "kind": "User",
+        "moved": false,
+        "origin": "user",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "title": null,
+      },
+      {
+        "content": "Running them.",
+        "cutOff": false,
+        "id": 4,
+        "kind": "Assistant",
+        "moved": false,
+        "origin": "model",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "title": null,
+      },
+      {
+        "content": "bun test 2>&1 | tail -5",
+        "cutOff": false,
+        "id": 5,
+        "kind": "Tool Call",
+        "moved": false,
+        "origin": "model",
+        "pending": false,
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "title": null,
+      },
+      {
+        "content": "git status --short",
+        "cutOff": false,
+        "id": 6,
+        "kind": "Tool Call",
+        "moved": false,
+        "origin": "model",
+        "pending": false,
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "title": null,
+      },
+      {
+        "call": 5,
+        "content": 
+"1 fail
+[exit 1]"
+,
+        "cutOff": false,
+        "id": 7,
+        "kind": "Tool Result",
+        "moved": false,
+        "origin": "tool",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "title": null,
+      },
+      {
+        "call": 6,
+        "content": "rejected by user",
+        "cutOff": false,
+        "id": 8,
+        "kind": "Tool Result",
+        "moved": false,
+        "origin": "tool",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "title": null,
+      },
+      {
+        "content": "sleep 300",
+        "cutOff": false,
+        "id": 9,
+        "kind": "Tool Call",
+        "moved": false,
+        "origin": "model",
+        "pending": false,
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "title": null,
+      },
+      {
+        "call": 9,
+        "content": "[killed]",
+        "cutOff": false,
+        "id": 10,
+        "kind": "Tool Result",
+        "moved": false,
+        "origin": "tool",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "stopped": "killed",
+        "title": null,
+      },
+      {
+        "content": "ls",
+        "cutOff": false,
+        "id": 11,
+        "kind": "Tool Call",
+        "moved": false,
+        "origin": "model",
+        "pending": true,
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "title": null,
+      },
+    ],
+    "nextId": 12,
+    "profile": "local",
+    "protocol": "native",
+  },
+  "request": {
+    "messages": [
+      {
+        "content": "You are a coding agent.",
+        "role": "system",
+      },
+      {
+        "content": "Which tests fail?",
+        "role": "user",
+      },
+      {
+        "content": "Running them.",
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "function": {
+              "arguments": "{"command":"bun test 2>&1 | tail -5"}",
+              "name": "bash",
+            },
+            "id": "call_0",
+            "type": "function",
+          },
+          {
+            "function": {
+              "arguments": "{"command":"git status --short"}",
+              "name": "bash",
+            },
+            "id": "call_1",
+            "type": "function",
+          },
+        ],
+      },
+      {
+        "content": 
+"1 fail
+[exit 1]"
+,
+        "role": "tool",
+        "tool_call_id": "call_0",
+      },
+      {
+        "content": "rejected by user",
+        "role": "tool",
+        "tool_call_id": "call_1",
+      },
+      {
+        "content": "",
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "function": {
+              "arguments": "{"command":"sleep 300"}",
+              "name": "bash",
+            },
+            "id": "call_0",
+            "type": "function",
+          },
+        ],
+      },
+      {
+        "content": "[killed]",
+        "role": "tool",
+        "tool_call_id": "call_0",
+      },
+      {
+        "content": "",
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "function": {
+              "arguments": "{"command":"ls"}",
+              "name": "bash",
+            },
+            "id": "call_0",
+            "type": "function",
+          },
+        ],
+      },
+    ],
+    "tools": [
+      {
+        "function": {
+          "description": "Run a shell command in the project root. Returns combined stdout/stderr and the exit code.",
+          "name": "bash",
+          "parameters": {
+            "properties": {
+              "command": {
+                "type": "string",
+              },
+            },
+            "required": [
+              "command",
+            ],
+            "type": "object",
+          },
+        },
+        "type": "function",
+      },
+    ],
+  },
+  "summary": {
+    "blocks": 11,
+    "profile": "local",
+    "renamed": false,
+    "title": "Which tests fail?",
+    "tokens": 170,
   },
 }
 `;

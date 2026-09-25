@@ -3,14 +3,31 @@
 // Like FastAPI, bodies without a JSON content type are rejected. Like Qwen3-2507 templates, a prompt
 // without user message fails to render, and oMLX then silently counts a plain concatenation.
 import { commonPrefix } from '../src/core/cache/cache';
-import { chatml, stream, tokenize, type Reply } from './fake-llamacpp';
+import { answer, chatml, stream, tokenize, type ChatMessage, type ChatTool, type Reply } from './fake-llamacpp';
 
 export type FakeModel = { id: string; maxModelLen?: number };
 // probe: whether the admin cache probe answers; lagging: it does not see the last request yet (blocks
 // are written to the SSD cache after the answer); blockSize: cache block size in fake tokens.
 export type FakeOmlxOptions = { models?: FakeModel[]; probe?: boolean; lagging?: boolean; blockSize?: number };
 
-type AnthropicCount = { model: string; system?: string; messages: { role: string; content: string }[] };
+type Block = { type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: unknown } | { type: 'tool_result'; tool_use_id: string; content: string };
+type AnthropicTool = { name: string; description: string; input_schema: unknown };
+type AnthropicCount = { model: string; system?: string; messages: { role: string; content: string | Block[] }[]; tools?: AnthropicTool[] };
+
+// Back to chat messages for the ChatML template: tool_use → tool_calls, each tool_result → a tool turn.
+function chatMessages({ system, messages }: AnthropicCount): ChatMessage[] {
+  const turns = messages.flatMap(({ role, content }): ChatMessage[] => {
+    if (typeof content === 'string') return [{ role, content }];
+    const results = content.flatMap(b => (b.type === 'tool_result' ? [{ role: 'tool', content: b.content }] : []));
+    if (results.length) return results;
+    const text = content.flatMap(b => (b.type === 'text' ? [b.text] : [])).join('');
+    const calls = content.flatMap(b => (b.type === 'tool_use' ? [{ function: { name: b.name, arguments: JSON.stringify(b.input) } }] : []));
+    return [{ role, content: text, tool_calls: calls }];
+  });
+  return [...(system === undefined ? [] : [{ role: 'system', content: system }]), ...turns];
+}
+const chatTools = (tools: AnthropicTool[] = []): ChatTool[] =>
+  tools.map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } }));
 
 export function startFakeOmlx({ models = [{ id: 'Qwen3-8B-4bit', maxModelLen: 57344 }], probe = true, lagging = false, blockSize = 4 }: FakeOmlxOptions = {}) {
   const replies: Reply[] = [];
@@ -46,9 +63,9 @@ export function startFakeOmlx({ models = [{ id: 'Qwen3-8B-4bit', maxModelLen: 57
       if (!known(body.model)) return error(404, `Model '${body.model}' not found`);
       if (url.pathname === '/v1/messages/count_tokens') {
         countRequests.push(body as AnthropicCount);
-        const { system, messages } = body as AnthropicCount;
-        const all = [...(system === undefined ? [] : [{ role: 'system', content: system }]), ...messages];
-        const rendered = all.some(m => m.role === 'user') ? chatml(all, true) : all.map(m => `${m.role}: ${m.content}`).join('\n');
+        const all = chatMessages(body as AnthropicCount);
+        const tools = chatTools((body as AnthropicCount).tools);
+        const rendered = all.some(m => m.role === 'user') ? chatml(all, true, tools) : all.map(m => `${m.role}: ${m.content}`).join('\n');
         return Response.json({ input_tokens: tokenize(rendered, true).length });
       }
       if (url.pathname === '/v1/chat/completions') {
@@ -56,7 +73,7 @@ export function startFakeOmlx({ models = [{ id: 'Qwen3-8B-4bit', maxModelLen: 57
         const reply = replies.shift();
         if (!reply) return error(500, 'no scripted reply');
         written = cache;
-        cache = [...tokenize(chatml(body.messages, true), true), ...tokenize(reply.chunks.join(''), false)];
+        cache = [...tokenize(chatml(body.messages, true, body.tools), true), ...tokenize(answer(reply).content, false)];
         const usage = reply.usage && { ...reply.usage, total_tokens: 0, prompt_tokens_details: { cached_tokens: reply.cacheN ?? 0 }, total_time: 0.5 };
         const final = { object: 'chat.completion.chunk', choices: [], usage: usage ?? null };
         return new Response(stream(reply, req.signal, final), { headers: { 'content-type': 'text/event-stream' } });

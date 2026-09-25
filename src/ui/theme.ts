@@ -1,7 +1,14 @@
 // Colours shared by the screens.
 import type { Kind } from '../core/log/events';
 
-export const KIND_COLOR: Record<Kind, string> = { System: '#d787ff', User: '#87d787', Assistant: '#5fd7d7' };
+export const KIND_COLOR: Record<Kind, string> = {
+  System: '#d787ff',
+  Tools: '#5fafff',
+  User: '#87d787',
+  Assistant: '#5fd7d7',
+  'Tool Call': '#ffd75f',
+  'Tool Result': '#bcbcbc',
+};
 export const DIM = '#808080';
 export const FREE_COLOR = '#444444';
 export const SELECTED_BG = '#3a3a3a';

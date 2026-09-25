@@ -143,3 +143,31 @@ test('a ProfileFallback replaces the session profile (FR-35)', () => {
 test('a session rename changes no block', () => {
   expect(fold(session(1, { type: 'SessionRenamed', title: 'x' })).blocks).toEqual(fold(session(1)).blocks);
 });
+
+const tools: SessionEvent = { type: 'BlockAdded', id: 9, kind: 'Tools', origin: 'config', content: '[]' };
+const call = (id: number, command: string): SessionEvent => ({ type: 'BlockAdded', id, kind: 'Tool Call', origin: 'model', content: command });
+const result = (id: number, of: number, extra: Partial<Extract<SessionEvent, { type: 'BlockAdded' }>> = {}): SessionEvent =>
+  ({ type: 'BlockAdded', id, kind: 'Tool Result', origin: 'tool', content: `out ${of}`, call: of, ...extra });
+
+test('a Tool Result keeps its Tool Call and how the run stopped', () => {
+  const events = session(1, call(3, 'ls'), result(4, 3, { stopped: 'timeout' }));
+  expect(block(events, 4)).toMatchObject({ kind: 'Tool Result', call: 3, stopped: 'timeout' });
+  expect(block(events, 3).call).toBeUndefined();
+});
+
+test('Tool Results follow the Tool Calls of their answer, in call order, before blocks added since (FR-24)', () => {
+  const events = session(1, call(3, 'a'), call(4, 'b'), { type: 'BlockAdded', id: 5, kind: 'User', origin: 'user', content: 'wait' }, result(6, 3), result(7, 4));
+  expect(ids(events)).toEqual([1, 2, 3, 4, 6, 7, 5]);
+});
+
+test('Pin top goes after the Tools Block too', () => {
+  expect(ids([...session(0), tools, { type: 'BlockAdded', id: 2, kind: 'User', origin: 'user', content: 'u' }, { type: 'Pin', id: 2, at: 'top' }])).toEqual([1, 9, 2]);
+});
+
+test('a Tool Call awaits approval until it has a Tool Result, also a removed one', () => {
+  const events = session(1, call(3, 'ls'), call(4, 'pwd'), result(5, 3));
+  expect(block(events, 3).pending).toBe(false);
+  expect(block(events, 4).pending).toBe(true);
+  expect(block(events, 2).pending).toBeUndefined();
+  expect(block([...events, { type: 'Remove', id: 5 }, sent], 3).pending).toBe(false);
+});

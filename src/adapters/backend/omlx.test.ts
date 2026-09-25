@@ -2,6 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { chatml, tokenize } from '../../../test/fake-llamacpp';
 import { startFakeOmlx, type FakeOmlxOptions } from '../../../test/fake-omlx';
 import type { Message } from '../../core/render/native';
+import { prefixes, request, toolLoop } from '../../../test/requests';
 import { connectOmlx, type OmlxOptions } from './omlx';
 
 let fake: ReturnType<typeof startFakeOmlx>;
@@ -13,7 +14,7 @@ const open = (options: Partial<OmlxOptions> = {}, fakeOptions?: FakeOmlxOptions)
   return connectOmlx(fake.url, { model: MODEL, ...options });
 };
 const chatOnce = async (backend: Awaited<ReturnType<typeof connectOmlx>>, signal = new AbortController().signal) =>
-  backend.chat([{ role: 'user', content: 'hi' }], { signal, onDelta: () => {} });
+  backend.chat(request([{ role: 'user', content: 'hi' }]), { signal, onDelta: () => {} });
 
 test("the window is max_model_len of the profile's model", async () => {
   const models = [
@@ -53,7 +54,7 @@ test('per-block tokens sum to the exact size of the rendered request', async () 
     { role: 'user', content: 'hi there' },
     { role: 'assistant', content: 'hello' },
   ] as const;
-  const split = await (await open()).count([...messages]);
+  const split = await (await open()).count(prefixes([...messages]));
   // fake tokenizer: each marker, word and whitespace run is a token
   expect(split.blocks).toEqual([12, 8, 6]);
   // BOS + <|im_start|> assistant \n
@@ -62,16 +63,16 @@ test('per-block tokens sum to the exact size of the rendered request', async () 
 });
 
 test('counting sends the System block as system and the rest as Anthropic messages', async () => {
-  await (await open()).count([
+  await (await open()).count(prefixes([
     { role: 'system', content: 'S' },
     { role: 'user', content: 'U' },
-  ]);
+  ]));
   expect(fake.countRequests).toContainEqual({ model: MODEL, system: 'S', messages: [{ role: 'user', content: 'U' }] });
 });
 
 // Templates like Qwen3-2507 cannot render a prompt without user message; oMLX would silently fall back.
 test('a Context without user message is counted with an empty user turn in the Template row', async () => {
-  const split = await (await open()).count([{ role: 'system', content: 'You are an agent.' }]);
+  const split = await (await open()).count(prefixes([{ role: 'system', content: 'You are an agent.' }]));
   expect(split.blocks).toEqual([12]);
   // BOS + <|im_start|> user \n <|im_end|> \n + <|im_start|> assistant \n
   expect(split.template).toBe(9);
@@ -83,9 +84,9 @@ test('an answer streams in deltas and ends with finish reason, usage and cached 
   fake.reply({ chunks: ['Hel', 'lo'], usage: { prompt_tokens: 20, completion_tokens: 2 }, cacheN: 7 });
   const deltas: string[] = [];
   const messages = [{ role: 'user', content: 'hi' }] as const;
-  const result = await backend.chat([...messages], { signal: new AbortController().signal, onDelta: d => deltas.push(d) });
+  const result = await backend.chat(request([...messages]), { signal: new AbortController().signal, onDelta: d => deltas.push(d) });
   expect(deltas).toEqual(['Hel', 'lo']);
-  expect(result).toEqual({ content: 'Hello', finish: 'stop', usage: { prompt_tokens: 20, completion_tokens: 2 }, cached: 7, predicted: null });
+  expect(result).toEqual({ content: 'Hello', calls: [], finish: 'stop', usage: { prompt_tokens: 20, completion_tokens: 2 }, cached: 7, predicted: null });
   expect(fake.chatRequests).toEqual([
     { model: MODEL, temperature: 0.2, top_k: 20, messages, stream: true, stream_options: { include_usage: true } },
   ]);
@@ -101,8 +102,8 @@ test('aborting keeps the partial answer', async () => {
   const backend = await open();
   fake.reply({ chunks: ['Hal'], hang: true });
   const abort = new AbortController();
-  const result = await backend.chat([{ role: 'user', content: 'hi' }], { signal: abort.signal, onDelta: () => abort.abort() });
-  expect(result).toEqual({ content: 'Hal', finish: 'aborted', usage: null, cached: null, predicted: null });
+  const result = await backend.chat(request([{ role: 'user', content: 'hi' }]), { signal: abort.signal, onDelta: () => abort.abort() });
+  expect(result).toEqual({ content: 'Hal', calls: [], finish: 'aborted', usage: null, cached: null, predicted: null });
 });
 
 test('stream errors surface: missing reply, error event, dropped connection', async () => {
@@ -119,41 +120,99 @@ const USER = { role: 'user', content: 'hi there' } as const;
 
 test("oMLX predicts the cache hit itself, in whole cache blocks, exactly", async () => {
   const backend = await open();
-  expect((await backend.count([SYSTEM, USER])).cached).toEqual({ tokens: 0, exact: true });
+  expect((await backend.count(prefixes([SYSTEM, USER]))).cached).toEqual({ tokens: 0, exact: true });
   fake.reply({ chunks: ['hello'] });
   await chatOnce(backend);
   fake.reply({ chunks: ['hello'] });
-  await backend.chat([SYSTEM, USER], { signal: new AbortController().signal, onDelta: () => {} });
+  await backend.chat(request([SYSTEM, USER]), { signal: new AbortController().signal, onDelta: () => {} });
   // BOS + System 12 + User 8 + <|im_start|> assistant \n hello = 25 cached tokens → 6 blocks of 4.
   const next: Message[] = [SYSTEM, USER, { role: 'assistant', content: 'hello' }, { role: 'user', content: 'more' }];
-  expect((await backend.count(next)).cached).toEqual({ tokens: 24, exact: true });
+  expect((await backend.count(prefixes(next))).cached).toEqual({ tokens: 24, exact: true });
   fake.reply({ chunks: ['ok'] });
-  expect((await backend.chat(next, { signal: new AbortController().signal, onDelta: () => {} })).predicted).toBe(24);
+  expect((await backend.chat(request(next), { signal: new AbortController().signal, onDelta: () => {} })).predicted).toBe(24);
   // A request that was not counted right before has no prediction to verify.
   fake.reply({ chunks: ['ok'] });
-  expect((await backend.chat([...next, { role: 'user', content: 'x' }], { signal: new AbortController().signal, onDelta: () => {} })).predicted).toBeNull();
+  expect((await backend.chat(request([...next, { role: 'user', content: 'x' }]), { signal: new AbortController().signal, onDelta: () => {} })).predicted).toBeNull();
 });
 
 test('right after an answer, the unchanged messages of the request count in whole blocks before the probe sees them', async () => {
   const backend = await open({}, { lagging: true });
   fake.reply({ chunks: ['hello'] });
-  await backend.chat([SYSTEM, USER], { signal: new AbortController().signal, onDelta: () => {} });
+  await backend.chat(request([SYSTEM, USER]), { signal: new AbortController().signal, onDelta: () => {} });
   // System 12 + User 8 unchanged → 20 = 5 blocks of 4; the answer is not counted.
-  const counted = await backend.count([SYSTEM, USER, { role: 'assistant', content: 'hello' }, { role: 'user', content: 'more' }]);
+  const counted = await backend.count(prefixes([SYSTEM, USER, { role: 'assistant', content: 'hello' }, { role: 'user', content: 'more' }]));
   expect(counted.cached).toEqual({ tokens: 20, exact: true });
   fake.stop();
   const bigger = await open({}, { lagging: true, blockSize: 16 });
   fake.reply({ chunks: ['hello'] });
-  await bigger.chat([SYSTEM, USER], { signal: new AbortController().signal, onDelta: () => {} });
-  expect((await bigger.count([SYSTEM, USER])).cached).toEqual({ tokens: 16, exact: true });
+  await bigger.chat(request([SYSTEM, USER]), { signal: new AbortController().signal, onDelta: () => {} });
+  expect((await bigger.count(prefixes([SYSTEM, USER]))).cached).toEqual({ tokens: 16, exact: true });
 });
 
 test('without the cache probe, messages equal to the last request and its answer count as cached, approximately', async () => {
   const backend = await open({}, { probe: false });
   fake.reply({ chunks: ['hello'] });
-  const sent = await backend.chat([SYSTEM, USER], { signal: new AbortController().signal, onDelta: () => {} });
+  const sent = await backend.chat(request([SYSTEM, USER]), { signal: new AbortController().signal, onDelta: () => {} });
   expect(sent.predicted).toBeNull();
-  const counted = await backend.count([SYSTEM, USER, { role: 'assistant', content: 'hello' }, { role: 'user', content: 'more' }]);
+  const counted = await backend.count(prefixes([SYSTEM, USER, { role: 'assistant', content: 'hello' }, { role: 'user', content: 'more' }]));
   expect(counted.cached).toEqual({ tokens: 12 + 8 + 6, exact: false });
-  expect((await backend.count([SYSTEM, { role: 'user', content: 'hi you' }])).cached).toEqual({ tokens: 12, exact: false });
+  expect((await backend.count(prefixes([SYSTEM, { role: 'user', content: 'hi you' }]))).cached).toEqual({ tokens: 12, exact: false });
+});
+
+test('counting converts tools, tool calls and tool results to the Anthropic format', async () => {
+  const requests = toolLoop();
+  const split = await (await open()).count(requests);
+  const whole = requests.at(-1)!;
+  expect(split.total).toBe(tokenize(chatml(whole.messages, true, whole.tools), true).length);
+  expect(split.blocks.every(n => n > 0)).toBe(true);
+  expect(fake.countRequests.at(-1)).toEqual({
+    model: MODEL,
+    system: 'You are an agent.',
+    messages: [
+      { role: 'user', content: 'look around' },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Checking.' },
+          { type: 'tool_use', id: 'call_0', name: 'bash', input: { command: 'ls' } },
+          { type: 'tool_use', id: 'call_1', name: 'bash', input: { command: 'pwd' } },
+        ],
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'tool_result', tool_use_id: 'call_0', content: 'a b\n[exit 0]' },
+          { type: 'tool_result', tool_use_id: 'call_1', content: '/p\n[exit 0]' },
+        ],
+      },
+    ],
+    tools: [{ name: 'bash', description: whole.tools[0]!.function.description, input_schema: whole.tools[0]!.function.parameters }],
+  });
+});
+
+test('a tool call without text is only tool_use blocks', async () => {
+  await (await open()).count(prefixes([
+    { role: 'user', content: 'U' },
+    { role: 'assistant', content: '', tool_calls: [{ id: 'c', type: 'function', function: { name: 'bash', arguments: '{"command":"ls"}' } }] },
+  ]));
+  expect(fake.countRequests.at(-1)!.messages[1]).toEqual({ role: 'assistant', content: [{ type: 'tool_use', id: 'c', name: 'bash', input: { command: 'ls' } }] });
+});
+
+test('tool calls stream in; tools are sent with the request', async () => {
+  const backend = await open();
+  fake.reply({ chunks: [], calls: [{ name: 'bash', arguments: '{"command":"ls"}' }] });
+  const chat = toolLoop()[2]!;
+  const result = await backend.chat(chat, { signal: new AbortController().signal, onDelta: () => {} });
+  expect(result).toMatchObject({ content: '', calls: [{ name: 'bash', arguments: '{"command":"ls"}' }], finish: 'tool_calls' });
+  expect(fake.chatRequests[0]).toMatchObject({ tools: chat.tools });
+});
+
+test('without the probe, blocks the last answer already rendered count as cached, tool calls included', async () => {
+  const backend = await open({}, { probe: false });
+  const loop = toolLoop();
+  fake.reply({ chunks: ['Checking.'], calls: [{ name: 'bash', arguments: '{"command":"ls"}' }, { name: 'bash', arguments: '{"command":"pwd"}' }] });
+  await backend.chat(loop[2]!, { signal: new AbortController().signal, onDelta: () => {} });
+  const counted = await backend.count(loop);
+  // System, Tools, User, Assistant and both Tool Calls; the Tool Results are new.
+  expect(counted.cached).toEqual({ tokens: counted.blocks.slice(0, 6).reduce((a, b) => a + b, 0), exact: false });
 });

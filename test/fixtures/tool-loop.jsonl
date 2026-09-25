@@ -1,0 +1,16 @@
+{"type":"SessionCreated","profile":"local","protocol":"native"}
+{"type":"BlockAdded","id":1,"kind":"System","origin":"config","content":"You are a coding agent."}
+{"type":"BlockAdded","id":2,"kind":"Tools","origin":"config","content":"[\n  {\n    \"name\": \"bash\",\n    \"description\": \"Run a shell command in the project root. Returns combined stdout/stderr and the exit code.\",\n    \"parameters\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"command\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"command\"\n      ]\n    }\n  }\n]"}
+{"type":"BlockAdded","id":3,"kind":"User","origin":"user","content":"Which tests fail?"}
+{"type":"RequestSent","hash":"a1","tokens":120}
+{"type":"BlockAdded","id":4,"kind":"Assistant","origin":"model","content":"Running them."}
+{"type":"BlockAdded","id":5,"kind":"Tool Call","origin":"model","content":"bun test 2>&1 | tail -5"}
+{"type":"BlockAdded","id":6,"kind":"Tool Call","origin":"model","content":"git status --short"}
+{"type":"ResponseReceived","usage":{"prompt_tokens":120,"completion_tokens":30},"cached":0}
+{"type":"BlockAdded","id":7,"kind":"Tool Result","origin":"tool","content":"1 fail\n[exit 1]","call":5}
+{"type":"BlockAdded","id":8,"kind":"Tool Result","origin":"tool","content":"rejected by user","call":6}
+{"type":"RequestSent","hash":"b2","tokens":170}
+{"type":"BlockAdded","id":9,"kind":"Tool Call","origin":"model","content":"sleep 300"}
+{"type":"ResponseReceived","usage":{"prompt_tokens":170,"completion_tokens":10},"cached":150}
+{"type":"BlockAdded","id":10,"kind":"Tool Result","origin":"tool","content":"[killed]","call":9,"stopped":"killed"}
+{"type":"BlockAdded","id":11,"kind":"Tool Call","origin":"model","content":"ls"}

@@ -1,9 +1,9 @@
 // llama.cpp server backend: exact token counts via /apply-template + /tokenize (requires --jinja).
 import type { Backend } from '../../core/backend';
 import { commonPrefix } from '../../core/cache/cache';
-import type { Message } from '../../core/render/native';
+import { EMPTY_REQUEST as EMPTY, type Message, type Request } from '../../core/render/native';
 import { splitTokens } from '../../core/tokens/split';
-import { httpClient, streamChat } from './openai';
+import { answerMessage, chatFields, httpClient, streamChat } from './openai';
 
 // Tools force the Jinja template path; without --jinja llama.cpp rejects them.
 const PROBE_TOOLS = [{ type: 'function', function: { name: 'probe', parameters: { type: 'object', properties: {} } } }];
@@ -29,19 +29,20 @@ export async function connectLlamaCpp(endpoint: string, { window, model, samplin
   const ids = async (content: string, add_special = true): Promise<number[]> =>
     (await post<{ tokens: number[] }>('/tokenize', { content, add_special })).tokens;
   const tokens = async (content: string): Promise<number> => (await ids(content)).length;
-  const template = async (messages: Message[], add_generation_prompt: boolean): Promise<string> =>
-    (await post<{ prompt: string }>('/apply-template', { messages, add_generation_prompt })).prompt;
-  const prefix = async (messages: Message[]) => tokens(await template([...messages, TRAILER], false));
+  const template = async (request: Request, add_generation_prompt: boolean): Promise<string> =>
+    (await post<{ prompt: string }>('/apply-template', { ...chatFields(request), add_generation_prompt })).prompt;
+  const trailed = (request: Request): Request => ({ ...request, messages: [...request.messages, TRAILER] });
+  const prefix = async (request: Request) => tokens(await template(trailed(request), false));
   // A Context ending in an Assistant block is not sendable; its Template row is BOS + generation prompt.
-  const requestSize = async (messages: Message[], blocks: number) => {
-    if (messages.at(-1)?.role !== 'assistant') return tokens(await template(messages, true));
-    const generationPrompt = (await tokens(await template([TRAILER], true))) - (await tokens(await template([TRAILER], false)));
+  const requestSize = async (request: Request, blocks: number) => {
+    if (request.messages.at(-1)?.role !== 'assistant') return tokens(await template(request, true));
+    const generationPrompt = (await tokens(await template(trailed(EMPTY), true))) - (await tokens(await template(trailed(EMPTY), false)));
     return blocks + (await tokens('')) + generationPrompt;
   };
   // Token ids of the messages up to the end of the last one's turn: the counted prefix without its
   // trailer (empty prefix − BOS). This is how the next request renders them.
-  const closed = async (messages: Message[]) => {
-    const [all, empty, bos] = await Promise.all([template([...messages, TRAILER], false).then(t => ids(t)), prefix([]), tokens('')]);
+  const closed = async (request: Request) => {
+    const [all, empty, bos] = await Promise.all([template(trailed(request), false).then(t => ids(t)), prefix(EMPTY), tokens('')]);
     return all.slice(0, all.length - (empty - bos));
   };
 
@@ -55,22 +56,24 @@ export async function connectLlamaCpp(endpoint: string, { window, model, samplin
   return {
     window: window ?? props.default_generation_settings.n_ctx,
 
-    async count(messages) {
-      const prefixes = await Promise.all(messages.map((_, i) => prefix(messages.slice(0, i + 1))));
-      const [empty, bos, rendered] = await Promise.all([prefix([]), tokens(''), closed(messages)]);
-      const total = await requestSize(messages, (prefixes.at(-1) ?? empty) - empty);
+    async count(requests) {
+      const request = requests.at(-1) ?? EMPTY;
+      const prefixes = await Promise.all(requests.map(prefix));
+      const [empty, bos, rendered] = await Promise.all([prefix(EMPTY), tokens(''), closed(request)]);
+      const total = await requestSize(request, (prefixes.at(-1) ?? empty) - empty);
       // Cached tokens of the rows: BOS precedes the first row.
       const cached = Math.max(0, commonPrefix(shownTokens, rendered) - bos);
       return { ...splitTokens({ empty, prefixes, total }), cached: { tokens: cached, exact: true } };
     },
 
     // llama.cpp always evaluates at least the last prompt token; --cache-reuse is off per request.
-    async chat(messages, options) {
-      const sent = await ids(await template(messages, true));
+    async chat(chat, options) {
+      const sent = await ids(await template(chat, true));
       const predicted = Math.min(commonPrefix(slotTokens, sent), sent.length - 1);
-      const result = await streamChat({ name: 'llama.cpp', request }, { model, ...slot, ...sampling, n_cache_reuse: 0 }, messages, options);
+      const result = await streamChat({ name: 'llama.cpp', request }, { model, ...slot, ...sampling, n_cache_reuse: 0 }, chat, options);
+      // Generated tool call syntax is template-specific and not in the slot prediction: it only errs low.
       slotTokens = [...sent, ...(await ids(result.content, false))];
-      shownTokens = await closed([...messages, { role: 'assistant', content: result.content }]);
+      shownTokens = await closed({ ...chat, messages: [...chat.messages, answerMessage(result)] });
       return { ...result, predicted };
     },
   };

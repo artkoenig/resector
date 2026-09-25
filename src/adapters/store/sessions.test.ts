@@ -11,7 +11,7 @@ afterAll(() => sleeper.kill());
 
 function stored(root: string, id: string, minutesAgo: number, title = id) {
   const path = join(root, `${id}.jsonl`);
-  const events = [...newSession('qwen', 'sys'), { type: 'BlockAdded', id: 2, kind: 'User', origin: 'user', content: title }];
+  const events = [...newSession('qwen', 'sys'), { type: 'BlockAdded', id: 3, kind: 'User', origin: 'user', content: title }];
   writeFileSync(path, events.map(e => JSON.stringify(e)).join('\n') + '\n');
   const t = new Date(Date.now() - minutesAgo * 60_000);
   utimesSync(path, t, t);
@@ -28,7 +28,7 @@ test('sessions are listed newest first with their summary and lock state (FR-33)
     ['ses_old', 'ses_old', true],
   ]);
   expect(list[0]!.updated.getTime()).toBeGreaterThan(list[1]!.updated.getTime());
-  expect(list[0]!.events).toHaveLength(3);
+  expect(list[0]!.events).toHaveLength(4);
 });
 
 test('a missing sessions directory lists nothing', () => {
@@ -43,7 +43,7 @@ test('a created session is locked by this process and appends its events', () =>
   newSession('qwen', 'sys').forEach(session.log.append);
   expect(session.id).toBe('ses_a');
   expect(readFileSync(join(root, 'ses_a.lock'), 'utf8')).toBe(String(process.pid));
-  expect(openSessionStore(root).list().map(s => [s.id, s.locked, s.events.length])).toEqual([['ses_a', false, 2]]);
+  expect(openSessionStore(root).list().map(s => [s.id, s.locked, s.events.length])).toEqual([['ses_a', false, 3]]);
   session.release();
   expect(existsSync(join(root, 'ses_a.lock'))).toBe(false);
   expect(process.listenerCount('exit')).toBe(exitHandlers);

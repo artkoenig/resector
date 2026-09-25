@@ -3,7 +3,7 @@ import type { ScrollBoxRenderable } from '@opentui/core';
 import { useKeyboard, useTerminalDimensions } from '@opentui/solid';
 import { createEffect, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import type { Kind } from '../core/log/events';
-import { COMMANDS, createGate, type Gate, type GateOptions } from './gate';
+import { COMMANDS, createGate, type Gate, type GateOptions, type Running } from './gate';
 import { cell, flagsOf, formatTokens, right, titleOf } from './format';
 import { DIM as TEMPLATE_COLOR, FREE_COLOR, KIND_COLOR, MARK_COLOR, SELECTED_BG, TONE } from './theme';
 
@@ -23,7 +23,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   const [draft, setDraft] = createSignal('');
   const [tick, setTick] = createSignal(0);
   const [suggested, setSuggested] = createSignal(0);
-  const timer = setInterval(() => gate.streaming() && setTick(tick() + 1), 80);
+  const timer = setInterval(() => gate.busy() && setTick(tick() + 1), 80);
   onCleanup(() => clearInterval(timer));
 
   const rows = (): Row[] => {
@@ -31,16 +31,19 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     const n = (id: number) => String(gate.rows().indexOf(id) + 1);
     const tokens = (id: number) => (split ? formatTokens(split.blocks[gate.sent().findIndex(b => b.id === id)]!) : '…');
     const cache = (id: number) => ({ true: '●', false: '○', null: '' })[`${gate.warm(id)}`]!;
-    const done = gate.context().blocks.map(b => ({
-      id: b.id, kind: b.kind, title: titleOf(b), content: b.content, live: false, removed: b.removed,
-      ...(b.removed ? { n: '', tokens: '', cache: '', flags: 'removed' } : { n: n(b.id), tokens: tokens(b.id), cache: cache(b.id), flags: flagsOf(b) }),
+    const blocks = gate.context().blocks;
+    // The running call is decided: no ? approve.
+    const running = gate.running()?.call.id;
+    const next = gate.nextCall()?.id;
+    const done = blocks.map(b => ({
+      id: b.id, kind: b.kind, title: titleOf(b, blocks), content: b.content, live: false, removed: b.removed,
+      ...(b.removed ? { n: '', tokens: '', cache: '', flags: 'removed' } : { n: n(b.id), tokens: tokens(b.id), cache: cache(b.id), flags: b.id === running ? '' : flagsOf(b, next) }),
     }));
-    const s = gate.streaming();
-    if (!s) return done;
-    const id = gate.context().nextId;
-    const live = { kind: 'Assistant' as const, content: s.text };
-    const bottom = done.findIndex(r => gate.context().blocks.find(b => b.id === r.id)!.pin === 'bottom');
-    done.splice(bottom < 0 ? done.length : bottom, 0, { ...live, id, n: n(id), title: titleOf(live), tokens: SPINNER[tick() % SPINNER.length]!, cache: '', flags: '', live: true, removed: false });
+    const live = gate.live();
+    if (!live) return done;
+    const at = live.before === null ? -1 : done.findIndex(r => r.id === live.before);
+    const row = { ...live, n: n(live.id), title: titleOf({ ...live, call: running }, blocks), tokens: SPINNER[tick() % SPINNER.length]!, cache: '', flags: '', live: true, removed: false };
+    done.splice(at < 0 ? done.length : at, 0, row);
     return done;
   };
 
@@ -101,6 +104,8 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     'shift+down': () => scrollPreview(1),
     pageup: () => scrollPreview(-(previewHeight() - 2)),
     pagedown: () => scrollPreview(previewHeight() - 2),
+    y: gate.approve,
+    n: gate.reject,
     p: gate.pin,
     d: gate.remove,
     u: gate.undo,
@@ -117,7 +122,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
       key.preventDefault();
       onSuggestion();
     } else if (mode() !== 'context') inputKeys[key.name]?.();
-    else if (gate.streaming()) key.name === 'escape' && gate.abort();
+    else if (gate.busy()) key.name === 'escape' && gate.abort();
     else {
       const action = contextKeys[modifierOf(key) + key.name];
       // Handled here only: `r` must not also type into the input it focuses.
@@ -180,7 +185,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
           <input focused value={draft()} onInput={editDraft} flexGrow={1} />
         </box>
       </Show>
-      <Footer gate={gate} mode={suggestion() ? 'suggest' : mode()} />
+      <Footer gate={gate} mode={suggestion() ? 'suggest' : mode()} tick={tick()} />
     </box>
   );
 }
@@ -227,10 +232,19 @@ const modifierOf = (key: { option?: boolean; meta: boolean; shift: boolean }) =>
 const KEYS = 'Enter send · Tab write · ↑↓ select · ⌥↑↓ move · PgUp/PgDn scroll · r rename · d remove · p pin · Space mark · u undo · q quit';
 
 // Status line of the last action, then the key hints, which stay visible.
-function Footer(props: { gate: Gate; mode: Mode | 'suggest' }) {
-  const status = () => (props.gate.streaming() ? { text: 'model is responding …', tone: 'warn' as const } : props.gate.status());
+function Footer(props: { gate: Gate; mode: Mode | 'suggest'; tick: number }) {
+  const runningText = (r: Running) =>
+    `running: ${cell(titleOf(r.call), 50).trimEnd()} · ${Math.round((Date.now() - r.started) / 1000)}s / ${props.gate.timeout}s`;
+  const status = () => {
+    void props.tick;
+    const r = props.gate.running();
+    if (r) return { text: runningText(r), tone: 'warn' as const };
+    return props.gate.streaming() ? { text: 'model is responding …', tone: 'warn' as const } : props.gate.status();
+  };
   const keys = () => {
+    if (props.gate.running()) return 'Esc kill';
     if (props.gate.streaming()) return 'Esc abort';
+    if (props.mode === 'context' && props.gate.selectedBlock()?.pending) return `y run once · n reject · ${KEYS}`;
     if (props.mode === 'suggest') return '↑↓ choose · Tab complete · Enter run · Esc back';
     if (props.mode === 'input') return 'Enter adds a User block (not sent) · Tab/Esc back';
     if (props.mode === 'rename') return 'Enter sets title (display only, never sent; empty = reset) · Tab/Esc cancel';

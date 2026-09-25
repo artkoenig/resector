@@ -1,10 +1,13 @@
 // Scriptable fake of the llama.cpp server endpoints Resector uses (architecture §7 "Fake backend").
-// Template: ChatML. Tokenizer: every special marker, whitespace run and word is one token; BOS = 1 token.
+// Template: ChatML, tools and tool calls as Qwen renders them. Tokenizer: every special marker, whitespace
+// run and word is one token; BOS = 1 token.
 import { commonPrefix } from '../src/core/cache/cache';
 
 export type Reply = {
   chunks: string[];
-  finish?: 'stop' | 'length';
+  // Tool calls streamed after the chunks; finish then defaults to tool_calls.
+  calls?: { name: string; arguments: string }[];
+  finish?: 'stop' | 'length' | 'tool_calls';
   // Keep the stream open after the chunks until the client aborts.
   hang?: boolean;
   usage?: { prompt_tokens: number; completion_tokens: number };
@@ -16,18 +19,36 @@ export type Reply = {
 
 export type FakeOptions = { jinja?: boolean; nCtx?: number; model?: string; slots?: number };
 
-type ChatMessage = { role: string; content: string };
+export type ChatMessage = { role: string; content: string; tool_calls?: { function: { name: string; arguments: string } }[] };
+export type ChatTool = { type?: string; function: { name: string; [key: string]: unknown } };
 
-export function chatml(messages: ChatMessage[], addGenerationPrompt: boolean): string {
-  const turns = messages.map(m => `<|im_start|>${m.role}\n${m.content}<|im_end|>\n`).join('');
+const content = (m: ChatMessage) =>
+  m.content + (m.tool_calls ?? []).map(c => `\n<tool_call>\n${JSON.stringify({ name: c.function.name, arguments: JSON.parse(c.function.arguments) })}\n</tool_call>`).join('');
+// Tool definitions go at the end of the system message (one is added if there is none).
+function withTools(messages: ChatMessage[], tools: ChatTool[] = []): ChatMessage[] {
+  if (!tools.length) return messages;
+  const list = `\n\n<tools>\n${tools.map(t => JSON.stringify(t)).join('\n')}\n</tools>`;
+  const [first, ...rest] = messages;
+  return first?.role === 'system' ? [{ ...first, content: first.content + list }, ...rest] : [{ role: 'system', content: list.trim() }, ...messages];
+}
+
+// The assistant message a reply renders as.
+export const answer = (reply: Reply): ChatMessage => ({
+  role: 'assistant',
+  content: reply.chunks.join(''),
+  ...(reply.calls && { tool_calls: reply.calls.map(c => ({ function: c })) }),
+});
+
+export function chatml(messages: ChatMessage[], addGenerationPrompt: boolean, tools?: ChatTool[]): string {
+  const turns = withTools(messages, tools).map(m => `<|im_start|>${m.role}\n${content(m)}<|im_end|>\n`).join('');
   return turns + (addGenerationPrompt ? '<|im_start|>assistant\n' : '');
 }
 
 // Like llama.cpp: a trailing assistant message is a prefill – generation prompt plus its content, no end of turn.
-function applyTemplate(messages: ChatMessage[], addGenerationPrompt: boolean): string {
+function applyTemplate(messages: ChatMessage[], addGenerationPrompt: boolean, tools?: ChatTool[]): string {
   const last = messages.at(-1);
-  if (last?.role !== 'assistant') return chatml(messages, addGenerationPrompt);
-  return chatml(messages.slice(0, -1), true) + last.content;
+  if (last?.role !== 'assistant') return chatml(messages, addGenerationPrompt, tools);
+  return chatml(messages.slice(0, -1), true, tools) + content(last);
 }
 
 // Same piece, same id: prompts can be compared token by token.
@@ -57,16 +78,16 @@ export function startFakeLlamaCpp({ jinja = true, nCtx = 4096, model = 'qwen3-8b
       const body = (await req.json()) as Record<string, any>;
       if (url.pathname === '/apply-template') {
         if (body.tools && !jinja) return error('tools param requires --jinja flag');
-        return Response.json({ prompt: applyTemplate(body.messages, body.add_generation_prompt !== false) });
+        return Response.json({ prompt: applyTemplate(body.messages, body.add_generation_prompt !== false, body.tools) });
       }
       if (url.pathname === '/tokenize') return Response.json({ tokens: tokenize(body.content, body.add_special === true) });
       if (url.pathname === '/v1/chat/completions') {
         chatRequests.push(body);
         const reply = replies.shift();
         if (!reply) return error('no scripted reply');
-        const prompt = tokenize(applyTemplate(body.messages, true), true);
+        const prompt = tokenize(applyTemplate(body.messages, true, body.tools), true);
         const final = { choices: [], usage: reply.usage ?? null, timings: { cache_n: reply.cacheN ?? reuse(prompt) } };
-        slot = [...prompt, ...tokenize(reply.chunks.join(''), false)];
+        slot = [...prompt, ...tokenize(content(answer(reply)), false)];
         return new Response(stream(reply, req.signal, final), { headers: { 'content-type': 'text/event-stream' } });
       }
       return new Response('not found', { status: 404 });
@@ -88,13 +109,21 @@ export function stream(reply: Reply, signal: AbortSignal, final: unknown): Reada
   return new ReadableStream({
     async start(ctrl) {
       for (const content of reply.chunks) ctrl.enqueue(data({ choices: [{ index: 0, delta: { content } }] }));
+      // Like llama.cpp: id and name first, then the arguments in two pieces.
+      reply.calls?.forEach(({ name, arguments: args }, index) => {
+        const half = Math.floor(args.length / 2);
+        const delta = (fn: object, id?: string) => ({ choices: [{ index: 0, delta: { tool_calls: [{ index, ...(id && { id, type: 'function' }), function: fn }] } }] });
+        ctrl.enqueue(data(delta({ name, arguments: '' }, `srv_${index}`)));
+        ctrl.enqueue(data(delta({ arguments: args.slice(0, half) })));
+        ctrl.enqueue(data(delta({ arguments: args.slice(half) })));
+      });
       if (reply.error) ctrl.enqueue(data({ error: { code: 500, message: reply.error, type: 'server_error' } }));
       if (reply.truncate || reply.error) return ctrl.close();
       if (reply.hang) {
         await new Promise(resolve => signal.addEventListener('abort', resolve));
         return;
       }
-      ctrl.enqueue(data({ choices: [{ index: 0, delta: {}, finish_reason: reply.finish ?? 'stop' }] }));
+      ctrl.enqueue(data({ choices: [{ index: 0, delta: {}, finish_reason: reply.finish ?? (reply.calls ? 'tool_calls' : 'stop') }] }));
       ctrl.enqueue(data(final));
       ctrl.enqueue(enc.encode('data: [DONE]'));
       ctrl.close();

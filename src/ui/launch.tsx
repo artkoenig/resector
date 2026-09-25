@@ -2,6 +2,7 @@
 import { createSignal, onMount, Show } from 'solid-js';
 import { connect } from '../adapters/backend/connect';
 import { discover, LOCAL_SERVERS, type DiscoveredModel, type LocalServer } from '../adapters/backend/discover';
+import { createRunner } from '../adapters/bash/runner';
 import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
 import type { OpenSession, SessionStore } from '../adapters/store/sessions';
 import type { SessionEvent } from '../core/log/events';
@@ -17,6 +18,8 @@ export type LaunchOptions = {
   paths: ConfigPaths;
   servers?: LocalServer[];
   store: SessionStore;
+  // Project root: where bash runs (FR-21); default the working directory.
+  cwd?: string;
   // -c [id]: true = the last session (FR-32).
   resume?: SessionRef;
   onQuit: () => void;
@@ -24,6 +27,8 @@ export type LaunchOptions = {
 };
 
 type Loaded = NonNullable<ReturnType<typeof loadConfig>>;
+
+const DEFAULT_TIMEOUT = 120;
 
 export function Launch(props: LaunchOptions) {
   const [found, setFound] = createSignal<DiscoveredModel[] | null>(null);
@@ -76,7 +81,8 @@ export function Launch(props: LaunchOptions) {
     session = opened;
     setCurrent(opened.id);
     setFound(null);
-    setGate({ backend, log: opened.log, events, notice, reconnect: reconnect(profile, opened.id), openSessions: () => setView('sessions') });
+    const runner = createRunner({ cwd: props.cwd ?? process.cwd(), timeout: loaded.config.bash?.timeout ?? DEFAULT_TIMEOUT });
+    setGate({ backend, runner, log: opened.log, events, notice, reconnect: reconnect(profile, opened.id), openSessions: () => setView('sessions') });
   }
 
   // /sessions (FR-33): switching sessions reconnects; the Gate comes back with the session's logged events.
