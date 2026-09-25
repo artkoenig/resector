@@ -4,7 +4,7 @@ title: Compaction-Flow mit Diff
 labels: [wayfinder:prototype]
 parent: context-harness-v1
 status: open
-assignee:
+assignee: artkoenig
 blocked_by: [009]
 ---
 
