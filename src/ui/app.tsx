@@ -4,7 +4,7 @@ import { useKeyboard, useTerminalDimensions } from '@opentui/solid';
 import { createEffect, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import type { Kind } from '../core/log/events';
 import { COMMANDS, createGate, type Gate, type GateOptions, type Status } from './gate';
-import { cell, flagsOf, formatTokens, right, titleOf } from './format';
+import { around, cell, flagsOf, formatTokens, linesOf, right, titleOf } from './format';
 import { DIM as TEMPLATE_COLOR, FREE_COLOR, KIND_COLOR, MARK_COLOR, SELECTED_BG, TONE } from './theme';
 
 const SPINNER = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
@@ -135,19 +135,12 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   const width = () => size().width;
   const status = () => (void tick(), statusOf(gate));
   const keys = () => keysOf(gate, suggestion() ? 'suggest' : mode());
-  // Screen lines a footer text takes, wrapped at the terminal width.
-  const linesOf = (text: string) => Math.max(1, Math.ceil((text.length + 1) / width()));
   // Block rows that fit: the screen less header, column header, Template, preview, suggestions,
   // separator, input and footer. Lines never shrink, so rows cannot overlap.
   const capacity = () =>
-    Math.max(1, size().height - 3 - previewHeight() - suggestions().length - 2 - linesOf(status()?.text ?? '') - linesOf(keys()));
+    Math.max(1, size().height - 3 - previewHeight() - suggestions().length - 2 - linesOf(` ${status()?.text ?? ''}`, width()) - linesOf(` ${keys()}`, width()));
   // The rows shown: a window around the selection.
-  const visibleRows = () => {
-    const all = rows();
-    const at = all.findIndex(r => r.id === gate.selected() && !r.removed);
-    const from = Math.max(0, Math.min(all.length - capacity(), at - Math.floor(capacity() / 2)));
-    return all.slice(from, from + capacity());
-  };
+  const visibleRows = () => around(rows(), rows().findIndex(r => r.id === gate.selected() && !r.removed), capacity());
   const titleWidth = () => Math.max(8, width() - FIXED_COLUMNS);
   const selectedRow = () => rows().find(r => r.id === gate.selected() && !r.removed);
 

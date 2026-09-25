@@ -36,6 +36,15 @@ export const cell = (s: string, width: number): string =>
 
 export const right = (s: string, width: number): string => s.padStart(width);
 
+// The items that fit in `capacity` lines: a window keeping item `at` in the middle where possible.
+export function around<T>(items: readonly T[], at: number, capacity: number): T[] {
+  const from = Math.max(0, Math.min(items.length - capacity, at - Math.floor(capacity / 2)));
+  return items.slice(from, from + capacity);
+}
+
+// Screen lines a text takes, wrapped at `width`.
+export const linesOf = (text: string, width: number) => Math.max(1, Math.ceil(text.length / width));
+
 export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 // Age of a session for /sessions (FR-33).

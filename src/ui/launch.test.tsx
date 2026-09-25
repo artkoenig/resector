@@ -344,3 +344,19 @@ async function command(text: string) {
 async function until(condition: () => boolean) {
   while (!condition()) await Bun.sleep(10);
 }
+
+test('/sessions with more sessions than fit: rows never overlap, the list follows the selection', async () => {
+  const many = Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`ses_${i + 1}`, titled('local', `topic ${i + 1}`)]));
+  await sessionsView(many);
+  const titles = (f: string) => [...f.matchAll(/^ [● ][⊘ ] {2}(\(new session\)|topic \d)/gm)].map(m => m[1]);
+  let frame = await frameMatching(ui, f => f.includes('topic 1'));
+  expect(frame.split('\n')[0]).toMatch(/^ Sessions · 9 sessions/);
+  expect(frame.split('\n')[1]).toMatch(/^ {5}Title +Updated +Profile +Context +Blocks/);
+  expect(titles(frame)[0]).toBe('(new session)');
+  expect(titles(frame).length).toBeLessThan(9);
+  for (let i = 0; i < 8; i++) await key('down');
+  frame = await frameMatching(ui, f => f.includes('Preview · ses_8'));
+  expect(titles(frame).at(-1)).toBe('topic 8');
+  expect(titles(frame)).not.toContain('(new session)');
+  expect(frame.split('\n')[1]).toMatch(/^ {5}Title/);
+});

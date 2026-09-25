@@ -3,7 +3,7 @@ import { useKeyboard, useTerminalDimensions } from '@opentui/solid';
 import { createSignal, For, Show } from 'solid-js';
 import type { SessionStore, StoredSession } from '../adapters/store/sessions';
 import { fold } from '../core/log/fold';
-import { ago, cell, errorText, formatTokens, right, titleOf } from './format';
+import { ago, around, cell, errorText, formatTokens, linesOf, right, titleOf } from './format';
 import type { Status } from './gate';
 import { DIM, SELECTED_BG, TONE } from './theme';
 
@@ -111,6 +111,11 @@ export function Sessions(props: SessionsProps) {
   };
 
   const titleWidth = () => Math.max(8, size().width - FIXED_COLUMNS);
+  const footer = () => ` ${editing() ? 'Enter apply · Esc cancel' : KEYS}`;
+  // Session rows that fit: the screen less title, column header, separator, preview (header + blocks),
+  // status and key hints. Lines never shrink, so rows cannot overlap.
+  const capacity = () => Math.max(1, size().height - 4 - PREVIEW_BLOCKS - 1 - linesOf(footer(), size().width));
+  const visible = () => around(list(), index(), capacity());
   const context = (s: StoredSession) => {
     const window = props.windowOf(s.profile);
     const tokens = s.tokens === null ? '–' : formatTokens(s.tokens);
@@ -125,15 +130,15 @@ export function Sessions(props: SessionsProps) {
 
   return (
     <box flexDirection="column" width="100%" height="100%">
-      <text>
+      <text flexShrink={0}>
         <strong>{' Sessions'}</strong>
         <span style={{ fg: DIM }}>{` · ${all().length} sessions${filter() ? ` · filter "${filter()}"` : ''}`}</span>
       </text>
-      <text fg={DIM}>{`     ${cell('Title', titleWidth())} ${'Updated'.padEnd(10)} ${'Profile'.padEnd(20)} ${'Context'.padEnd(14)} Blocks`}</text>
+      <text fg={DIM} flexShrink={0}>{`     ${cell('Title', titleWidth())} ${'Updated'.padEnd(10)} ${'Profile'.padEnd(20)} ${'Context'.padEnd(14)} Blocks`}</text>
       <box flexDirection="column" flexGrow={1} overflow="hidden">
-        <For each={list()}>
+        <For each={visible()}>
           {s => (
-            <text bg={s.id === selected()?.id ? SELECTED_BG : undefined} fg={confirm() === s ? TONE.error : undefined}>
+            <text flexShrink={0} bg={s.id === selected()?.id ? SELECTED_BG : undefined} fg={confirm() === s ? TONE.error : undefined}>
               <span style={{ fg: TONE.ok }}>{` ${s.id === props.current() ? '●' : ' '}`}</span>
               <span style={{ fg: TONE.error }}>{`${s.locked ? '⊘' : ' '}  `}</span>
               <span>{`${cell(s.title, titleWidth())} `}</span>
@@ -147,27 +152,27 @@ export function Sessions(props: SessionsProps) {
           )}
         </For>
       </box>
-      <text fg={DIM}>{'─'.repeat(size().width)}</text>
-      <Show when={selected()}>{(s: () => StoredSession) => <text>{` Preview · ${s().id} · last blocks`}</text>}</Show>
-      <box flexDirection="column" height={PREVIEW_BLOCKS}>
+      <text fg={DIM} flexShrink={0}>{'─'.repeat(size().width)}</text>
+      <Show when={selected()}>{(s: () => StoredSession) => <text flexShrink={0}>{` Preview · ${s().id} · last blocks`}</text>}</Show>
+      <box flexDirection="column" height={PREVIEW_BLOCKS} flexShrink={0}>
         <For each={preview()}>{p => <text fg="#bcbcbc">{`   ${right(String(p.n), 3)}  ${p.block.kind.padEnd(11)}  ${cell(titleOf(p.block), titleWidth())}`}</text>}</For>
       </box>
       <Show
         when={editing()}
         fallback={
-          <text fg={TONE[confirm() ? 'error' : (status()?.tone ?? 'info')]}>
+          <text fg={TONE[confirm() ? 'error' : (status()?.tone ?? 'info')]} flexShrink={0}>
             {` ${confirm() ? `Delete "${confirm()!.title}"? y / N` : (status()?.text ?? '')}`}
           </text>
         }
       >
         {(edit: () => Editing) => (
-          <box flexDirection="row">
+          <box flexDirection="row" flexShrink={0}>
             <text fg={TONE.ok}>{edit().kind === 'rename' ? ' title > ' : ' / '}</text>
             <input focused value={draft()} onInput={onDraft} flexGrow={1} />
           </box>
         )}
       </Show>
-      <text fg={DIM}>{` ${editing() ? 'Enter apply · Esc cancel' : KEYS}`}</text>
+      <text fg={DIM} flexShrink={0}>{footer()}</text>
     </box>
   );
 }
