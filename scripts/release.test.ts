@@ -23,15 +23,20 @@ test('asset names carry version and target', () => {
 });
 
 test('checksums parse from sha256sum output, text and binary mode', () => {
-  const text = 'aaa  resector-v1-linux-x64.tar.gz\nbbb *resector-v1-darwin-arm64.tar.gz\n\n';
+  const [a, b] = ['a'.repeat(64), 'b'.repeat(64)];
+  const text = `${a}  resector-v1-linux-x64.tar.gz\n${b} *resector-v1-darwin-arm64.tar.gz\n\n`;
   expect(parseChecksums(text)).toEqual(new Map([
-    ['resector-v1-linux-x64.tar.gz', 'aaa'],
-    ['resector-v1-darwin-arm64.tar.gz', 'bbb'],
+    ['resector-v1-linux-x64.tar.gz', a],
+    ['resector-v1-darwin-arm64.tar.gz', b],
   ]));
 });
 
 test('a malformed checksum line is rejected', () => {
   expect(() => parseChecksums('nonsense\n')).toThrow('malformed checksum line: "nonsense"');
+});
+
+test('a hash that is not 64 hex digits is rejected', () => {
+  expect(() => parseChecksums('abc  x.tar.gz\n')).toThrow('malformed checksum line: "abc  x.tar.gz"');
 });
 
 const sums = new Map(TARGETS.map(t => [assetName('1.2.3', t), `sha-${t}`]));

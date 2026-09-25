@@ -15,8 +15,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - run: bun install --frozen-lockfile
-      - run: bun run typecheck && bun test
+      # Full gate before release (architecture §7); no Stryker cache here, so mutation runs in full.
+      - run: bun run gate
       # Cross-compiling needs every platform's OpenTUI native package in node_modules.
       - run: bun install --frozen-lockfile --os='*' --cpu='*'
       - run: bun scripts/build.ts --tag "$GITHUB_REF_NAME"
@@ -86,5 +90,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Formula/resector.rb
+          git diff --cached --quiet && { echo "formula unchanged"; exit 0; }
           git commit -m "resector ${GITHUB_REF_NAME}"
           git push
