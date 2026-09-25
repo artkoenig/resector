@@ -27,7 +27,7 @@ Gewählt: **Variante D – ein einziger Screen**: Gate-Tabelle ist zugleich Chat
 - Darunter: Vorschau des gewählten Blocks (Art, Herkunft, Revision, Inhalt).
 - Unten: Eingabefeld + Statuszeile (Meldungen, Drift nach Senden, Bestätigungen).
 - Streaming: Antwort erscheint live als neue Zeile (Spinner in Token-Spalte), Vorschau folgt; danach automatisch wieder Gate.
-- **Eingabefeld immer fokussiert** (opencode-Stil): Tippen landet immer in der Eingabe. `Enter` mit Text = User-Block nur anlegen, **nicht senden**. Nur `Enter` bei leerer Eingabe sendet den Context ans LLM (auch im Tool-Loop). Hint unter der Eingabe erklärt das kontextabhängig (beim Tippen: "Enter adds this as User block (not sent yet)"; danach: "Enter on empty input sends it"). `Esc` leert Eingabe.
+- **Eingabefeld immer fokussiert** (opencode-Stil): Tippen landet immer in der Eingabe. `Enter` mit Text = User-Block nur anlegen, **nicht senden**. Nur `Enter` bei leerer Eingabe sendet den Context ans LLM (auch im Tool-Loop). Leere Eingabezeile zeigt Platzhalter-Hint: "Enter adds a User block · Enter on empty input sends the Context". `Esc` leert Eingabe.
 - Block-Aktionen über Ctrl (zuverlässig in allen Terminals): `↑↓` wählen, `Ctrl+↑`/`Ctrl+↓` verschieben, `Ctrl+E` `$EDITOR`, `Ctrl+D` entfernen, `Ctrl+P` Pin top→bottom→aus, `Ctrl+Space` markieren, `Ctrl+K` Compaction, `Ctrl+Z` undo, `Ctrl+C` beenden.
 - Tool Pair verschieben/pinnen: Hinweis + gleiche Taste nochmal = bestätigen (→ Note).
 - Über Budget: Senden blockiert mit Hinweis (Details: Budget-Überschreitung am Gate).
