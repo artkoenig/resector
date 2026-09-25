@@ -9,10 +9,11 @@ import { DIM as TEMPLATE_COLOR, FREE_COLOR, KIND_COLOR, MARK_COLOR, SELECTED_BG,
 const SPINNER = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
 // Fixed columns around the title: marker, #, Kind, Tokens, Cache, Flags.
 const FIXED_COLUMNS = 52;
+const CACHE_COLOR: Record<string, string> = { '●': TONE.ok, '○': TEMPLATE_COLOR, '': TEMPLATE_COLOR };
 
 type Mode = 'context' | 'input' | 'rename';
 // A row per visible block; removed ones are struck through, unnumbered and not selectable until sent.
-type Row = { id: number; n: string; kind: Kind; title: string; content: string; tokens: string; flags: string; live: boolean; removed: boolean };
+type Row = { id: number; n: string; kind: Kind; title: string; content: string; tokens: string; cache: string; flags: string; live: boolean; removed: boolean };
 
 export function App(props: GateOptions & { onQuit: () => void }) {
   const gate = createGate(props);
@@ -28,16 +29,17 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     const split = gate.split();
     const n = (id: number) => String(gate.rows().indexOf(id) + 1);
     const tokens = (id: number) => (split ? formatTokens(split.blocks[gate.sent().findIndex(b => b.id === id)]!) : '…');
+    const cache = (id: number) => ({ true: '●', false: '○', null: '' })[`${gate.warm(id)}`]!;
     const done = gate.context().blocks.map(b => ({
       id: b.id, kind: b.kind, title: titleOf(b), content: b.content, live: false, removed: b.removed,
-      ...(b.removed ? { n: '', tokens: '', flags: 'removed' } : { n: n(b.id), tokens: tokens(b.id), flags: flagsOf(b) }),
+      ...(b.removed ? { n: '', tokens: '', cache: '', flags: 'removed' } : { n: n(b.id), tokens: tokens(b.id), cache: cache(b.id), flags: flagsOf(b) }),
     }));
     const s = gate.streaming();
     if (!s) return done;
     const id = gate.context().nextId;
     const live = { kind: 'Assistant' as const, content: s.text };
     const bottom = done.findIndex(r => gate.context().blocks.find(b => b.id === r.id)!.pin === 'bottom');
-    done.splice(bottom < 0 ? done.length : bottom, 0, { ...live, id, n: n(id), title: titleOf(live), tokens: SPINNER[tick() % SPINNER.length]!, flags: '', live: true, removed: false });
+    done.splice(bottom < 0 ? done.length : bottom, 0, { ...live, id, n: n(id), title: titleOf(live), tokens: SPINNER[tick() % SPINNER.length]!, cache: '', flags: '', live: true, removed: false });
     return done;
   };
 
@@ -120,7 +122,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   return (
     <box flexDirection="column" width="100%" height="100%">
       <Header gate={gate} width={width()} />
-      <text fg={TEMPLATE_COLOR}>{`     #  ${'Kind'.padEnd(11)}  ${cell('Title', titleWidth())}  Tokens  Cache  Flags`}</text>
+      <text fg={TEMPLATE_COLOR}>{`     #  ${'Kind'.padEnd(11)}  ${cell('Title', titleWidth())}  Tokens  ${gate.approximate() ? 'Cache≈' : 'Cache '} Flags`}</text>
       <box flexDirection="column" flexGrow={1} overflow="hidden">
         <For each={rows()}>
           {row => (
@@ -132,7 +134,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
               <span style={{ strikethrough: row.removed, dim: row.removed }}>{cell(row.title, titleWidth())}</span>
               <span>{'  '}</span>
               <span style={{ fg: row.live ? TONE.warn : undefined }}>{right(row.tokens, 6)}</span>
-              <span>{'          '}</span>
+              <span style={{ fg: CACHE_COLOR[row.cache] }}>{`    ${row.cache.padEnd(1)}    `}</span>
               <span style={{ fg: row.removed ? TEMPLATE_COLOR : TONE.warn }}>{row.flags}</span>
             </text>
           )}

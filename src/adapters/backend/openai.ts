@@ -35,7 +35,7 @@ export async function streamChat(
   messages: Message[],
   { signal, onDelta }: ChatOptions,
 ): Promise<ChatResult> {
-  const result: ChatResult = { content: '', finish: 'aborted', usage: null, cached: null };
+  const result: ChatResult = { content: '', finish: 'aborted', usage: null, cached: null, predicted: null };
   try {
     const body = { ...params, messages, stream: true, stream_options: { include_usage: true } };
     const res = await request('/v1/chat/completions', { ...jsonPost(body), signal });

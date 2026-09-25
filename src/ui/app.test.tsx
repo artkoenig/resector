@@ -111,8 +111,8 @@ test('Esc aborts streaming; the partial answer is kept as cut off', async () => 
   expect(line(streaming, /Assistant/)).toMatch(/Hal\s+[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
   expect(events().at(-1).type).toBe('RequestSent');
   await escape();
-  const frame = await frameMatching(ui, f => /Hal\s+\d+\s+⚠ cut off/.test(f));
-  expect(line(frame, /Assistant/)).toMatch(/3\s+Assistant\s+Hal\s+\d+\s+⚠ cut off/);
+  const frame = await frameMatching(ui, f => /Hal\s+\d+\s+[●○]\s+⚠ cut off/.test(f));
+  expect(line(frame, /Assistant/)).toMatch(/3\s+Assistant\s+Hal\s+\d+\s+●\s+⚠ cut off/);
   expect(events().slice(-2)).toEqual([
     { type: 'BlockAdded', id: 3, kind: 'Assistant', origin: 'model', content: 'Hal', cutOff: true },
     { type: 'ResponseReceived', usage: null, cached: null },
@@ -242,6 +242,40 @@ test('the header Context bar highlights the selected block', async () => {
   expect(user).toHaveLength(1);
   expect(system).toHaveLength(1);
   expect(user[0]).toBeGreaterThan(system[0]!);
+});
+
+// Per numbered row: its number and Cache column.
+const cache = (frame: string) => [...frame.matchAll(/^ {2}[ ●] +(\d+) {2}.*\d +([●○]) /gm)].map(m => m[1]! + m[2]!);
+
+test('the Cache column shows ● for rows before the invalidation point, ○ from it on (FR-3)', async () => {
+  await withUsers('hi there');
+  expect(cache(await frameMatching(ui, f => cache(f).length === 2))).toEqual(['1○', '2○']);
+  fake.reply({ chunks: ['hello'] });
+  ui.mockInput.pressEnter();
+  const answered = await frameMatching(ui, f => f.includes('answer complete') && cache(f).length === 3);
+  expect(cache(answered)).toEqual(['1●', '2●', '3●']);
+  await write('more');
+  let frame = await frameMatching(ui, f => cache(f).length === 4);
+  expect(cache(frame)).toEqual(['1●', '2●', '3●', '4○']);
+  expect(line(frame, /Kind/)).toMatch(/Tokens\s+Cache\s+Flags/);
+  await press('up', { meta: true });
+  frame = await frameMatching(ui, f => /3\s+User\s+more/.test(f) && cache(f).length === 4);
+  expect(cache(frame)).toEqual(['1●', '2●', '3○', '4○']);
+});
+
+test('a server reusing fewer tokens than predicted is reported; the prediction is approximate from then on (NFR-2)', async () => {
+  await withUsers('hi there');
+  fake.reply({ chunks: ['hello'] });
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('answer complete'));
+  await write('more');
+  fake.reply({ chunks: ['ok'], cacheN: 3 });
+  await frameMatching(ui, f => cache(f).length === 4);
+  ui.mockInput.pressEnter();
+  const frame = await frameMatching(ui, f => f.includes('server reused'));
+  // BOS + System 12 + User 8 + <|im_start|> assistant \n hello
+  expect(frame).toContain('answer complete · ⚠ cache: predicted 25 · server reused 3');
+  expect(line(frame, /Kind/)).toMatch(/Tokens\s+Cache≈\s+Flags/);
 });
 
 test('the key hints stay visible next to a status', async () => {

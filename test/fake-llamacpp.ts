@@ -1,5 +1,6 @@
 // Scriptable fake of the llama.cpp server endpoints Resector uses (architecture §7 "Fake backend").
 // Template: ChatML. Tokenizer: every special marker, whitespace run and word is one token; BOS = 1 token.
+import { commonPrefix } from '../src/core/cache/cache';
 
 export type Reply = {
   chunks: string[];
@@ -13,7 +14,7 @@ export type Reply = {
   error?: string;
 };
 
-export type FakeOptions = { jinja?: boolean; nCtx?: number; model?: string };
+export type FakeOptions = { jinja?: boolean; nCtx?: number; model?: string; slots?: number };
 
 type ChatMessage = { role: string; content: string };
 
@@ -29,22 +30,30 @@ function applyTemplate(messages: ChatMessage[], addGenerationPrompt: boolean): s
   return chatml(messages.slice(0, -1), true) + last.content;
 }
 
+// Same piece, same id: prompts can be compared token by token.
+const vocab = new Map<string, number>();
+const idOf = (piece: string) => vocab.get(piece) ?? vocab.set(piece, 100 + vocab.size).get(piece)!;
+
 export function tokenize(text: string, addSpecial: boolean): number[] {
   const pieces = text.match(/<\|[a-z_]+\|>|\s+|[^\s<]+|</g) ?? [];
-  return [...(addSpecial ? [1] : []), ...pieces.map((_, i) => 100 + i)];
+  return [...(addSpecial ? [1] : []), ...pieces.map(idOf)];
 }
 
-export function startFakeLlamaCpp({ jinja = true, nCtx = 4096, model = 'qwen3-8b-q4_k_m.gguf' }: FakeOptions = {}) {
+export function startFakeLlamaCpp({ jinja = true, nCtx = 4096, model = 'qwen3-8b-q4_k_m.gguf', slots = 1 }: FakeOptions = {}) {
   const replies: Reply[] = [];
   const chatRequests: unknown[] = [];
   const error = (message: string) => Response.json({ error: { code: 500, message, type: 'server_error' } }, { status: 500 });
+  // One slot's prompt cache: the last prompt and its answer. Unless scripted, cache_n is the common
+  // prefix with it, less the last prompt token, which llama.cpp always evaluates.
+  let slot: number[] = [];
+  const reuse = (prompt: number[]) => Math.min(commonPrefix(prompt, slot), prompt.length - 1);
 
   const server = Bun.serve({
     port: 0,
     async fetch(req) {
       const url = new URL(req.url);
       if (url.pathname === '/v1/models') return Response.json({ object: 'list', data: [{ id: model, object: 'model' }] });
-      if (url.pathname === '/props') return Response.json({ default_generation_settings: { n_ctx: nCtx }, total_slots: 1 });
+      if (url.pathname === '/props') return Response.json({ default_generation_settings: { n_ctx: nCtx }, total_slots: slots });
       const body = (await req.json()) as Record<string, any>;
       if (url.pathname === '/apply-template') {
         if (body.tools && !jinja) return error('tools param requires --jinja flag');
@@ -55,7 +64,9 @@ export function startFakeLlamaCpp({ jinja = true, nCtx = 4096, model = 'qwen3-8b
         chatRequests.push(body);
         const reply = replies.shift();
         if (!reply) return error('no scripted reply');
-        const final = { choices: [], usage: reply.usage ?? null, timings: { cache_n: reply.cacheN ?? 0 } };
+        const prompt = tokenize(applyTemplate(body.messages, true), true);
+        const final = { choices: [], usage: reply.usage ?? null, timings: { cache_n: reply.cacheN ?? reuse(prompt) } };
+        slot = [...prompt, ...tokenize(reply.chunks.join(''), false)];
         return new Response(stream(reply, req.signal, final), { headers: { 'content-type': 'text/event-stream' } });
       }
       return new Response('not found', { status: 404 });

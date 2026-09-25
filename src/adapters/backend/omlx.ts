@@ -1,6 +1,7 @@
 // oMLX server backend (MLX on Apple Silicon): exact token counts via the Anthropic-format
 // /v1/messages/count_tokens, which applies the model's chat template with the generation prompt.
-import type { Backend } from '../../core/backend';
+import type { Backend, CacheHit } from '../../core/backend';
+import { commonPrefix } from '../../core/cache/cache';
 import type { Message } from '../../core/render/native';
 import { splitTokens } from '../../core/tokens/split';
 import { httpClient, streamChat } from './openai';
@@ -32,6 +33,34 @@ export async function connectOmlx(endpoint: string, { window, model, sampling }:
     return (await post<{ input_tokens: number }>('/v1/messages/count_tokens', body)).input_tokens;
   };
 
+  // Prefix cache (architecture §4): oMLX predicts its hits itself with the admin cache probe, in whole
+  // cache blocks. The probe sees a request's blocks only a moment after its answer, so the unchanged
+  // messages of the last request count too, rounded down to whole blocks. Where the probe is not
+  // available (e.g. admin API key), messages equal to the last request and its answer count as
+  // cached – approximate, as oMLX caches whole blocks only.
+  let probing = true;
+  const probe = async (messages: Message[]) => {
+    if (!probing) return null;
+    return post<{ ssd_hit_tokens: number; block_size: number }>('/admin/api/cache/probe', { model_id: model, messages }).catch(e => {
+      // Missing or locked (admin API key): not available for this connection; anything else: this count only.
+      probing = !/: 40[134] /.test(String(e));
+      return null;
+    });
+  };
+  let lastRequest: Message[] = [];
+  let lastExchange: Message[] = [];
+  // Tokens of the leading messages equal to `history`.
+  const unchanged = (history: Message[], messages: Message[], blocks: number[]) =>
+    blocks.slice(0, commonPrefix(history, messages, (a, b) => a.role === b.role && a.content === b.content)).reduce((sum, n) => sum + n, 0);
+  const predict = async (messages: Message[], blocks: number[]): Promise<CacheHit> => {
+    const hit = await probe(messages);
+    if (!hit) return { tokens: unchanged(lastExchange, messages, blocks), exact: false };
+    const recent = unchanged(lastRequest, messages, blocks);
+    return { tokens: Math.max(hit.ssd_hit_tokens, recent - (recent % hit.block_size)), exact: true };
+  };
+  // The prediction of the last count: the Gate counts a request right before sending it.
+  let last: { key: string; cached: CacheHit } | null = null;
+
   return {
     window: size,
 
@@ -40,9 +69,17 @@ export async function connectOmlx(endpoint: string, { window, model, sampling }:
       const [empty, ...prefixes] = await Promise.all(Array.from({ length: messages.length + 1 }, (_, n) => prefix(n)));
       // Without user message the smallest renderable request is the one with the empty user turn.
       const total = messages.some(m => m.role === 'user') ? await tokens(messages) : (prefixes.at(-1) ?? empty!);
-      return splitTokens({ empty: empty!, prefixes, total });
+      const split = splitTokens({ empty: empty!, prefixes, total });
+      last = { key: JSON.stringify(messages), cached: await predict(messages, split.blocks) };
+      return { ...split, cached: last.cached };
     },
 
-    chat: (messages, options) => streamChat({ name: 'oMLX', request }, { model, ...sampling }, messages, options),
+    async chat(messages, options) {
+      const predicted = last?.key === JSON.stringify(messages) && last.cached.exact ? last.cached.tokens : null;
+      const result = await streamChat({ name: 'oMLX', request }, { model, ...sampling }, messages, options);
+      lastRequest = messages;
+      lastExchange = [...messages, { role: 'assistant', content: result.content }];
+      return { ...result, predicted };
+    },
   };
 }

@@ -88,7 +88,7 @@ A text-based (TUI) coding agent whose core is the **Review Gate**: a pause befor
 - **FR-32** `resector` starts a new session; `resector -c [id]` resumes the last or a given one. No forking.
 - **FR-33** `/sessions`: full-screen table of the current project's sessions, newest first. Columns: marker (● current, ⊘ locked), title, updated, Model Profile (⚠ if missing from config), Context tokens / window (yellow > 90 %), blocks. Below: preview of the last blocks. Keys: `↑↓`, `Enter` open, `r` rename, `d` delete → `Delete …? y / N`, `n` new, `/` filter, `Esc` back. Deleting the current session switches to the newest other one or a new empty session.
 - **FR-34** Title = first User message (shortened); `r`/`/rename`, empty resets.
-- **FR-35** Resume = replay of the Session Log, then Gate. The cache is cold: every row shows `○` in the Cache column (FR-3). Missing profile → `defaultProfile` + hint, re-render.
+- **FR-35** Resume = replay of the Session Log, then Gate. The Cache column shows what the backend still holds (llama.cpp: `○` until the first answer; oMLX: as its cache probe reports) (FR-3). Missing profile → `defaultProfile` + hint, re-render.
 - **FR-36** A session is locked by one process; a second instance refuses to open or delete it.
 - **FR-37** An answer is written to the log only when complete (or aborted with `⚠ cut off`); a crash loses the in-flight answer and resume lands at the Gate before that request.
 
@@ -97,7 +97,7 @@ A text-based (TUI) coding agent whose core is the **Review Gate**: a pause befor
 - **FR-38** Model Profile fields: `name`, `backend` (`llamacpp`|`ollama`|`lmstudio`|`omlx`), `endpoint`, `model`, `window` (auto, overridable), `tokenizer` (auto, override path), `toolProtocol` (`native`|`text-xml`), `resultFormat` (`native`|`toon`), `sampling`, `thinking`, `compactionProfile`, `systemPrompt`.
 - **FR-39** *Dropped:* no profile switch within a session; the Model Profile (and thus the Tool Protocol) is fixed at session creation, except the resume fallback of FR-35.
 - **FR-40** llamacpp backend: check `--jinja` at startup; error with hint if missing.
-- **FR-41** After each response, compare pre-count with `usage.prompt_tokens` and reported cached tokens; show drift in the status line.
+- **FR-41** After each response, compare the predicted cache reuse with the cached tokens the server reports; if the server reused fewer, warn in the status line (`cache: predicted X · server reused Y`) and label the Cache column approximate (`Cache≈`) for the rest of the session.
 
 ### 4.10 Configuration
 

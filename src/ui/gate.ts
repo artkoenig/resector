@@ -1,11 +1,11 @@
 // Review Gate state: the Session Log in memory, Context = fold(events), token split, streaming answer.
 import { createEffect, createMemo, createSignal } from 'solid-js';
-import type { Backend, ChatResult } from '../core/backend';
+import type { Backend, ChatResult, Counted } from '../core/backend';
+import { warmRows } from '../core/cache/cache';
 import * as ops from '../core/context/operations';
 import type { SessionEvent, SessionLog } from '../core/log/events';
 import { fold, type Block } from '../core/log/fold';
 import { renderNative, sentBlocks, type Message } from '../core/render/native';
-import type { TokenSplit } from '../core/tokens/split';
 import { errorText, titleOf } from './format';
 
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
@@ -31,16 +31,21 @@ type CommandName = (typeof COMMANDS)[number]['name'];
 export type Streaming = { text: string; abort: AbortController };
 
 const sameMessages = (a: Message[], b: Message[]) => JSON.stringify(a) === JSON.stringify(b);
+// The prediction checked against the server (FR-41); a server reusing more than predicted is harmless.
+const cacheMiss = ({ predicted, cached }: ChatResult) =>
+  predicted !== null && cached !== null && cached < predicted ? `cache: predicted ${predicted} · server reused ${cached}` : null;
 
 export function createGate({ log, reconnect, openSessions, ...options }: GateOptions) {
   const [events, setEvents] = createSignal(options.events);
-  const [counted, setCounted] = createSignal<{ messages: Message[]; split: TokenSplit } | null>(null);
+  const [counted, setCounted] = createSignal<{ messages: Message[]; split: Counted } | null>(null);
   const [streaming, setStreaming] = createSignal<Streaming | null>(null);
   const [status, setStatus] = createSignal<Status | null>(options.notice ?? null);
   const [selected, setSelected] = createSignal(1);
   // Marked blocks (Space) for Compaction; UI state, not logged.
   const [marked, setMarked] = createSignal<ReadonlySet<number>>(new Set());
   const [backend, setBackend] = createSignal(options.backend);
+  // Set once the server reused fewer tokens than predicted: the prediction is approximate (NFR-2).
+  const [mispredicted, setMispredicted] = createSignal(false);
 
   const append = (event: SessionEvent) => {
     log.append(event);
@@ -52,6 +57,8 @@ export function createGate({ log, reconnect, openSessions, ...options }: GateOpt
   const messages = createMemo(() => renderNative(context()), [], { equals: sameMessages });
   // Token split of the current messages only; a stale split would misalign rows after a move.
   const split = () => (counted()?.messages === messages() ? counted()!.split : null);
+  // Per sent block, in Context order: still in the server's prefix cache (FR-3).
+  const warm = createMemo(() => (split() ? warmRows(split()!.blocks, split()!.cached.tokens) : null));
   const nextId = () => context().nextId;
   // Messages right after the last answer; a Context changed since then may be sent again as is.
   const answered = createMemo(() => {
@@ -130,11 +137,13 @@ export function createGate({ log, reconnect, openSessions, ...options }: GateOpt
     const cutOff = result.finish !== 'stop';
     append({ type: 'BlockAdded', id: nextId(), kind: 'Assistant', origin: 'model', content: result.content, ...(cutOff && { cutOff }) });
     append({ type: 'ResponseReceived', usage: result.usage, cached: result.cached });
-    setStatus(
+    const status: Status =
       result.finish === 'aborted' ? { text: '⚠ aborted – partial answer kept (cut off)', tone: 'warn' }
       : cutOff ? { text: '⚠ cut off at max_tokens', tone: 'warn' }
-      : { text: 'answer complete', tone: 'ok' },
-    );
+      : { text: 'answer complete', tone: 'ok' };
+    const miss = cacheMiss(result);
+    if (miss) setMispredicted(true);
+    setStatus(miss ? { text: `${status.text} · ⚠ ${miss}`, tone: 'warn' } : status);
   }
 
   async function send() {
@@ -203,6 +212,9 @@ export function createGate({ log, reconnect, openSessions, ...options }: GateOpt
     selectedBlock,
     marked,
     window: () => backend().window,
+    // Whether a sent block is still cached; null while counting.
+    warm: (id: number) => warm()?.[sent().findIndex(b => b.id === id)] ?? null,
+    approximate: () => mispredicted() || split()?.cached.exact === false,
     profile: () => context().profile,
     submit,
     send,

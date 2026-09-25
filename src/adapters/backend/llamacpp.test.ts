@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
 import { chatml, startFakeLlamaCpp, tokenize } from '../../../test/fake-llamacpp';
+import type { Message } from '../../core/render/native';
 import { connectLlamaCpp } from './llamacpp';
 
 let fake: ReturnType<typeof startFakeLlamaCpp>;
@@ -50,8 +51,9 @@ test('an answer streams in deltas and ends with finish reason, usage and cached 
     finish: 'stop',
     usage: { prompt_tokens: 20, completion_tokens: 2 },
     cached: 7,
+    predicted: 0,
   });
-  expect(fake.chatRequests).toEqual([{ messages, stream: true, stream_options: { include_usage: true } }]);
+  expect(fake.chatRequests).toEqual([{ n_cache_reuse: 0, messages, stream: true, stream_options: { include_usage: true } }]);
 });
 
 test('aborting keeps the partial answer', async () => {
@@ -62,7 +64,7 @@ test('aborting keeps the partial answer', async () => {
     signal: abort.signal,
     onDelta: () => abort.abort(),
   });
-  expect(result).toEqual({ content: 'Hal', finish: 'aborted', usage: null, cached: null });
+  expect(result).toEqual({ content: 'Hal', finish: 'aborted', usage: null, cached: null, predicted: 0 });
 });
 
 test('a backend error surfaces with its message', async () => {
@@ -104,7 +106,7 @@ test('aborting before the answer starts yields an empty aborted answer', async (
   fake = startFakeLlamaCpp();
   const abort = new AbortController();
   abort.abort();
-  expect(await chatOnce(abort.signal)).toEqual({ content: '', finish: 'aborted', usage: null, cached: null });
+  expect(await chatOnce(abort.signal)).toEqual({ content: '', finish: 'aborted', usage: null, cached: null, predicted: 0 });
 });
 
 test('a server that disappears before chatting is reported as unreachable', async () => {
@@ -122,4 +124,53 @@ test('the Model Profile overrides the window and adds model and sampling to ever
   fake.reply({ chunks: ['ok'] });
   await backend.chat([{ role: 'user', content: 'hi' }], { signal: new AbortController().signal, onDelta: () => {} });
   expect(fake.chatRequests[0]).toMatchObject({ model: 'qwen3', temperature: 0.2, top_k: 20, stream: true });
+});
+
+const SYSTEM = { role: 'system', content: 'You are an agent.' } as const;
+const USER = { role: 'user', content: 'hi there' } as const;
+const send = (backend: Awaited<ReturnType<typeof connectLlamaCpp>>, messages: Message[]) =>
+  backend.chat(messages, { signal: new AbortController().signal, onDelta: () => {} });
+
+test('before the first request of a session nothing is predicted as cached', async () => {
+  fake = startFakeLlamaCpp();
+  const counted = await (await connectLlamaCpp(fake.url)).count([SYSTEM, USER]);
+  expect(counted.cached).toEqual({ tokens: 0, exact: true });
+});
+
+test('after an answer, the prompt and the answer are cached up to the first differing token', async () => {
+  fake = startFakeLlamaCpp();
+  const backend = await connectLlamaCpp(fake.url);
+  fake.reply({ chunks: ['hello'] });
+  await send(backend, [SYSTEM, USER]);
+  // System 12 + User 8 + Assistant 6 are unchanged (BOS before them is not a row); the new User block starts cold.
+  const next = await backend.count([SYSTEM, USER, { role: 'assistant', content: 'hello' }, { role: 'user', content: 'more' }]);
+  expect(next.cached).toEqual({ tokens: 26, exact: true });
+  // An edited User block invalidates everything from its first changed token on.
+  const edited = await backend.count([SYSTEM, { role: 'user', content: 'hi you' }]);
+  expect(edited.cached.tokens).toBe(12 + 5);
+});
+
+// The Assistant row counts as cached with its end of turn, which the server has not processed yet
+// (generation stopped there); the reuse predicted for a request is what the server actually keeps.
+test('each answer reports the reuse predicted for its request; an unchanged prompt re-evaluates its last token', async () => {
+  fake = startFakeLlamaCpp();
+  const backend = await connectLlamaCpp(fake.url);
+  fake.reply({ chunks: ['hello'] });
+  fake.reply({ chunks: ['hello'] });
+  expect((await send(backend, [SYSTEM, USER])).predicted).toBe(0);
+  // BOS + System 12 + User 8 + generation prompt 3 = 24 tokens, all in the cache.
+  expect((await send(backend, [SYSTEM, USER])).predicted).toBe(23);
+});
+
+test('a session pins its llama.cpp slot and turns cache reuse off', async () => {
+  fake = startFakeLlamaCpp({ slots: 4 });
+  const backend = await connectLlamaCpp(fake.url, { session: 'ses_a', sampling: { n_cache_reuse: 256 } });
+  fake.reply({ chunks: ['ok'] });
+  fake.reply({ chunks: ['ok'] });
+  await send(backend, [USER]);
+  await send(await connectLlamaCpp(fake.url, { session: 'ses_a' }), [USER]);
+  const [first, second] = fake.chatRequests as { id_slot: number; n_cache_reuse: number }[];
+  expect([0, 1, 2, 3]).toContain(first!.id_slot);
+  expect(second!.id_slot).toBe(first!.id_slot);
+  expect(first!.n_cache_reuse).toBe(0);
 });

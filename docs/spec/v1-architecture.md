@@ -19,7 +19,7 @@ src/
     context/               Context Blocks, Revisions, pins, Tool Pairs, undo
     render/                Context → request per Tool Protocol (native, text-xml)
     tokens/                Tokenizer interface, per-block split, drift
-    cache/                 prefix diff → invalidation point, cost estimate
+    cache/                 prefix diff → invalidation point → rows ●/○
     compaction/            compaction request + proposal state machine
     approval/              permission rules, bash command splitting, evaluation
     toolcall/              parse tool calls (native + text-xml), malformed detection, split thinking
@@ -82,8 +82,10 @@ Per-block split via offset mapping / prefix differences; remainder = `Template` 
 
 ### Prefix cache
 
-- Invalidation point = first differing token between the new rendered prompt and the last sent one. Rows before it `●`, from it on `○`; no prefill time estimate.
-- One pinned `id_slot` per session, `--cache-reuse` off. Verified against `timings.cache_n` / `prompt_eval_cached_count`.
+- Invalidation point = first differing token between the new rendered prompt and the last sent one plus its answer. A row is `●` if all its tokens lie before it, else `○`; the answer counts with its end of turn. No prefill time estimate.
+- llama.cpp: token ids via `/tokenize`; one pinned `id_slot` per session (`hash(session id) mod total_slots`), `n_cache_reuse: 0` per request; the server always evaluates the last prompt token. The prediction starts cold for each connection (new, resumed, `/reload`).
+- oMLX: no token ids; its cache probe `/admin/api/cache/probe` predicts hits in whole cache blocks. It sees a request's blocks only shortly after the answer, so the unchanged messages of the last request also count, rounded down to whole blocks. Without the probe (e.g. admin API key required): message-level comparison with the last request and its answer, labelled approximate.
+- Verified against `timings.cache_n` / `usage.prompt_tokens_details.cached_tokens`: a server reusing fewer tokens than predicted is warned about and labels the prediction approximate for the session (`Cache≈`, NFR-2); SWA/recurrent models are not detectable via the API.
 - Compaction requests on the same model/slot leave the session cache cold (shown in status).
 
 ## 5. Tool Approval

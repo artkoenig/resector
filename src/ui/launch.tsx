@@ -38,7 +38,7 @@ export function Launch(props: LaunchOptions) {
     return loaded;
   };
   // The session keeps its Model Profile; /reload re-reads its values (FR-39, FR-44).
-  const reconnect = (name: string) => async () => connect(load().profile(name));
+  const reconnect = (name: string, session: string) => async () => connect(load().profile(name), session);
 
   function create(loaded: Loaded) {
     const opened = props.store.create();
@@ -67,7 +67,7 @@ export function Launch(props: LaunchOptions) {
   async function open(loaded: Loaded, which: SessionRef | undefined) {
     const { opened, events, notice } = which ? resume(loaded, which) : create(loaded);
     const profile = fold(events).profile;
-    const backend = await connect(loaded.profile(profile)).catch(e => {
+    const backend = await connect(loaded.profile(profile), opened.id).catch(e => {
       opened.release();
       if (!which) props.store.delete(opened.id);
       throw e;
@@ -76,7 +76,7 @@ export function Launch(props: LaunchOptions) {
     session = opened;
     setCurrent(opened.id);
     setFound(null);
-    setGate({ backend, log: opened.log, events, notice, reconnect: reconnect(profile), openSessions: () => setView('sessions') });
+    setGate({ backend, log: opened.log, events, notice, reconnect: reconnect(profile, opened.id), openSessions: () => setView('sessions') });
   }
 
   // /sessions (FR-33): switching sessions reconnects; the Gate comes back with the session's logged events.
