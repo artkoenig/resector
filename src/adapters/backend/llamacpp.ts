@@ -17,7 +17,10 @@ const PROBE_TOOLS = [{ type: 'function', function: { name: 'probe', parameters: 
 // render as a prefill (no end of turn). Its constant tokens cancel out in the prefix differences.
 const TRAILER: Message = { role: 'user', content: '' };
 
-export async function connectLlamaCpp(endpoint: string): Promise<Backend> {
+// Model Profile values that shape requests; the window defaults to the server's per-slot context.
+export type LlamaCppOptions = { window?: number; model?: string; sampling?: Record<string, number> };
+
+export async function connectLlamaCpp(endpoint: string, { window, model, sampling }: LlamaCppOptions = {}): Promise<Backend> {
   const base = endpoint.replace(/\/$/, '');
   const request = async (path: string, init?: RequestInit): Promise<Response> => {
     const res = await fetch(base + path, init).catch(e => {
@@ -48,7 +51,7 @@ export async function connectLlamaCpp(endpoint: string): Promise<Backend> {
   };
 
   return {
-    window: props.default_generation_settings.n_ctx,
+    window: window ?? props.default_generation_settings.n_ctx,
 
     async count(messages) {
       const prefixes = await Promise.all(messages.map((_, i) => prefix(messages.slice(0, i + 1))));
@@ -60,7 +63,7 @@ export async function connectLlamaCpp(endpoint: string): Promise<Backend> {
     async chat(messages, { signal, onDelta }) {
       const result: ChatResult = { content: '', finish: 'aborted', usage: null, cached: null };
       try {
-        const body = JSON.stringify({ messages, stream: true, stream_options: { include_usage: true } });
+        const body = JSON.stringify({ model, ...sampling, messages, stream: true, stream_options: { include_usage: true } });
         const res = await request('/v1/chat/completions', { method: 'POST', body, signal });
         let finished = false;
         for await (const event of serverSentEvents(res.body!)) finished = accumulate(result, event, onDelta) || finished;

@@ -13,7 +13,7 @@ export type Reply = {
   error?: string;
 };
 
-export type FakeOptions = { jinja?: boolean; nCtx?: number };
+export type FakeOptions = { jinja?: boolean; nCtx?: number; model?: string };
 
 type ChatMessage = { role: string; content: string };
 
@@ -34,7 +34,7 @@ export function tokenize(text: string, addSpecial: boolean): number[] {
   return [...(addSpecial ? [1] : []), ...pieces.map((_, i) => 100 + i)];
 }
 
-export function startFakeLlamaCpp({ jinja = true, nCtx = 4096 }: FakeOptions = {}) {
+export function startFakeLlamaCpp({ jinja = true, nCtx = 4096, model = 'qwen3-8b-q4_k_m.gguf' }: FakeOptions = {}) {
   const replies: Reply[] = [];
   const chatRequests: unknown[] = [];
   const error = (message: string) => Response.json({ error: { code: 500, message, type: 'server_error' } }, { status: 500 });
@@ -43,6 +43,7 @@ export function startFakeLlamaCpp({ jinja = true, nCtx = 4096 }: FakeOptions = {
     port: 0,
     async fetch(req) {
       const url = new URL(req.url);
+      if (url.pathname === '/v1/models') return Response.json({ object: 'list', data: [{ id: model, object: 'model' }] });
       if (url.pathname === '/props') return Response.json({ default_generation_settings: { n_ctx: nCtx }, total_slots: 1 });
       const body = (await req.json()) as Record<string, any>;
       if (url.pathname === '/apply-template') {

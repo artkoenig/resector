@@ -45,7 +45,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     setMode('context');
   };
   const submit = () => {
-    if (draft().trim()) gate.addUser(draft());
+    gate.submit(draft());
     leaveInput();
   };
   const inputKeys: Record<string, () => void> = { return: submit, tab: leaveInput, escape: leaveInput };
@@ -91,8 +91,8 @@ export function App(props: GateOptions & { onQuit: () => void }) {
         <Show when={selectedRow()}>
           {(row: () => Row) => (
             <>
-              <text fg={FREE_COLOR}>{cell(`── #${row().n} ${row().kind} · ${row().title} `, width()).replace(/  +$/, m => ' ' + '─'.repeat(m.length - 1))}</text>
-              <text fg="#bcbcbc">{row().content}</text>
+              <text fg={FREE_COLOR} flexShrink={0}>{cell(`── #${row().n} ${row().kind} · ${row().title} `, width()).replace(/  +$/, m => ' ' + '─'.repeat(m.length - 1))}</text>
+              <text fg="#bcbcbc" flexShrink={0}>{row().content}</text>
             </>
           )}
         </Show>
@@ -111,10 +111,10 @@ export function App(props: GateOptions & { onQuit: () => void }) {
 
 function Header(props: { gate: Gate; width: number }) {
   const total = () => props.gate.split()?.total ?? 0;
-  const tokens = () => `${props.gate.split() ? formatTokens(total()) : '…'} / ${formatTokens(props.gate.window)}`;
+  const tokens = () => `${props.gate.split() ? formatTokens(total()) : '…'} / ${formatTokens(props.gate.window())}`;
   const label = () => ` ${props.gate.profile}  `;
   const barWidth = () => Math.max(0, props.width - label().length - tokens().length - 3);
-  const tone = () => (total() > props.gate.window ? TONE.error : total() >= 0.9 * props.gate.window ? TONE.warn : undefined);
+  const tone = () => (total() > props.gate.window() ? TONE.error : total() >= 0.9 * props.gate.window() ? TONE.warn : undefined);
   return (
     <text>
       <strong>{label()}</strong>
@@ -129,7 +129,7 @@ function contextBar(gate: Gate, width: number): { char: string; color: string }[
   const split = gate.split();
   const cells = Array.from({ length: width }, () => ({ char: '░', color: FREE_COLOR }));
   if (!split || split.blocks.length !== gate.context().blocks.length) return cells;
-  const scale = Math.max(split.total, gate.window);
+  const scale = Math.max(split.total, gate.window());
   const segments = [
     ...gate.context().blocks.map((b, i) => ({ tokens: split.blocks[i]!, color: i === gate.selected() ? '#ffffff' : KIND_COLOR[b.kind], selected: i === gate.selected() })),
     { tokens: split.template, color: TEMPLATE_COLOR, selected: false },

@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "profiles": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "backend": {
+            "type": "string",
+            "enum": [
+              "llamacpp",
+              "ollama",
+              "lmstudio"
+            ]
+          },
+          "endpoint": {
+            "description": "Server URL; default per backend (8080, 11434, 1234 on localhost)",
+            "type": "string"
+          },
+          "model": {
+            "description": "Model name as the backend knows it",
+            "type": "string"
+          },
+          "window": {
+            "description": "Context window in tokens; auto-detected when absent",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "tokenizer": {
+            "description": "Tokenizer path; auto-detected when absent",
+            "type": "string"
+          },
+          "toolProtocol": {
+            "default": "native",
+            "type": "string",
+            "enum": [
+              "native",
+              "text-xml"
+            ]
+          },
+          "resultFormat": {
+            "default": "native",
+            "type": "string",
+            "enum": [
+              "native",
+              "toon"
+            ]
+          },
+          "sampling": {
+            "default": {},
+            "description": "Sampling parameters sent with every request, e.g. temperature",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "thinking": {
+            "default": "off",
+            "type": "string",
+            "enum": [
+              "off",
+              "on",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "compactionProfile": {
+            "description": "Model Profile used for Compaction; default: this one",
+            "type": "string"
+          },
+          "systemPrompt": {
+            "description": "System prompt file, relative to this config file",
+            "type": "string"
+          },
+          "promptTokPerSec": {
+            "description": "Measured prompt processing speed, for cache estimates",
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "backend"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "defaultProfile": {
+      "description": "Model Profile for new sessions",
+      "type": "string"
+    },
+    "permission": {
+      "description": "bash command pattern → decision; project config may only tighten",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "enum": [
+          "allow",
+          "ask",
+          "deny"
+        ]
+      }
+    },
+    "keybindings": {
+      "description": "Action → key",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "bash": {
+      "type": "object",
+      "properties": {
+        "timeout": {
+          "description": "Seconds (default 120)",
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

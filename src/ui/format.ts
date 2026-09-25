@@ -12,3 +12,5 @@ export const cell = (s: string, width: number): string =>
   s.length > width ? s.slice(0, Math.max(0, width - 1)) + '…' : s.padEnd(width);
 
 export const right = (s: string, width: number): string => s.padStart(width);
+
+export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));

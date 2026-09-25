@@ -1,25 +1,29 @@
-// Starts the Gate in the terminal: connect the backend, open a new Session Log, render the screen.
+// Starts Resector in the terminal: config or first-start setup, then the Gate on a new Session Log.
 import { homedir } from 'node:os';
 import { createCliRenderer } from '@opentui/core';
 import { render } from '@opentui/solid';
-import { connectLlamaCpp } from '../adapters/backend/llamacpp';
+import { configPaths } from '../adapters/fs/config';
 import { createSessionLog, projectSessionsDir } from '../adapters/store/session-log';
-import { App } from './app';
+import { Launch } from './launch';
 
-// Placeholder until Model Profiles and the shipped system prompt exist (#3).
-const PROFILE = 'default';
-const SYSTEM_PROMPT = "You are a coding agent running locally in the user's project.\n\nBe extremely concise. Sacrifice grammar for the sake of concision.";
-
-export async function start(endpoint: string) {
-  const backend = await connectLlamaCpp(endpoint).catch((e: Error) => {
-    process.stderr.write(`resector: ${e.message}\n`);
-    process.exit(1);
-  });
-  const log = createSessionLog(projectSessionsDir(homedir(), process.cwd()), `ses_${Date.now().toString(36)}`);
+export async function start() {
+  const home = homedir();
+  const cwd = process.cwd();
   const renderer = await createCliRenderer({ exitOnCtrlC: true });
-  const quit = () => {
+  const exit = (code: number, message = '') => {
     renderer.destroy();
-    process.exit(0);
+    process.stderr.write(message);
+    process.exit(code);
   };
-  await render(() => <App backend={backend} log={log} profile={PROFILE} systemPrompt={SYSTEM_PROMPT} onQuit={quit} />, renderer);
+  await render(
+    () => (
+      <Launch
+        paths={configPaths({ home, cwd, env: process.env })}
+        openLog={() => createSessionLog(projectSessionsDir(home, cwd), `ses_${Date.now().toString(36)}`)}
+        onQuit={() => exit(0)}
+        onFatal={message => exit(1, `resector: ${message}\n`)}
+      />
+    ),
+    renderer,
+  );
 }

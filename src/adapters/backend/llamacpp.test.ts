@@ -114,3 +114,12 @@ test('a server that disappears before chatting is reported as unreachable', asyn
   const chat = backend.chat([{ role: 'user', content: 'hi' }], { signal: new AbortController().signal, onDelta: () => {} });
   await expect(chat).rejects.toThrow(`cannot reach llama.cpp at ${fake.url}`);
 });
+
+test('the Model Profile overrides the window and adds model and sampling to every request', async () => {
+  fake = startFakeLlamaCpp({ nCtx: 8192 });
+  const backend = await connectLlamaCpp(fake.url, { window: 4096, model: 'qwen3', sampling: { temperature: 0.2, top_k: 20 } });
+  expect(backend.window).toBe(4096);
+  fake.reply({ chunks: ['ok'] });
+  await backend.chat([{ role: 'user', content: 'hi' }], { signal: new AbortController().signal, onDelta: () => {} });
+  expect(fake.chatRequests[0]).toMatchObject({ model: 'qwen3', temperature: 0.2, top_k: 20, stream: true });
+});

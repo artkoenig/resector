@@ -20,7 +20,7 @@ async function start() {
   const backend = await connectLlamaCpp(fake.url);
   const log = createSessionLog(mkdtempSync(join(tmpdir(), 'resector-')), 'ses_test');
   ui = await testRender(
-    () => <App backend={backend} log={log} profile="default" systemPrompt="You are an agent." onQuit={() => {}} />,
+    () => <App backend={backend} log={log} profile="default" systemPrompt="You are an agent." reconnect={async () => backend} onQuit={() => {}} />,
     { width: 80, height: 16 },
   );
   await ui.waitForFrame(f => f.includes('16 / 4k'));

@@ -5,15 +5,17 @@ import type { SessionEvent, SessionLog } from '../core/log/events';
 import { fold } from '../core/log/fold';
 import { renderNative, type Message } from '../core/render/native';
 import type { TokenSplit } from '../core/tokens/split';
+import { errorText } from './format';
 
-export type GateOptions = { backend: Backend; log: SessionLog; profile: string; systemPrompt: string };
+// reconnect: re-reads the config and opens the session's Model Profile again (/reload, FR-44).
+export type GateOptions = { backend: Backend; log: SessionLog; profile: string; systemPrompt: string; reconnect: () => Promise<Backend> };
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
 // In-flight answer; never persisted until complete or aborted (FR-37).
 export type Streaming = { text: string; abort: AbortController };
 
 const sameMessages = (a: Message[], b: Message[]) => JSON.stringify(a) === JSON.stringify(b);
 
-export function createGate({ backend, log, profile, systemPrompt }: GateOptions) {
+export function createGate({ log, profile, systemPrompt, reconnect, ...options }: GateOptions) {
   const initial: SessionEvent[] = [
     { type: 'SessionCreated', profile, protocol: 'native' },
     { type: 'BlockAdded', id: 1, kind: 'System', origin: 'config', content: systemPrompt },
@@ -24,6 +26,7 @@ export function createGate({ backend, log, profile, systemPrompt }: GateOptions)
   const [streaming, setStreaming] = createSignal<Streaming | null>(null);
   const [status, setStatus] = createSignal<Status | null>(null);
   const [selected, setSelected] = createSignal(0);
+  const [backend, setBackend] = createSignal(options.backend);
 
   const append = (event: SessionEvent) => {
     log.append(event);
@@ -38,7 +41,7 @@ export function createGate({ backend, log, profile, systemPrompt }: GateOptions)
 
   createEffect(() => {
     const current = messages();
-    backend.count(current).then(
+    backend().count(current).then(
       s => messages() === current && setSplit(s),
       e => setStatus({ text: String(e), tone: 'error' }),
     );
@@ -71,7 +74,7 @@ export function createGate({ backend, log, profile, systemPrompt }: GateOptions)
     setStreaming({ text: '', abort });
     setStatus(null);
     try {
-      const { total } = await backend.count(request);
+      const { total } = await backend().count(request);
       if (abort.signal.aborted) {
         setStreaming(null);
         setStatus({ text: 'send cancelled', tone: 'info' });
@@ -80,14 +83,31 @@ export function createGate({ backend, log, profile, systemPrompt }: GateOptions)
       append({ type: 'RequestSent', hash: Bun.hash(JSON.stringify(request)).toString(16), tokens: total });
       selectLast();
       const onDelta = (d: string) => setStreaming({ text: streaming()!.text + d, abort });
-      const result = await backend.chat(request, { signal: abort.signal, onDelta });
+      const result = await backend().chat(request, { signal: abort.signal, onDelta });
       setStreaming(null);
       finish(result);
     } catch (e) {
       setStreaming(null);
-      setStatus({ text: `backend error: ${e instanceof Error ? e.message : e}`, tone: 'error' });
+      setStatus({ text: `backend error: ${errorText(e)}`, tone: 'error' });
     }
     selectLast();
+  }
+
+  async function reload() {
+    try {
+      setBackend(await reconnect());
+      setStatus({ text: 'config reloaded', tone: 'ok' });
+    } catch (e) {
+      setStatus({ text: `reload failed: ${errorText(e)}`, tone: 'error' });
+    }
+  }
+
+  const commands: Record<string, () => void> = { '/reload': () => void reload() };
+  // Input text: a known command runs, anything else becomes a User block.
+  function submit(text: string) {
+    const command = commands[text.trim()];
+    if (command) command();
+    else if (text.trim()) addUser(text);
   }
 
   return {
@@ -96,9 +116,9 @@ export function createGate({ backend, log, profile, systemPrompt }: GateOptions)
     streaming,
     status,
     selected,
-    window: backend.window,
+    window: () => backend().window,
     profile,
-    addUser,
+    submit,
     send,
     abort: () => streaming()?.abort.abort(),
     select: (i: number) => setSelected(Math.max(0, Math.min(lastRow(), i))),
