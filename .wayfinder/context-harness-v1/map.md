@@ -30,6 +30,8 @@ Umsetzbare **Spec für v1** (PRD + Architektur + Glossar) eines textbasierten Co
 
 <!-- one line per closed ticket -->
 
+- [opencode-Architektur & TUI-Stack-Optionen](tickets/001-opencode-and-tui-stacks.md): eigener Harness statt Plugin/Fork; Stack-Finalisten Go+Bubble Tea v2 vs. TS+OpenTUI
+
 ## Not yet specified
 
 - System-Prompt-Design für kleine Modelle (Länge, Inhalt, selbst als editierbarer Block).
