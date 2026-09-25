@@ -21,7 +21,7 @@ A text-based (TUI) coding agent whose core is the **Review Gate**: a pause befor
 ### 4.1 Screen & modes
 
 - **FR-1** One screen. Header line · block table · preview of selected block · input line · status line. No separate chat screen; the block table *is* the conversation.
-- **FR-2** Header: model · backend · Tool Protocol · state tag (`GATE`, `THINKING`, `STREAMING`, `COMPACTION`, …) · tokens / window · cache info `○ cold from #N: X tok ≈ Ys`. Tokens yellow ≥ 90 %, red with `over by X` above the window. With inexact tokenizer: `±X` drift. No budget bar, no per-kind totals.
+- **FR-2** Header: Model Profile name · tokens / window. Tokens yellow ≥ 90 %, red with `over by X` above the window. With inexact tokenizer: `±X` drift. Nothing else (no backend, protocol, state tag, cache summary, budget bar or per-kind totals); cache state is visible per row (FR-3).
 - **FR-3** Table columns: `# · Kind · Title · Tokens · Cache ●/○ · Flags`. Kinds written out (System, Tools, User, Thinking, Assistant, Tool Call, Tool Result, Note). Last row `Template` (BOS, generation prompt overhead), not selectable. Sum of all rows = exact request size.
 - **FR-4** Title is a display label only, never sent. Default = first non-empty line of content; origin titles: `System prompt`, tool names, the call, `→ <call>`, `@file <path>`, `⇄ <call>`, `◇ N blocks compacted`. `r` renames (empty = reset); rename is a log event without Context/cache effect.
 - **FR-5** Flags show only changes since the last request and reset after sending: `✎n` new Revision, `⤒`/`⤓` pin set/changed, `⇄` moved by user. Status flags persist: `✂ template` (FR-48), `⚠ cut off`, `⚠ malformed`, `? approve`, `⚠ killed`, `⚠ timeout`.
@@ -112,7 +112,7 @@ A text-based (TUI) coding agent whose core is the **Review Gate**: a pause befor
 - **FR-47** Thinking blocks stay in the Context and are sent with every request until the user removes them.
 - **FR-48** If the model's chat template drops a Thinking block (e.g. Qwen3 strips thinking before the last user message), its token count is what actually gets rendered (0), the row is dimmed and flagged `✂ template`. Resector does not bypass the template. Exact on llama.cpp, best effort on Ollama/LM Studio.
 - **FR-49** Thinking is set per Model Profile only: `thinking: off | on | low | medium | high`, restricted to what the model supports (e.g. Qwen3 on/off, gpt-oss low/medium/high). No runtime switch; start a new session with another profile.
-- **FR-50** While the model thinks, the header tag is `THINKING` and the preview streams the thinking dimmed.
+- **FR-50** While the model thinks, the status line shows `thinking` and the preview streams the thinking dimmed.
 
 ## 5. Non-functional requirements
 
