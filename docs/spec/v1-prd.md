@@ -21,11 +21,11 @@ A text-based (TUI) coding agent whose core is the **Review Gate**: a pause befor
 ### 4.1 Screen & modes
 
 - **FR-1** One screen. Header line · block table · preview of selected block · input line · status line. No separate chat screen; the block table *is* the conversation.
-- **FR-2** Header: model · backend · Tool Protocol · state tag (`GATE`, `COMPACTION`, …) · tokens / window · cache info `○ cold from #N: X tok ≈ Ys`. Tokens yellow ≥ 90 %, red with `over by X` above the window. With inexact tokenizer: `±X` drift. No budget bar, no per-kind totals.
-- **FR-3** Table columns: `# · Kind · Title · Tokens · Cache ●/○ · Flags`. Kinds written out (System, Tools, User, Assistant, Tool Call, Tool Result, Note). Last row `Template` (BOS, generation prompt overhead), not selectable. Sum of all rows = exact request size.
+- **FR-2** Header: model · backend · Tool Protocol · state tag (`GATE`, `THINKING`, `STREAMING`, `COMPACTION`, …) · tokens / window · cache info `○ cold from #N: X tok ≈ Ys`. Tokens yellow ≥ 90 %, red with `over by X` above the window. With inexact tokenizer: `±X` drift. No budget bar, no per-kind totals.
+- **FR-3** Table columns: `# · Kind · Title · Tokens · Cache ●/○ · Flags`. Kinds written out (System, Tools, User, Thinking, Assistant, Tool Call, Tool Result, Note). Last row `Template` (BOS, generation prompt overhead), not selectable. Sum of all rows = exact request size.
 - **FR-4** Title is a display label only, never sent. Default = first non-empty line of content; origin titles: `System prompt`, tool names, the call, `→ <call>`, `@file <path>`, `⇄ <call>`, `◇ N blocks compacted`. `r` renames (empty = reset); rename is a log event without Context/cache effect.
-- **FR-5** Flags show only changes since the last request and reset after sending: `✎n` new Revision, `⤒`/`⤓` pin set/changed, `⇄` moved by user. Status flags persist: `⚠ cut off`, `⚠ malformed`, `? approve`, `⚠ killed`, `⚠ timeout`.
-- **FR-6** Two modes, `Tab` toggles. **Context mode** (default): list focused; `Enter` sends the Context. **Input mode**: `Enter` with text adds a User block and returns to Context mode *without sending*; `Tab`/`Esc` return without adding; `⌥⌫` deletes a word.
+- **FR-5** Flags show only changes since the last request and reset after sending: `✎n` new Revision, `⤒`/`⤓` pin set/changed, `⇄` moved by user. Status flags persist: `✂ template` (FR-48), `⚠ cut off`, `⚠ malformed`, `? approve`, `⚠ killed`, `⚠ timeout`.
+- **FR-6** Two modes, `Tab` toggles. **Context mode** (default): list focused; `Enter` sends the Context. **Input mode**: `Enter` with text adds a User block and returns to Context mode *without sending*; `Tab`/`Esc` return without adding; `⌥⌫` deletes a word. Typing `/` shows command suggestions above the input (name, argument, description), filtered while typing: `↑↓` choose, `Tab` complete, `Enter` run. v1 commands: `/sessions`, `/rename`, `/reload`.
 - **FR-7** Streaming: the answer appears live as a new row (spinner in Tokens column); afterwards back to the Gate. `Esc` aborts; the partial answer is kept with `⚠ cut off`.
 
 ### 4.2 Context operations (Context mode)
@@ -38,9 +38,8 @@ A text-based (TUI) coding agent whose core is the **Review Gate**: a pause befor
 | `r` | rename |
 | `d` | remove (struck through until sent, then hidden; undoable) |
 | `p` | pin cycle: top → bottom → off |
-| `Space` | mark and advance |
+| `Space` | mark / unmark (selection stays) |
 | `c` | compact marked blocks (or current) |
-| `n` | add free-text Note |
 | `u` | undo |
 | `q` | quit |
 
@@ -61,7 +60,7 @@ A text-based (TUI) coding agent whose core is the **Review Gate**: a pause befor
 ### 4.4 Budget
 
 - **FR-18** No answer reserve. Every request sends `max_tokens = window − Context`. Sending is blocked only if Context ≥ window (minus last measured drift for inexact tokenizers). No suggestions, no largest-block list.
-- **FR-19** `finish_reason=length` → Assistant block `⚠ cut off`, stays in the Context; a cut-off Tool Call is not executed. No auto-continue.
+- **FR-19** `finish_reason=length` → Assistant block `⚠ cut off`, stays in the Context; a cut-off Tool Call is not executed. No auto-continue. Cut off during thinking → Thinking block `⚠ cut off`, no Assistant block.
 - **FR-20** No automatic truncation of tool output, neither in the Context nor in the preview (preview scrolls). Over-budget results are resolved by the user with `e`, `d`, `c`.
 
 ### 4.5 Tool execution & Tool Approval
@@ -95,7 +94,7 @@ A text-based (TUI) coding agent whose core is the **Review Gate**: a pause befor
 
 ### 4.9 Model Profiles & protocols
 
-- **FR-38** Model Profile fields: `name`, `backend` (`llamacpp`|`ollama`|`lmstudio`), `endpoint`, `model`, `window` (auto, overridable), `tokenizer` (auto, override path), `toolProtocol` (`native`|`text-xml`), `resultFormat` (`native`|`toon`), `sampling`, `compactionProfile`, `systemPrompt`; measured `promptTokPerSec` stored for cache estimates.
+- **FR-38** Model Profile fields: `name`, `backend` (`llamacpp`|`ollama`|`lmstudio`), `endpoint`, `model`, `window` (auto, overridable), `tokenizer` (auto, override path), `toolProtocol` (`native`|`text-xml`), `resultFormat` (`native`|`toon`), `sampling`, `thinking`, `compactionProfile`, `systemPrompt`; measured `promptTokPerSec` stored for cache estimates.
 - **FR-39** Switching profile (including protocol) mid-session is allowed; the whole Context is re-rendered and the Gate shows "cache fully cold".
 - **FR-40** llamacpp backend: check `--jinja` at startup; error with hint if missing.
 - **FR-41** After each response, compare pre-count with `usage.prompt_tokens` and reported cached tokens; show drift in the status line.
@@ -106,6 +105,14 @@ A text-based (TUI) coding agent whose core is the **Review Gate**: a pause befor
 - **FR-43** Keys: `profiles`, `defaultProfile`, `permission`, `keybindings` (action → key), `bash.timeout`.
 - **FR-44** Runtime changes (profile switch, tool toggle, system prompt edit, session allow rules) are Session Log events, never written back to config. `/reload` re-reads config; no hot reload.
 - **FR-45** First start without config: scan 8080 (llama.cpp), 11434 (Ollama), 1234 (LM Studio), offer found models, write choice to the global config.
+
+### 4.11 Thinking
+
+- **FR-46** Model reasoning (`reasoning_content` or `<think>…</think>`) becomes its own Thinking block before the Assistant block of the same answer; own row, own token count; edited, moved, removed and compacted like any block.
+- **FR-47** Thinking blocks stay in the Context and are sent with every request until the user removes them.
+- **FR-48** If the model's chat template drops a Thinking block (e.g. Qwen3 strips thinking before the last user message), its token count is what actually gets rendered (0), the row is dimmed and flagged `✂ template`. Resector does not bypass the template. Exact on llama.cpp, best effort on Ollama/LM Studio.
+- **FR-49** Thinking is set per Model Profile only: `thinking: off | on | low | medium | high`, restricted to what the model supports (e.g. Qwen3 on/off, gpt-oss low/medium/high). No runtime switch; use another profile.
+- **FR-50** While the model thinks, the header tag is `THINKING` and the preview streams the thinking dimmed.
 
 ## 5. Non-functional requirements
 
@@ -126,6 +133,6 @@ Where earlier decisions conflicted, the later or more specific one wins:
 | `Enter` opens detail (block model) vs. `Enter` sends (Gate UI) | `Enter` sends; the preview pane shows details. |
 | Protocol fixed per session (tool protocols research) vs. switchable (Model Profile) | Switchable; one protocol per request. `text-json` deferred. |
 | Removed blocks always visible (Gate UI) vs. until sent (Compaction flow) | Struck through until sent. |
-| `n` = new Note vs. `n` = reject | `n` rejects only on a selected `? approve` row; elsewhere adds a Note. |
+| `n` = new Note vs. `n` = reject | `n` only rejects (on a selected `? approve` row); free-text Notes dropped (complete prototype). |
 | Changed AGENTS.md on resume → stale-content ticket vs. no staleness at all | Read once at session creation; snapshot. |
 | read/edit/grep/glob tools (charting) vs. only `bash` | Only `bash`. |

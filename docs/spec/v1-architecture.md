@@ -21,7 +21,7 @@ src/
     cache/                 prefix diff → invalidation point, cost estimate
     compaction/            compaction request + proposal state machine
     approval/              permission rules, bash command splitting, evaluation
-    toolcall/              parse tool calls (native + text-xml), malformed detection
+    toolcall/              parse tool calls (native + text-xml), malformed detection, split thinking
     config/                JSONC load, merge, schema, permission tightening
   adapters/                I/O at the edge
     backend/               llamacpp | ollama | lmstudio (chat, tokenize, props)
@@ -39,7 +39,7 @@ Core has no I/O; adapters are injected. UI depends on Core, never the reverse.
 - File: `~/.local/share/resector/sessions/<project-hash>/<id>.jsonl`, one event per line, plus `<id>.lock`.
 - Events: `SessionCreated{profile, protocol}`, `BlockAdded{id, kind, origin: user|model|tool|file|environment|compaction, content}`, `Edit{id, revision, content}`, `Move{id, after}`, `Pin{id, top|bottom}`, `Unpin`, `Remove`, `Restore`, `Compact{sources, instruction, noteId}`, `ToggleTool`, `Rename{id|session, title}`, `ProfileSwitched`, `AllowRuleAdded{pattern}`, `RequestSent{hash, tokens}`, `ResponseReceived{usage, cached}`, `Undo{eventId}`.
 - **Context = fold(events)**. Undo is a counter-event; nothing is deleted within a session. Deleting a session removes its file.
-- Block storage is protocol-neutral: Tool Call = `{name, args}`, Tool Result = text. Assistant text and each Tool Call are separate blocks; the renderer merges them into one message.
+- Block storage is protocol-neutral: Tool Call = `{name, args}`, Tool Result = text. Thinking, Assistant text and each Tool Call are separate blocks; the renderer merges them into one message.
 - Only a Tool Call in state *pending approval* accepts `Edit`.
 - Responses are appended when complete or aborted (`cut off`); in-flight streams are never persisted.
 
@@ -63,6 +63,8 @@ fold(log) → Context
 
 - `native`: Assistant text + Tool Calls → one assistant message with `tool_calls`; each Tool Result → `tool` message; Tools Block → `tools` field.
 - `text-xml`: calls as `<function=…><parameter=…>` (Qwen3-Coder syntax) in assistant text; results as user message `<tool_response>…</tool_response>`; Tools Block as compact signatures appended to the system message (own row at the Gate, tokens via prefix difference).
+- Thinking: parsed from `reasoning_content` (llama.cpp `--reasoning-format`, Ollama `thinking`) or `<think>…</think>` in the stream; rendered back as `reasoning_content` of its assistant message where the backend accepts it, else inline `<think>`. The chat template may drop it; the token split then yields 0 → `✂ template`.
+- Profile `thinking` maps to the backend: `chat_template_kwargs.enable_thinking` (on/off), `reasoning_effort` (low/medium/high).
 - Moved Tool Pair = user-role Note `[Tool bash: <cmd>]` + result, never tool syntax. Pin bottom = user-role Note at the end.
 - Tool results use the tool's native text; `resultFormat: toon` renders uniform rows as TOON-style tables. Model output stays JSON.
 

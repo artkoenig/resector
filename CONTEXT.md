@@ -5,7 +5,7 @@ Coding agent harness for local LLMs with small context windows. The user sees, m
 ## Language
 
 **Context Block**:
-Smallest addressable unit of what is sent to the model. Kinds: System, Tools, User, Assistant, Tool Call, Tool Result, Note. Has a stable identity across Revisions and a token count (rendered, including role markers); can be edited, moved, pinned, removed, restored, compacted.
+Smallest addressable unit of what is sent to the model. Kinds: System, Tools, User, Thinking, Assistant, Tool Call, Tool Result, Note. Has a stable identity across Revisions and a token count (rendered, including role markers); can be edited, moved, pinned, removed, restored, compacted.
 _Avoid_: message, chunk, segment
 
 **Revision**:
@@ -41,13 +41,17 @@ User-controlled rewrite of selected Context Blocks by the LLM, following a user 
 _Avoid_: summarization, auto-compact
 
 **Note**:
-Context Block of free text without API role semantics, keeping a reference to its origin: a moved Tool Pair, a Compaction result, the session environment (working directory, OS, date, branch; refreshed by the harness when it changes), project instructions, a file or free text added by the user.
+Context Block of free text without API role semantics, keeping a reference to its origin: a moved Tool Pair, a Compaction result, the session environment (working directory, OS, date, branch; refreshed by the harness when it changes), project instructions or a file.
+
+**Thinking**:
+Context Block holding the model's reasoning for one answer, placed before that answer. Stays in the Context until the user removes it; the model's chat template may still drop it from the rendered request.
+_Avoid_: reasoning, chain of thought
 
 **Pin**:
 Marker that keeps a Context Block at the top (after System and Tools Block) or the very end of the Context, countering lost-in-the-middle. Pinned blocks keep their order among themselves.
 
 **Model Profile**:
-Per-model settings: backend, endpoint, tokenizer, window size, Tool Protocol, tool result format, sampling, and optionally another Model Profile used for Compaction (default: the same). Can be switched within a session; the whole Context is then re-rendered.
+Per-model settings: backend, endpoint, tokenizer, window size, Tool Protocol, tool result format, sampling, thinking (off, on or effort level), and optionally another Model Profile used for Compaction (default: the same). Can be switched within a session; the whole Context is then re-rendered.
 
 **Tool Protocol**:
 How tool definitions and tool calls travel between harness and model: `native` (API tool calling) or `text-xml` (defined in the prompt). Blocks are stored protocol-neutral; the protocol only affects rendering of a request.
