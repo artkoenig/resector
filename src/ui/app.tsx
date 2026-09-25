@@ -295,9 +295,11 @@ function Header(props: { gate: Gate; width: number }) {
 }
 
 // FR-2: one segment per block in Context order (plus Template), proportional to tokens; free space in the border colour.
+// Half cells: thicker than a line, lighter than a solid strip.
+const BAR = '▀';
 function contextBar(gate: Gate, width: number): { char: string; color: string }[] {
   const split = gate.split();
-  const cells = Array.from({ length: width }, () => ({ char: '━', color: BORDER }));
+  const cells = Array.from({ length: width }, () => ({ char: BAR, color: BORDER }));
   if (!split) return cells;
   const scale = Math.max(split.total, gate.window());
   const segments = [
@@ -310,7 +312,7 @@ function contextBar(gate: Gate, width: number): { char: string; color: string }[
     const from = Math.max(filled, Math.round((sum / scale) * width));
     sum += s.tokens;
     const to = Math.max(Math.round((sum / scale) * width), s.selected ? from + 1 : 0);
-    for (let x = from; x < Math.min(to, width); x++) cells[x] = { char: '━', color: s.color };
+    for (let x = from; x < Math.min(to, width); x++) cells[x] = { char: BAR, color: s.color };
     filled = Math.max(filled, to);
   }
   return cells;

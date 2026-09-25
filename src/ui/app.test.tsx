@@ -66,7 +66,7 @@ test('the Gate shows every Context Block with its exact tokens and the Template 
   const { events } = await start();
   const frame = ui.captureCharFrame();
   expect(line(frame, /default/)).toMatch(/^ {2}resector {2}default +52 \/ 4k/);
-  expect(frame.split('\n')[1]).toMatch(/^ {2}━+/);
+  expect(frame.split('\n')[1]).toMatch(/^ {2}▀+/);
   expect(line(frame, /Kind/)).toMatch(/#\s+Kind\s+Title\s+Tokens\s+Cache\s+Flags/);
   expect(line(frame, /System prompt/)).toMatch(/1\s+System\s+System prompt\s+12\b/);
   expect(line(frame, /Template/)).toMatch(/Template\s.*\s4\b/);
@@ -269,7 +269,7 @@ test('r renames the block for display only; empty resets', async () => {
 test('the header Context bar highlights the selected block', async () => {
   await start();
   await write('x '.repeat(300));
-  const bar = () => ui.captureSpans().lines[1]!.spans.filter(s => s.text.includes('━'));
+  const bar = () => ui.captureSpans().lines[1]!.spans.filter(s => s.text.includes('▀'));
   const white = () => bar().filter(s => Array.from(s.fg.buffer.slice(0, 3)).join() === '238,238,238').map(s => s.text.length);
   await frameMatching(ui, f => /\d+ \/ 4k/.test(f) && !f.includes('52 / 4k'));
   const user = white();

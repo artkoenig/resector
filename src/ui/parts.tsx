@@ -109,9 +109,19 @@ function errorParts(text: string, width: number): { head: string; body: string[]
   const head = at < 0 ? text : text.slice(0, at);
   const rest = at < 0 ? '' : text.slice(at + 2);
   const size = Math.max(1, width - 4);
-  const body = Array.from({ length: Math.ceil(rest.length / size) }, (_, i) => rest.slice(i * size, (i + 1) * size));
+  const body = wrapped(rest, size);
   if (body.length <= ERROR_BODY_LINES) return { head, body };
   return { head, body: [...body.slice(0, ERROR_BODY_LINES - 1), `${body[ERROR_BODY_LINES - 1]!.slice(0, size - 2)} …`] };
+}
+// Lines of at most `size` cells, broken at spaces; a word longer than a line is cut.
+function wrapped(text: string, size: number): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(' ').flatMap(w => w.match(new RegExp(`.{1,${size}}`, 'g')) ?? [])) {
+    if (line && line.length + 1 + word.length > size) lines.push(line), (line = '');
+    line = line ? `${line} ${word}` : word;
+  }
+  return line ? [...lines, line] : lines;
 }
 export const errorBandLines = (text: string, width: number) => 1 + errorParts(text, width).body.length;
 
