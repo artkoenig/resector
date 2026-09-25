@@ -4,16 +4,14 @@ import { createSignal, For, Show } from 'solid-js';
 import type { SessionStore, StoredSession } from '../adapters/store/sessions';
 import { fold } from '../core/log/fold';
 import { ago, cell, errorText, formatTokens, right, titleOf } from './format';
+import type { Status } from './gate';
+import { DIM, SELECTED_BG, TONE } from './theme';
 
-const DIM = '#808080';
-const SELECTED_BG = '#3a3a3a';
-const TONE = { info: '#bcbcbc', ok: '#87d787', warn: '#ffd75f', error: '#ff5f5f' };
 const PREVIEW_BLOCKS = 6;
 // Columns besides the title: marker, updated, profile, Context, blocks.
 const FIXED_COLUMNS = 60;
 const KEYS = '↑↓ select · Enter open · r rename · d delete · n new · / filter · Esc back';
 
-type Status = { text: string; tone: keyof typeof TONE };
 type Editing = { kind: 'rename'; session: StoredSession } | { kind: 'filter' };
 
 // open/create/remove switch the current session (remove returns the status text); back returns to the Gate.
@@ -58,7 +56,9 @@ export function Sessions(props: SessionsProps) {
   }
   function finishEditing(apply: boolean) {
     const edit = editing()!;
-    if (edit.kind === 'rename' && apply) {
+    // An unchanged derived title is not fixed as a rename (FR-34).
+    const unchanged = edit.kind === 'rename' && !edit.session.renamed && draft().trim() === edit.session.title;
+    if (edit.kind === 'rename' && apply && !unchanged) {
       props.rename(edit.session.id, draft().trim());
       refresh();
     }

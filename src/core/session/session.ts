@@ -1,11 +1,15 @@
-// Sessions (FR-32–FR-35): a new Session Log, and the summary shown per session in /sessions.
+// Sessions (FR-32–FR-35): a new Session Log, how a session is referred to, and its summary in /sessions.
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
 
 export type SessionSummary = { title: string; renamed: boolean; profile: string; blocks: number; tokens: number | null };
 
+// A session to resume or export: its id, or true = the newest one of the project (FR-32).
+export type SessionRef = true | string;
+
 const TITLE_LENGTH = 60;
 type BlockAdded = Extract<SessionEvent, { type: 'BlockAdded' }>;
+type RequestSent = Extract<SessionEvent, { type: 'RequestSent' }>;
 
 export const newSession = (profile: string, systemPrompt: string): SessionEvent[] => [
   { type: 'SessionCreated', profile, protocol: 'native' },
@@ -13,7 +17,7 @@ export const newSession = (profile: string, systemPrompt: string): SessionEvent[
 ];
 
 // Title = the last session rename, else the first line of the first User message (FR-34).
-function titleOf(events: SessionEvent[]): Pick<SessionSummary, 'title' | 'renamed'> {
+function sessionTitle(events: SessionEvent[]): Pick<SessionSummary, 'title' | 'renamed'> {
   const renamed = events.findLast(e => e.type === 'SessionRenamed')?.title;
   if (renamed) return { title: renamed, renamed: true };
   const first = events.find((e): e is BlockAdded => (e as Partial<BlockAdded>).kind === 'User');
@@ -25,11 +29,11 @@ function titleOf(events: SessionEvent[]): Pick<SessionSummary, 'title' | 'rename
 // Context tokens are those of the last request: counting every session against its backend is too slow for a list.
 export function summarize(events: SessionEvent[]): SessionSummary {
   const context = fold(events);
-  const request = events.findLast(e => e.type === 'RequestSent');
+  const request = events.findLast((e): e is RequestSent => e.type === 'RequestSent');
   return {
-    ...titleOf(events),
+    ...sessionTitle(events),
     profile: context.profile,
     blocks: context.blocks.filter(b => !b.removed).length,
-    tokens: request?.type === 'RequestSent' ? request.tokens : null,
+    tokens: request?.tokens ?? null,
   };
 }

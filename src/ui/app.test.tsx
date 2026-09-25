@@ -8,7 +8,7 @@ import { startFakeLlamaCpp } from '../../test/fake-llamacpp';
 import { frameMatching } from '../../test/frames';
 import { connectLlamaCpp } from '../adapters/backend/llamacpp';
 import { createSessionLog } from '../adapters/store/session-log';
-import { newSession } from '../core/session/summary';
+import { newSession } from '../core/session/session';
 import { App } from './app';
 
 let fake: ReturnType<typeof startFakeLlamaCpp>;
@@ -321,10 +321,10 @@ test('Tab completes a command; /rename sets the session title, empty resets it (
   await frameMatching(ui, f => f.includes('rename session'));
   ui.mockInput.pressTab();
   await frameMatching(ui, f => f.includes('> /rename '));
-  await ui.mockInput.typeText('my title');
+  await ui.mockInput.typeText('my  title');
   ui.mockInput.pressEnter();
-  await frameMatching(ui, f => f.includes('session renamed: my title'));
-  expect(events().at(-1)).toEqual({ type: 'SessionRenamed', title: 'my title' });
+  await frameMatching(ui, f => f.includes('session renamed: my  title'));
+  expect(events().at(-1)).toEqual({ type: 'SessionRenamed', title: 'my  title' });
   await write('/rename');
   await frameMatching(ui, f => f.includes('session title reset to the first User message'));
   expect(events().at(-1)).toEqual({ type: 'SessionRenamed', title: '' });

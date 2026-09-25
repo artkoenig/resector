@@ -10,7 +10,7 @@ import type { LocalServer } from '../adapters/backend/discover';
 import { configPaths } from '../adapters/fs/config';
 import { openSessionStore } from '../adapters/store/sessions';
 import type { SessionEvent } from '../core/log/events';
-import { newSession } from '../core/session/summary';
+import { newSession } from '../core/session/session';
 import { SCHEMA_URL } from '../core/config/config';
 import { DEFAULT_SYSTEM_PROMPT } from '../core/config/system-prompt';
 import { Launch } from './launch';
@@ -284,6 +284,20 @@ test('d asks before deleting; deleting the current session switches to the newes
   expect(existsSync(join(root, 'sessions', 'ses_test.jsonl'))).toBe(false);
 });
 
+test('when the next session cannot be opened, the current one is not deleted', async () => {
+  const config = (url: string) =>
+    `{ "profiles": { "local": { "backend": "llamacpp", "endpoint": "${url}", "window": 2048 }, "down": { "backend": "llamacpp", "endpoint": "http://localhost:1" } }, "defaultProfile": "local" }`;
+  const { root } = await launch({ config, sessions: { ses_a: titled('down', 'unreachable') } });
+  await frameMatching(ui, f => f.includes('/ 2k'));
+  await command('/sessions');
+  await frameMatching(ui, f => f.includes('Sessions ·'));
+  await key('d');
+  await key('y');
+  await frameMatching(ui, f => f.includes('cannot reach llama.cpp at http://localhost:1'));
+  expect(existsSync(join(root, 'sessions', 'ses_test.jsonl'))).toBe(true);
+  expect(readdirSync(join(root, 'sessions')).filter(f => f.endsWith('.lock'))).toEqual(['ses_test.lock']);
+});
+
 test('deleting the only session starts a new empty one', async () => {
   await sessionsView({});
   await key('d');
@@ -295,6 +309,11 @@ test('deleting the only session starts a new empty one', async () => {
 test('r renames a session, / filters by title, n starts a new session (FR-33, FR-34)', async () => {
   const { store } = await sessionsView({ ses_a: titled('local', 'fix the build'), ses_b: titled('local', 'other') });
   await key('down');
+  await key('r');
+  await frameMatching(ui, f => f.includes('title > fix the build'));
+  await key('enter');
+  await frameMatching(ui, f => !f.includes('title >'));
+  expect(store.list().find(s => s.id === 'ses_a')!.renamed).toBe(false);
   await key('r');
   await frameMatching(ui, f => f.includes('title > fix the build'));
   for (let i = 0; i < 'fix the build'.length; i++) ui.mockInput.pressBackspace();

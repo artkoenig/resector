@@ -2,9 +2,10 @@
 // holding the pid of the process that has the session open.
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { decodeLog, encodeEvent } from '../../core/log/codec';
 import type { SessionEvent, SessionLog } from '../../core/log/events';
-import { summarize, type SessionSummary } from '../../core/session/summary';
-import { createSessionLog } from './session-log';
+import { summarize, type SessionRef, type SessionSummary } from '../../core/session/session';
+import { createSessionLog, projectSessionsDir } from './session-log';
 
 export type StoredSession = SessionSummary & { id: string; updated: Date; locked: boolean; events: SessionEvent[] };
 export type OpenSession = { id: string; events: SessionEvent[]; log: SessionLog & { path: string }; release: () => void };
@@ -24,8 +25,7 @@ function alive(pid: number): boolean {
 export function openSessionStore(dir: string, { id = newId } = {}) {
   const logPath = (id: string) => join(dir, `${id}.jsonl`);
   const lockPath = (id: string) => join(dir, `${id}.lock`);
-  const read = (id: string): SessionEvent[] =>
-    readFileSync(logPath(id), 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line));
+  const read = (id: string): SessionEvent[] => decodeLog(readFileSync(logPath(id), 'utf8'));
 
   // Locked = held by another live process; a lock of a dead process is stale.
   function lockedByOther(id: string): boolean {
@@ -36,23 +36,35 @@ export function openSessionStore(dir: string, { id = newId } = {}) {
   function refuseLocked(id: string) {
     if (lockedByOther(id)) throw new Error(`session ${id} is open in another resector instance`);
   }
-  function lock(id: string): OpenSession {
-    refuseLocked(id);
+  // Created exclusively, so two instances starting at once cannot both hold it; a stale lock is replaced.
+  function takeLock(id: string) {
     mkdirSync(dir, { recursive: true });
-    writeFileSync(lockPath(id), String(process.pid));
+    try {
+      writeFileSync(lockPath(id), String(process.pid), { flag: 'wx' });
+    } catch {
+      refuseLocked(id);
+      rmSync(lockPath(id), { force: true });
+      writeFileSync(lockPath(id), String(process.pid), { flag: 'wx' });
+    }
+  }
+  function lock(id: string): OpenSession {
+    takeLock(id);
+    // Ctrl+C exits without the UI's quit: the lock goes with the process.
+    const release = () => {
+      process.off('exit', release);
+      rmSync(lockPath(id), { force: true });
+    };
+    process.on('exit', release);
     const events = existsSync(logPath(id)) ? read(id) : [];
-    return { id, events, log: createSessionLog(dir, id), release: () => rmSync(lockPath(id), { force: true }) };
+    return { id, events, log: createSessionLog(dir, id), release };
   }
 
-  const exists = (id: string) => {
+  // The id of an existing session.
+  function resolve(ref: SessionRef): string {
+    const id = ref === true ? store.list()[0]?.id : ref;
+    if (!id) throw new Error('no session in this project');
     if (!existsSync(logPath(id))) throw new Error(`no session ${id}`);
-  };
-  // The session to resume or export: true = the newest one (FR-32).
-  function pick(id: true | string): string {
-    if (id !== true) return id;
-    const newest = store.list()[0];
-    if (!newest) throw new Error('no session in this project');
-    return newest.id;
+    return id;
   }
 
   const store = {
@@ -68,20 +80,13 @@ export function openSessionStore(dir: string, { id = newId } = {}) {
         .sort((a, b) => b.updated.getTime() - a.updated.getTime());
     },
     create: () => lock(id()),
-    open(which: true | string): OpenSession {
-      const id = pick(which);
-      exists(id);
-      return lock(id);
-    },
-    exportLog(which: true | string): string {
-      const id = pick(which);
-      exists(id);
-      return readFileSync(logPath(id), 'utf8');
-    },
+    open: (ref: SessionRef): OpenSession => lock(resolve(ref)),
+    read: (id: string) => read(resolve(id)),
+    exportLog: (ref: SessionRef): string => readFileSync(logPath(resolve(ref)), 'utf8'),
     // For a session not open here, e.g. a rename in /sessions.
     append(id: string, event: SessionEvent) {
       refuseLocked(id);
-      appendFileSync(logPath(id), JSON.stringify(event) + '\n');
+      appendFileSync(logPath(id), encodeEvent(event));
     },
     delete(id: string) {
       refuseLocked(id);
@@ -91,3 +96,5 @@ export function openSessionStore(dir: string, { id = newId } = {}) {
   };
   return store;
 }
+
+export const projectSessionStore = (home: string, projectRoot: string) => openSessionStore(projectSessionsDir(home, projectRoot));

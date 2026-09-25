@@ -5,10 +5,9 @@ import { isSupported } from '../adapters/backend/connect';
 import type { DiscoveredModel } from '../adapters/backend/discover';
 import type { BackendKind } from '../core/config/config';
 import { cell } from './format';
+import { DIM, SELECTED_BG } from './theme';
 
 const BACKEND_NAME: Record<BackendKind, string> = { llamacpp: 'llama.cpp', ollama: 'Ollama', lmstudio: 'LM Studio', omlx: 'oMLX' };
-const SELECTED_BG = '#3a3a3a';
-const DIM = '#808080';
 
 export function Setup(props: { found: DiscoveredModel[]; configPath: string; onChoose: (model: DiscoveredModel) => void; onQuit: () => void }) {
   const [selected, setSelected] = createSignal(0);

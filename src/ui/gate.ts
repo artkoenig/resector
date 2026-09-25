@@ -186,8 +186,8 @@ export function createGate({ log, reconnect, openSessions, ...options }: GateOpt
   const commands: Record<CommandName, (arg: string) => void> = { '/sessions': openSessions, '/rename': renameSession, '/reload': () => void reload() };
   // Input text: a known command runs with the rest as argument; an unknown `/word` is an error; anything else becomes a User block.
   function submit(text: string) {
-    const [name = '', ...arg] = text.trim().split(/\s+/);
-    if (name in commands) commands[name as CommandName](arg.join(' '));
+    const name = text.trim().split(/\s/)[0]!;
+    if (name in commands) commands[name as CommandName](text.trim().slice(name.length).trim());
     else if (/^\/\w+$/.test(name)) setStatus({ text: `unknown command ${name} – ${COMMANDS.map(c => c.name).join(' ')}`, tone: 'error' });
     else if (text.trim()) addUser(text);
   }

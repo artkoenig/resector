@@ -2,7 +2,7 @@ import { afterAll, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { newSession } from '../../core/session/summary';
+import { newSession } from '../../core/session/session';
 import { openSessionStore } from './sessions';
 
 const dir = () => mkdtempSync(join(tmpdir(), 'resector-sessions-'));
@@ -37,13 +37,16 @@ test('a missing sessions directory lists nothing', () => {
 
 test('a created session is locked by this process and appends its events', () => {
   const root = join(dir(), 'new');
+  const exitHandlers = process.listenerCount('exit');
   const session = openSessionStore(root, { id: () => 'ses_a' }).create();
+  expect(process.listenerCount('exit')).toBe(exitHandlers + 1);
   newSession('qwen', 'sys').forEach(session.log.append);
   expect(session.id).toBe('ses_a');
   expect(readFileSync(join(root, 'ses_a.lock'), 'utf8')).toBe(String(process.pid));
   expect(openSessionStore(root).list().map(s => [s.id, s.locked, s.events.length])).toEqual([['ses_a', false, 2]]);
   session.release();
   expect(existsSync(join(root, 'ses_a.lock'))).toBe(false);
+  expect(process.listenerCount('exit')).toBe(exitHandlers);
 });
 
 test('opening a session replays its events; one locked by another live process is refused (FR-36)', () => {

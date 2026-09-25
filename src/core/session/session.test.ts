@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
-import { newSession, summarize } from './summary';
+import { newSession, summarize } from './session';
 
 const start = newSession('qwen', 'You are an agent.');
 const user = (id: number, content: string): SessionEvent => ({ type: 'BlockAdded', id, kind: 'User', origin: 'user', content });

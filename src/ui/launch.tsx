@@ -6,7 +6,7 @@ import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs
 import type { OpenSession, SessionStore } from '../adapters/store/sessions';
 import type { SessionEvent } from '../core/log/events';
 import { fold } from '../core/log/fold';
-import { newSession, summarize } from '../core/session/summary';
+import { newSession, summarize, type SessionRef } from '../core/session/session';
 import { App } from './app';
 import { errorText } from './format';
 import type { GateOptions } from './gate';
@@ -18,7 +18,7 @@ export type LaunchOptions = {
   servers?: LocalServer[];
   store: SessionStore;
   // -c [id]: true = the last session (FR-32).
-  resume?: true | string;
+  resume?: SessionRef;
   onQuit: () => void;
   onFatal: (message: string) => void;
 };
@@ -49,7 +49,7 @@ export function Launch(props: LaunchOptions) {
   }
 
   // Resume = replay; a Model Profile missing from the config falls back to the default one (FR-35).
-  function resume(loaded: Loaded, which: true | string) {
+  function resume(loaded: Loaded, which: SessionRef) {
     const opened = props.store.open(which);
     const events: SessionEvent[] = [...opened.events];
     const texts = [`resumed "${summarize(events).title}"`];
@@ -63,12 +63,13 @@ export function Launch(props: LaunchOptions) {
     return { opened, events, notice: { text: texts.join(' · '), tone: texts.length > 1 ? ('warn' as const) : ('ok' as const) } };
   }
 
-  // which: a session to resume (true = the last one), else a new session.
-  async function open(loaded: Loaded, which: true | string | undefined) {
+  // which: a session to resume, else a new session; a new one is dropped again if its backend fails.
+  async function open(loaded: Loaded, which: SessionRef | undefined) {
     const { opened, events, notice } = which ? resume(loaded, which) : create(loaded);
     const profile = fold(events).profile;
     const backend = await connect(loaded.profile(profile)).catch(e => {
       opened.release();
+      if (!which) props.store.delete(opened.id);
       throw e;
     });
     if (session?.id !== opened.id) session?.release();
@@ -81,23 +82,18 @@ export function Launch(props: LaunchOptions) {
   // /sessions (FR-33): switching sessions reconnects; the Gate comes back with the session's logged events.
   const switchTo = (which?: string) => open(load(), which).then(() => void setView('gate'));
   const back = () => {
-    const events = props.store.list().find(s => s.id === current())!.events;
+    const events = props.store.read(current());
     setGate({ ...gate()!, events, notice: undefined });
     setView('gate');
   };
-  // Deleting the current session switches to the newest other one, or a new empty session.
+  // Deleting the current session first switches to the newest other one, or a new empty session.
   async function remove(id: string): Promise<string> {
-    const title = props.store.list().find(s => s.id === id)!.title;
-    if (id !== current()) {
-      props.store.delete(id);
-      return `deleted "${title}"`;
-    }
-    session!.release();
-    session = null;
+    const titleOf = (id: string) => summarize(props.store.read(id)).title;
+    const title = titleOf(id);
+    const switched = id === current();
+    if (switched) await open(load(), props.store.list().find(s => !s.locked && s.id !== id)?.id);
     props.store.delete(id);
-    const next = props.store.list().find(s => !s.locked);
-    await open(load(), next?.id);
-    return `deleted "${title}" · switched to "${props.store.list().find(s => s.id === current())!.title}"`;
+    return `deleted "${title}"` + (switched ? ` · switched to "${titleOf(current())}"` : '');
   }
   const rename = (id: string, title: string) => {
     const event: SessionEvent = { type: 'SessionRenamed', title };

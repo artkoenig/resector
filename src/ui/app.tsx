@@ -4,17 +4,11 @@ import { createSignal, For, onCleanup, Show } from 'solid-js';
 import type { Kind } from '../core/log/events';
 import { COMMANDS, createGate, type Gate, type GateOptions } from './gate';
 import { cell, flagsOf, formatTokens, right, titleOf } from './format';
+import { DIM as TEMPLATE_COLOR, FREE_COLOR, KIND_COLOR, MARK_COLOR, SELECTED_BG, TONE } from './theme';
 
-const KIND_COLOR: Record<Kind, string> = { System: '#d787ff', User: '#87d787', Assistant: '#5fd7d7' };
-const TEMPLATE_COLOR = '#808080';
-const FREE_COLOR = '#444444';
-const SELECTED_BG = '#3a3a3a';
-const TONE = { info: '#bcbcbc', ok: '#87d787', warn: '#ffd75f', error: '#ff5f5f' };
 const SPINNER = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
 // Fixed columns around the title: marker, #, Kind, Tokens, Cache, Flags.
 const FIXED_COLUMNS = 52;
-
-const MARK_COLOR = '#ff875f';
 
 type Mode = 'context' | 'input' | 'rename';
 // A row per visible block; removed ones are struck through, unnumbered and not selectable until sent.
@@ -50,11 +44,11 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   // FR-6: command suggestions while the input is a single `/word`.
   const suggestions = () => (mode() === 'input' && /^\/\S*$/.test(draft()) ? COMMANDS.filter(c => c.name.startsWith(draft())) : []);
   const suggestion = () => suggestions()[Math.min(suggested(), suggestions().length - 1)];
-  const type = (text: string) => {
+  const editDraft = (text: string) => {
     setDraft(text);
     setSuggested(0);
   };
-  const complete = (c: (typeof COMMANDS)[number]) => type(c.name + (c.arg ? ' ' : ''));
+  const complete = (c: (typeof COMMANDS)[number]) => editDraft(c.name + (c.arg ? ' ' : ''));
   // Enter on a suggestion: one taking an argument is completed, any other runs.
   const choose = () => {
     const c = suggestion()!;
@@ -168,7 +162,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
       <Show when={mode() !== 'context'} fallback={<text fg={TEMPLATE_COLOR}>{' > Tab to write · Enter to send the Context'}</text>}>
         <box flexDirection="row">
           <text fg={KIND_COLOR.User}>{mode() === 'rename' ? ' title > ' : ' > '}</text>
-          <input focused value={draft()} onInput={type} flexGrow={1} />
+          <input focused value={draft()} onInput={editDraft} flexGrow={1} />
         </box>
       </Show>
       <Footer gate={gate} mode={suggestion() ? 'suggest' : mode()} />

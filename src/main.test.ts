@@ -23,9 +23,14 @@ test('-c resumes the last session, -c <id> a given one (FR-32)', () => {
   expect(main(['--continue', 'ses_a'])).toEqual({ start: { resume: 'ses_a' } });
 });
 
-test('--export-fixture exports the last or a given Session Log', () => {
-  expect(main(['--export-fixture'])).toEqual({ exportFixture: true });
-  expect(main(['--export-fixture', 'ses_a'])).toEqual({ exportFixture: 'ses_a' });
+test('--export-fixture prints the last or a given Session Log', () => {
+  const exportLog = (ref: true | string) => `log of ${ref}\n`;
+  expect(main(['--export-fixture'], exportLog)).toEqual({ code: 0, out: 'log of true\n' });
+  expect(main(['--export-fixture', 'ses_a'], exportLog)).toEqual({ code: 0, out: 'log of ses_a\n' });
+  const missing = () => {
+    throw new Error('no session in this project');
+  };
+  expect(main(['--export-fixture'], missing)).toEqual({ code: 1, out: 'resector: no session in this project\n' });
 });
 
 test('the endpoint comes from the Model Profile, not the command line', () => {
