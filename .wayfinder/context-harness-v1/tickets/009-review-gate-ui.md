@@ -27,6 +27,6 @@ Gewählt: **Variante D – ein einziger Screen**: Gate-Tabelle ist zugleich Chat
 - Unten: Eingabefeld + Statuszeile (Meldungen, Drift nach Senden, Bestätigungen).
 - Streaming: Antwort erscheint live als neue Zeile (Spinner in Token-Spalte), Vorschau folgt; danach automatisch wieder Gate.
 - Eingabe: `Tab`/`i` fokussiert Feld; `Enter` legt User-Block an und kehrt ins Gate zurück, zweites `Enter` sendet (Default, nicht explizit entschieden); `Esc`/`Tab` zurück.
-- Tasten: `Enter` senden, `↑↓`/`jk` wählen, `J`/`K` verschieben, `p` Pin top→bottom→aus, `d` entfernen, `e` `$EDITOR`, `Space` markieren, `c` Compaction, `u` undo.
+- Tasten: `Enter` senden, `↑↓`/`jk` wählen, `⇧↑`/`⇧↓` verschieben, `p` Pin top→bottom→aus, `d` entfernen, `e` `$EDITOR`, `Space` markieren, `c` Compaction, `u` undo.
 - Tool Pair verschieben/pinnen: Hinweis + gleiche Taste nochmal = bestätigen (→ Note).
 - Über Budget: Senden blockiert mit Hinweis (Details: Budget-Überschreitung am Gate).
