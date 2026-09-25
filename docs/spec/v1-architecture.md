@@ -37,7 +37,7 @@ Core has no I/O; adapters are injected. UI depends on Core, never the reverse.
 ## 3. Session Log & Context
 
 - File: `~/.local/share/resector/sessions/<project-hash>/<id>.jsonl`, one event per line, plus `<id>.lock`.
-- Events: `SessionCreated{profile, protocol}`, `BlockAdded{id, kind, origin: user|model|tool|file|environment|compaction, content}`, `Edit{id, revision, content}`, `Move{id, after}`, `Pin{id, top|bottom}`, `Unpin`, `Remove`, `Compact{sources, instruction, noteId}`, `Rename{id|session, title}`, `ProfileFallback{profile}`, `AllowRuleAdded{pattern}`, `RequestSent{hash, tokens}`, `ResponseReceived{usage, cached}`, `Undo{eventId}`.
+- Events: `SessionCreated{profile, protocol}`, `BlockAdded{id, kind, origin: user|model|tool|file|environment|compaction, content, cutOff?}`, `Edit{id, revision, content}`, `Move{id, after}`, `Pin{id, top|bottom}`, `Unpin`, `Remove`, `Compact{sources, instruction, noteId}`, `Rename{id|session, title}`, `ProfileFallback{profile}`, `AllowRuleAdded{pattern}`, `RequestSent{hash, tokens}`, `ResponseReceived{usage, cached}`, `Undo{eventId}`.
 - **Context = fold(events)**. Undo is a counter-event; nothing is deleted within a session. Deleting a session removes its file.
 - Block storage is protocol-neutral: Tool Call = `{name, args}`, Tool Result = text. Thinking, Assistant text and each Tool Call are separate blocks; the renderer merges them into one message.
 - Only a Tool Call in state *pending approval* accepts `Edit`.

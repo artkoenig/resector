@@ -1,7 +1,7 @@
 {
   "path": ["src"],
-  "format": ["typescript"],
-  "ignore": ["**/*.test.ts"],
+  "format": ["typescript", "tsx"],
+  "ignore": ["**/*.test.ts", "**/*.test.tsx"],
   "reporters": ["console"],
   "exitCode": 0
 }

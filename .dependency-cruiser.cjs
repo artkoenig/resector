@@ -19,6 +19,6 @@ module.exports = {
   options: {
     doNotFollow: { path: 'node_modules' },
     tsConfig: { fileName: 'tsconfig.json' },
-    exclude: { path: '\\.test\\.ts$' },
+    exclude: { path: '\\.test\\.tsx?$' },
   },
 };
