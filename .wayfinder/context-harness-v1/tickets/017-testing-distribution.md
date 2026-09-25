@@ -22,6 +22,13 @@ Wie wird getestet (Session-Log-Replays, Fake-Backend, TUI-Snapshots) und wie wir
 - Live-Suite `bun test:live` (opt-in) gegen lokales llama.cpp mit kleinem Modell: Token-Drift, Cache-Verhalten, Chat-Templates. Nicht in CI; manuell vor Release.
 - CI: GitHub Actions, macOS + Linux. Kein Windows in v1.
 
+**Quality Gates** (nach Vorbild Uncle Bob: crap4x, mutate4x, dependency-checker, dry4x)
+- CRAP-Score hart ≤ 8 pro Funktion, gesamter Code (Core + UI). Coverage via `bun test --coverage` (LCOV) → `crap-ts --fail-above 8`. Bewusst nicht < 4: laut Bobs `negative-test-experiment` zersplittert das den Code ohne Design-Gewinn.
+- Mutation Testing (Core, nicht UI): 0 überlebende + 0 unabgedeckte Mutanten (Stryker-Score 100 % inkl. NoCoverage). Unterdrückung nur per `// Stryker disable next-line <mutator>: <grund>`. Stryker mit Community-Bun-Runner (`@hughescr/stryker-bun-runner`), Fallback Jest-Runner. Risiko: kein offizieller Bun-Runner.
+- Architektur: `dependency-cruiser` als Gate – Core importiert nie UI.
+- Duplikate: `jscpd` nur Report, kein Gate. Kein Gherkin – Golden Tests übernehmen Akzeptanz-Rolle.
+- Wann: PR = alle Gates, Stryker inkrementell; nightly + vor Release komplett. Lokal `bun run gate` (gleiche Checks, kein erzwungener Hook). Alle Gates blockieren Merge.
+
 **Distribution**
 - `bun build --compile` Single-Binary: darwin-arm64/x64, linux-x64/arm64 → GitHub Releases + Homebrew-Tap. npm später.
 - Risiko: OpenTUI-Native-Lib im kompilierten Binary (opencode macht es vor).
