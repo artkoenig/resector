@@ -3,7 +3,7 @@ id: 009
 title: Review-Gate-UI im opencode-Stil
 labels: [wayfinder:prototype]
 parent: context-harness-v1
-status: open
+status: closed
 assignee: artkoenig
 blocked_by: []
 ---
@@ -14,17 +14,20 @@ Wie sieht der Hauptbildschirm aus: Chat + Context-Ansicht (Block-Liste mit Token
 
 ## Prototype
 
-Branch `prototype/review-gate-ui` (commit 32d61e8), `prototypes/review-gate-ui.prototype.mjs` – Node-TUI ohne Deps, drei Varianten (A Split/opencode, B Gate-Vollbild, C Prompt-Dokument), `<`/`>` wechselt. Start: `node prototypes/review-gate-ui.prototype.mjs B`.
+Branch `prototype/review-gate-ui` (Stand 6230091), `prototypes/review-gate-ui.prototype.mjs` – Node-TUI ohne Deps. Runde 1: A Split/opencode, B Gate-Vollbild + separater Chat, C Prompt-Dokument → B. Runde 2: Chat als eigener Screen nötig? D Gate + Eingabe, E Gate-Chat-Hybrid → D. Start: `node prototypes/review-gate-ui.prototype.mjs D`.
 
-## Resolution (vorläufig, wieder geöffnet)
+## Resolution
 
-Gewählt: **Variante B – Gate-Vollbild**. Wieder geöffnet: Braucht es den Chat als eigenen Screen, oder reicht die Gate-Ansicht mit Eingabe unten? → zweiter Prototyp.
+Gewählt: **Variante D – ein einziger Screen**: Gate-Tabelle ist zugleich Chat-Verlauf; kein separater Chat-Screen.
 
-- Gate ist ein eigener Vollbild-Modus, erscheint vor jedem Request; Chat (Session Log, entfernte/umgewandelte Blocks ausgegraut) ist separater Screen, `Tab` wechselt.
-- Oben: Budget-Balken über ganze Breite (Farbe je Block-Art, `▓` = cache-kalt, `░` = Antwort-Reserve), Summen je Block-Art + Template, Cache-Zeile „kalt ab #N: X tok ≈ Ys, davon invalidiert Z“.
-- Mitte: Tabelle `# · Art · Titel · Tokens · Anteil-Balken · Cache ●/○ · Flags (✎n ⤒ ⤓ ⇄ ◇)`, Markierung `●`.
-- Unten: Vorschau des gewählten Blocks (Art, Herkunft, Revision, Inhalt).
-- Statuszeile: Meldungen (Drift nach Senden, Bestätigungen) bzw. Eingabe.
-- Tasten (aus Prototyp übernommen, keine Einwände): `Enter` senden, `↑↓`/`jk` wählen, `J`/`K` verschieben, `p` Pin top→bottom→aus, `d` entfernen, `e` `$EDITOR`, `Space` markieren, `c` Compaction, `u` undo, `i` Eingabe, `Tab` Chat.
+- Kopf: Modell · Backend · Tool Protocol · `GATE` · Tokens gesamt / Fenster (Reserve). **Kein** Budget-Balken.
+- Zeile darunter: Summen je Block-Art + Template, Cache-Info „kalt ab #N: X tok ≈ Ys, davon invalidiert Z“.
+- Tabelle: `# · Art · Titel · Tokens · Cache ●/○ · Flags (✎n ⤒ ⤓ ⇄ ◇)`, Markierung `●`.
+- **Verlauf immer sichtbar** (keine Umschaltung): entfernte/umgewandelte Blocks als durchgestrichene, nicht nummerierte Zeilen an ursprünglicher Position mit Grund („entfernt“, „⇄ in Note #n“, „◇ in Compaction“).
+- Darunter: Vorschau des gewählten Blocks (Art, Herkunft, Revision, Inhalt).
+- Unten: Eingabefeld + Statuszeile (Meldungen, Drift nach Senden, Bestätigungen).
+- Streaming: Antwort erscheint live als neue Zeile (Spinner in Token-Spalte), Vorschau folgt; danach automatisch wieder Gate.
+- Eingabe: `Tab`/`i` fokussiert Feld; `Enter` legt User-Block an und kehrt ins Gate zurück, zweites `Enter` sendet (Default, nicht explizit entschieden); `Esc`/`Tab` zurück.
+- Tasten: `Enter` senden, `↑↓`/`jk` wählen, `J`/`K` verschieben, `p` Pin top→bottom→aus, `d` entfernen, `e` `$EDITOR`, `Space` markieren, `c` Compaction, `u` undo.
 - Tool Pair verschieben/pinnen: Hinweis + gleiche Taste nochmal = bestätigen (→ Note).
 - Über Budget: Senden blockiert mit Hinweis (Details: Budget-Überschreitung am Gate).
