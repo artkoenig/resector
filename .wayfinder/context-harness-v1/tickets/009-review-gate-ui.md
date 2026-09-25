@@ -14,14 +14,13 @@ Wie sieht der Hauptbildschirm aus: Chat + Context-Ansicht (Block-Liste mit Token
 
 ## Prototype
 
-Branch `prototype/review-gate-ui` (Stand 6230091), `prototypes/review-gate-ui.prototype.mjs` – Node-TUI ohne Deps. Runde 1: A Split/opencode, B Gate-Vollbild + separater Chat, C Prompt-Dokument → B. Runde 2: Chat als eigener Screen nötig? D Gate + Eingabe, E Gate-Chat-Hybrid → D. Start: `node prototypes/review-gate-ui.prototype.mjs D`.
+Branch `prototype/review-gate-ui` (Stand siehe Branch-HEAD), `prototypes/review-gate-ui.prototype.mjs` – Node-TUI ohne Deps. Runde 1: A Split/opencode, B Gate-Vollbild + separater Chat, C Prompt-Dokument → B. Runde 2: Chat als eigener Screen nötig? D Gate + Eingabe, E Gate-Chat-Hybrid → D. Start: `node prototypes/review-gate-ui.prototype.mjs D`.
 
 ## Resolution
 
 Gewählt: **Variante D – ein einziger Screen**: Gate-Tabelle ist zugleich Chat-Verlauf; kein separater Chat-Screen.
 
-- Kopf: Modell · Backend · Tool Protocol · `GATE` · Tokens gesamt / Fenster (Reserve). **Kein** Budget-Balken.
-- Zeile darunter: Summen je Block-Art + Template, Cache-Info „kalt ab #N: X tok ≈ Ys, davon invalidiert Z“.
+- Kopf (einzige Zeile über der Tabelle): Modell · Backend · Tool Protocol · `GATE` · Tokens gesamt / Fenster (Reserve) · Cache-Kurzinfo „○ kalt ab #N: X ≈ Ys“. **Kein** Budget-Balken, **keine** Summenzeile je Block-Art.
 - Tabelle: `# · Art · Titel · Tokens · Cache ●/○ · Flags (✎n ⤒ ⤓ ⇄ ◇)`, Markierung `●`.
 - **Verlauf immer sichtbar** (keine Umschaltung): entfernte/umgewandelte Blocks als durchgestrichene, nicht nummerierte Zeilen an ursprünglicher Position mit Grund („entfernt“, „⇄ in Note #n“, „◇ in Compaction“).
 - Darunter: Vorschau des gewählten Blocks (Art, Herkunft, Revision, Inhalt).

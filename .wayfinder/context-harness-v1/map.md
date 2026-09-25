@@ -35,7 +35,7 @@ Umsetzbare **Spec für v1** (PRD + Architektur + Glossar) eines textbasierten Co
 - [Token-effiziente Serialisierung für Tool-Schemas & -Results](tickets/004-compact-serialization.md): Tool-Calls in JSON; Results als natives Tool-Textformat bzw. TOON-Tabellen; Schemas als kompakte Signaturen (−66 %)
 - [Tool-Protokolle anderer Agents & lokale Modelle](tickets/003-tool-protocols.md): Default `native`; `text-xml`/`text-json` spiegeln trainierte Formate (Qwen3-Coder-XML, Hermes-JSON); Protokoll pro Session fixiert
 - [Context-Block-Domänenmodell](tickets/008-context-block-model.md): 7 Block-Arten inkl. Tools Block; Session Log als Event-Folge, Context = Fold; Tool Pair wird beim Verschieben zur Note; Revisionen, Restore, Pin bottom = ganz am Ende
-- [Review-Gate-UI im opencode-Stil](tickets/009-review-gate-ui.md): ein Screen – Gate-Tabelle ist Chat-Verlauf (entfernte Blocks durchgestrichen sichtbar), Vorschau, Eingabe unten, Streaming inline; kein Budget-Balken
+- [Review-Gate-UI im opencode-Stil](tickets/009-review-gate-ui.md): ein Screen – Gate-Tabelle ist Chat-Verlauf (entfernte Blocks durchgestrichen sichtbar), Vorschau, Eingabe unten, Streaming inline; kein Budget-Balken/Summenzeile, Cache-Kurzinfo im Kopf
 
 ## Not yet specified
 
