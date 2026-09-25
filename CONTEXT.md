@@ -30,7 +30,7 @@ Pause before every request to the model (including follow-up requests inside a t
 _Avoid_: breakpoint, approval
 
 **Compaction**:
-User-controlled rewrite of selected Context Blocks by the LLM into one Note at the position of the first source; the sources count as removed. Restoring the Note undoes the Compaction.
+User-controlled rewrite of selected Context Blocks by the LLM, following a user instruction, into one Note at the position of the first source. The model sees only the selected blocks and the instruction. The user reviews the proposal and accepts, discards or refines it (refine starts again from the sources). On accept the sources count as removed; restoring them undoes the Compaction.
 _Avoid_: summarization, auto-compact
 
 **Note**:
@@ -40,7 +40,7 @@ Context Block of free text without API role semantics, keeping a reference to it
 Marker that keeps a Context Block at the top (after System and Tools Block) or the very end of the Context, countering lost-in-the-middle. Pinned blocks keep their order among themselves.
 
 **Model Profile**:
-Per-model settings: backend, endpoint, tokenizer, window size, Tool Protocol, tool result format, sampling. Can be switched within a session; the whole Context is then re-rendered.
+Per-model settings: backend, endpoint, tokenizer, window size, Tool Protocol, tool result format, sampling, and optionally another Model Profile used for Compaction (default: the same). Can be switched within a session; the whole Context is then re-rendered.
 
 **Tool Protocol**:
 How tool definitions and tool calls travel between harness and model: `native` (API tool calling) or `text-xml` (defined in the prompt). Blocks are stored protocol-neutral; the protocol only affects rendering of a request.
