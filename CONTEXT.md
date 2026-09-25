@@ -17,6 +17,9 @@ Context Block holding the tool definitions offered to the model. Always first af
 **Tool Pair**:
 A Tool Call together with its Tool Result. Removed or compacted only as a whole; moving it turns the pair into a single Note.
 
+**Session**:
+One conversation in a project, recorded in its own Session Log. Can be listed, resumed, renamed and deleted as a whole; there is no forking. Its title is the first user message unless renamed.
+
 **Context**:
 The ordered list of Context Blocks sent in the next request.
 _Avoid_: prompt, history, window
