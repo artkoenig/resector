@@ -3,13 +3,14 @@ import { createEffect, createMemo, createSignal } from 'solid-js';
 import type { Clipboard } from '../adapters/clipboard/clipboard';
 import type { Backend, ChatResult, Counted } from '../core/backend';
 import { warmRows } from '../core/cache/cache';
+import * as compaction from '../core/compaction/compaction';
 import * as ops from '../core/context/operations';
 import type { Kind, SessionEvent, SessionLog } from '../core/log/events';
 import { afterCalls, fold, pairOf, type Block } from '../core/log/fold';
 import { renderNative, renderPrefixes, sentBlocks, type Request } from '../core/render/native';
 import { answerBlocks } from '../core/toolcall/answer';
 import type { Runner } from '../core/toolcall/bash';
-import { errorText } from './format';
+import { count, errorText, formatTokens } from './format';
 
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
 // events: the Session Log so far (new or resumed); reconnect: re-reads the config and opens the session's
@@ -25,7 +26,11 @@ export type GateOptions = {
   reconnect: () => Promise<Backend>;
   openSessions: () => void;
   notice?: Status;
+  // Default Compaction instruction (FR-13); the Model Profile Compaction runs on, null = the session's own (FR-17).
+  instruction?: () => string;
+  compactor?: () => Promise<Compactor | null>;
 };
+export type Compactor = { profile: string; backend: Backend };
 
 // Slash commands (FR-6), in suggestion order.
 export const COMMANDS = [
@@ -39,7 +44,27 @@ export type Streaming = { text: string; abort: AbortController };
 // Approved Tool Call running; its output so far is shown, the result is logged when it ends.
 export type Running = { call: Block; output: string; started: number; abort: AbortController };
 // The row of an answer or result not in the Context yet, shown before the block `before` (null: at the end).
-export type Live = { id: number; kind: Kind; content: string; before: number | null };
+// A proposal has its own title, heading and, once counted, tokens.
+export type Live = { id: number; kind: Kind; content: string; before: number | null; title?: string; heading?: string; tokens?: number };
+// What accepting the proposal changes: tokens and Context (over: not below the window), and the cache.
+export type Review = { tokens: string; over: boolean; cache: string; cold: boolean };
+// Compaction under way (FR-13–FR-17): the instruction being written, the proposal streaming, or under review.
+export type Compaction = Compactor & {
+  sources: number[];
+  // Runs on the session's backend (same model/slot), which leaves the session cache cold.
+  same: boolean;
+  phase: 'instruction' | 'running' | 'review';
+  attempt: number;
+  instruction: string;
+  // What the instruction line shows when it opens again: the draft of the last run.
+  draft: string;
+  text: string;
+  abort: AbortController | null;
+  // Tokens of the request with the instruction being written.
+  request: number | null;
+  // The proposal counted in the Context: the Note's tokens and the Context total.
+  after: { note: number; total: number } | null;
+};
 
 // Undone operations whose event type does not read as one.
 const UNDONE: Partial<Record<SessionEvent['type'], string>> = { PairToNote: 'Tool Pair → Note' };
@@ -49,7 +74,7 @@ const APPROVE = 'y run once · n reject · e edit';
 const cacheMiss = ({ predicted, cached }: ChatResult) =>
   predicted !== null && cached !== null && cached < predicted ? `cache: predicted ${predicted} · server reused ${cached}` : null;
 
-export function createGate({ log, reconnect, openSessions, runner, editor, clipboard, ...options }: GateOptions) {
+export function createGate({ log, reconnect, openSessions, runner, editor, clipboard, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, ...options }: GateOptions) {
   const [events, setEvents] = createSignal(options.events);
   const [counted, setCounted] = createSignal<{ prefixes: Request[]; split: Counted } | null>(null);
   const [streaming, setStreaming] = createSignal<Streaming | null>(null);
@@ -61,6 +86,9 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
   const [backend, setBackend] = createSignal(options.backend);
   // Moving or pinning a Tool Pair asks first: the operation and block awaiting the same key again (FR-9).
   const [confirming, setConfirming] = createSignal<string | null>(null);
+  const [compacting, setCompacting] = createSignal<Compaction | null>(null);
+  // Bumped when the server's cache changed without a new request to count (a Compaction on its slot).
+  const [recount, setRecount] = createSignal(0);
 
   const append = (event: SessionEvent) => {
     log.append(event);
@@ -83,6 +111,8 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
   });
   // The streaming answer sits before the bottom pins; a running call's result where it will be added.
   const live = createMemo((): Live | null => {
+    const c = compacting();
+    if (c && c.phase !== 'instruction') return proposalRow(c);
     const s = streaming();
     if (s) return { id: nextId(), kind: 'Assistant', content: s.text, before: sent().find(b => b.pin === 'bottom')?.id ?? null };
     const r = running();
@@ -103,6 +133,7 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
   const keepSelection = () => rows().includes(selected()) || selectAt(rows().length - 1);
 
   createEffect(() => {
+    recount();
     const current = prefixes();
     backend().count(current).then(
       s => prefixes() === current && setCounted({ prefixes: current, split: s }),
@@ -305,6 +336,137 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
     keepSelection();
   }
 
+  // Compaction (FR-13–FR-17) ------------------------------------------------------------------------------
+  const tokensOf = (ids: number[]) => (split() ? ids.reduce((sum, id) => sum + split()!.blocks[sent().findIndex(b => b.id === id)]!, 0) : null);
+  const update = (change: Partial<Compaction>) => setCompacting({ ...compacting()!, ...change });
+  // The proposal row goes before the first source, so each source's row number is one more than its place.
+  function proposalRow(c: Compaction): Live {
+    const numbers = c.sources.map(id => `#${sent().findIndex(b => b.id === id) + 2}`).join(' ');
+    const heading = `◇ proposal · attempt ${c.attempt} · replaces ${numbers} · "${c.instruction}"`;
+    return { id: nextId(), kind: 'Note', content: c.text, before: c.sources[0]!, title: `◇ proposal · ${count(c.sources.length, 'block')} · attempt ${c.attempt}`, heading, ...(c.after && { tokens: c.after.note }) };
+  }
+
+  // c: the marked blocks, else the selected one, are compacted; first the instruction is written.
+  async function startCompaction() {
+    const found = compaction.sourcesOf(context(), marked(), selected());
+    if ('error' in found) return setStatus({ text: found.error, tone: 'info' });
+    try {
+      const own = await compactor();
+      const on = own ?? { profile: context().profile, backend: backend() };
+      setCompacting({ ...on, sources: found.sources, same: !own, phase: 'instruction', attempt: 0, instruction: '', draft: '', text: '', abort: null, request: null, after: null });
+      setStatus(null);
+    } catch (e) {
+      setStatus({ text: `compaction profile: ${errorText(e)}`, tone: 'error' });
+    }
+  }
+  const instructionOf = (draft: string) => draft.trim() || instruction();
+  const requestOf = (c: Compaction, draft: string) => compaction.compactionRequest(context(), c.sources, instructionOf(draft));
+  // The request with the instruction being written, counted for the header (FR-13); only the latest counts.
+  let measuring = '';
+  async function measure(draft: string) {
+    const c = compacting();
+    if (!c) return;
+    measuring = draft;
+    const { total } = await c.backend.count([requestOf(c, draft)]).catch(() => ({ total: null }));
+    if (measuring === draft && compacting()) update({ request: total });
+  }
+
+  // Enter on the instruction: a new run from the sources, unless the request does not fit the window (FR-14).
+  // The instruction line closes at once: the run starts with counting.
+  async function runCompaction(draft: string) {
+    const c = compacting()!;
+    const request = requestOf(c, draft);
+    const abort = new AbortController();
+    update({ phase: 'running', draft, abort });
+    setStatus(null);
+    try {
+      if (await fits(c, request)) await propose(c, request, draft, abort);
+    } catch (e) {
+      endCompaction({ text: `compaction failed: ${errorText(e)}`, tone: 'error' });
+    } finally {
+      // The server's cache now holds the compaction request (FR-17).
+      if (c.same) setRecount(recount() + 1);
+    }
+  }
+  // Too big for the window of the Compaction's Model Profile: back to the instruction, no chunking (FR-14).
+  async function fits(c: Compaction, request: Request) {
+    const { total } = await c.backend.count([request]);
+    if (total < c.backend.window) return true;
+    update({ phase: 'instruction', abort: null });
+    setStatus({ text: `compaction request ${formatTokens(total)} ≥ window ${formatTokens(c.backend.window)} of ${c.profile} – shrink the selection (Esc, then d / e)`, tone: 'error' });
+    return false;
+  }
+  // The proposal streams into its row; Esc aborts, also while the request is still counted.
+  async function propose(c: Compaction, request: Request, draft: string, abort: AbortController) {
+    const aborted = () => endCompaction({ text: 'compaction aborted – Context unchanged', tone: 'info' });
+    if (abort.signal.aborted) return aborted();
+    update({ attempt: c.attempt + 1, instruction: instructionOf(draft), text: '', after: null });
+    setSelected(nextId());
+    const onDelta = (d: string) => update({ text: compacting()!.text + d });
+    const result = await c.backend.chat(request, { signal: abort.signal, onDelta });
+    if (result.finish === 'aborted') return aborted();
+    update({ phase: 'review', abort: null });
+    if (result.finish === 'length') setStatus({ text: '⚠ proposal cut off at max_tokens', tone: 'warn' });
+    await countProposal();
+  }
+  function endCompaction(status: Status) {
+    const c = compacting();
+    setCompacting(null);
+    if (c && !context().blocks.some(b => b.id === selected())) setSelected(c.sources[0]!);
+    keepSelection();
+    setStatus(status);
+  }
+  // The Context as it would be after accept, counted: the Note's tokens and the Context total (FR-15).
+  async function countProposal() {
+    const c = compacting()!;
+    const after = fold([...events(), { type: 'Compact', sources: c.sources, instruction: c.instruction, noteId: nextId(), content: c.text }]);
+    const counted = await backend().count(renderPrefixes(after)).catch(() => null);
+    const note = sentBlocks(after).findIndex(b => b.id === nextId());
+    if (counted && compacting()?.text === c.text) update({ after: { note: counted.blocks[note]!, total: counted.total } });
+  }
+  // Under review: tokens before → after and the Context after accept; the cache effect (FR-15, FR-17).
+  function review(c: Compaction): Review | null {
+    const before = tokensOf(c.sources);
+    if (!c.after || before === null) return null;
+    const saved = compaction.reduction(before, c.after.note);
+    const change = saved < 0 ? `+${-saved}%` : `−${saved}%`;
+    const window = backend().window;
+    const context = `Context ${formatTokens(split()!.total)} → ${formatTokens(c.after.total)} / ${formatTokens(window)}`;
+    const session = c.same ? 'session cache cold (same model/slot)' : 'session cache untouched';
+    return { tokens: `${formatTokens(before)} → ${formatTokens(c.after.note)} tok (${change}) · ${context}`, over: c.after.total >= window, cache: `${session} · cold from #${rows().indexOf(nextId()) + 1} after accept`, cold: c.same };
+  }
+
+  function acceptCompaction() {
+    const c = compacting()!;
+    const id = nextId();
+    const before = tokensOf(c.sources);
+    if (!apply(compaction.accept(c.sources, c.instruction, id, c.text))) return;
+    setCompacting(null);
+    setMarked(new Set<number>());
+    setSelected(id);
+    setStatus({ text: `◇ accepted: ${before ?? '?'} → ${c.after?.note ?? '?'} tok · u = undo`, tone: 'ok' });
+  }
+  // i: the instruction again, the last one to change; Esc there returns to the proposal.
+  const refine = () => update({ phase: 'instruction' });
+  function leaveInstruction() {
+    const c = compacting()!;
+    if (c.attempt) update({ phase: 'review' });
+    else endCompaction({ text: 'compaction cancelled', tone: 'info' });
+  }
+  // e: the proposal in $EDITOR; the edited text is what accept adds.
+  async function editProposal() {
+    const c = compacting()!;
+    try {
+      const text = (await editor(c.text)).replace(/\n$/, c.text.endsWith('\n') ? '\n' : '');
+      if (text === c.text) return setStatus({ text: 'unchanged', tone: 'info' });
+      update({ text, after: null });
+      setStatus({ text: 'proposal edited by hand', tone: 'info' });
+      await countProposal();
+    } catch (e) {
+      setStatus({ text: `editor failed: ${errorText(e)} – unchanged`, tone: 'error' });
+    }
+  }
+
   async function reload() {
     try {
       setBackend(await reconnect());
@@ -337,7 +499,7 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
     live,
     // Streaming or running: only Esc (abort, kill) acts.
     nextCall: () => ops.nextCall(context()),
-    busy: () => streaming() !== null || running() !== null,
+    busy: () => streaming() !== null || running() !== null || compacting()?.phase === 'running',
     timeout: runner.timeout,
     status,
     rows,
@@ -350,7 +512,19 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
     profile: () => context().profile,
     submit,
     send,
-    abort: () => (streaming() ?? running())?.abort.abort(),
+    abort: () => (streaming() ?? running() ?? compacting())?.abort?.abort(),
+    compacting,
+    sourceTokens: () => (compacting() ? tokensOf(compacting()!.sources) : null),
+    review: () => (compacting()?.phase === 'review' ? review(compacting()!) : null),
+    defaultInstruction: instruction,
+    startCompaction: () => void startCompaction(),
+    measure: (draft: string) => void measure(draft),
+    runCompaction: (draft: string) => void runCompaction(draft),
+    acceptCompaction,
+    discardCompaction: () => endCompaction({ text: 'proposal discarded – Context unchanged', tone: 'info' }),
+    refine,
+    leaveInstruction,
+    editProposal: () => void editProposal(),
     approve: () => void approve(),
     reject,
     select: (delta: number) => selectAt(rows().indexOf(selected()) + delta),

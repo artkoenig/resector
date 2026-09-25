@@ -1,0 +1,13 @@
+{"type":"SessionCreated","profile":"local","protocol":"native"}
+{"type":"BlockAdded","id":1,"kind":"System","origin":"config","content":"You are a coding agent."}
+{"type":"BlockAdded","id":2,"kind":"Tools","origin":"config","content":"[]"}
+{"type":"BlockAdded","id":3,"kind":"User","origin":"user","content":"Why does the test fail?"}
+{"type":"RequestSent","hash":"a1","tokens":80}
+{"type":"BlockAdded","id":4,"kind":"Tool Call","origin":"model","content":"bun test"}
+{"type":"ResponseReceived","usage":{"prompt_tokens":80,"completion_tokens":10},"cached":0}
+{"type":"BlockAdded","id":5,"kind":"Tool Result","origin":"tool","content":"x.test.ts:3 expected 1, got 2\n[exit 1]","call":4}
+{"type":"RequestSent","hash":"a2","tokens":110}
+{"type":"BlockAdded","id":6,"kind":"Assistant","origin":"model","content":"add() is off by one in src/x.ts:12."}
+{"type":"ResponseReceived","usage":{"prompt_tokens":110,"completion_tokens":12},"cached":80}
+{"type":"Compact","sources":[4,5,6],"instruction":"Keep errors and file paths.","noteId":7,"content":"bun test: x.test.ts:3 fails (expected 1, got 2); cause: add() off by one in src/x.ts:12."}
+{"type":"BlockAdded","id":8,"kind":"User","origin":"user","content":"Fix it."}

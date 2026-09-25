@@ -1,7 +1,7 @@
 // Session Log events (architecture §3). One JSON object per line in the session file.
 
 export type Kind = 'System' | 'Tools' | 'User' | 'Assistant' | 'Tool Call' | 'Tool Result' | 'Note';
-export type Origin = 'config' | 'user' | 'model' | 'tool';
+export type Origin = 'config' | 'user' | 'model' | 'tool' | 'compaction';
 // How a bash run ended early (FR-21): Esc killed it, or it ran into the timeout.
 export type Stopped = 'killed' | 'timeout';
 export type ToolProtocol = 'native';
@@ -30,6 +30,8 @@ export type SessionEvent =
   | { type: 'Remove'; id: number }
   // The Tool Pair of Tool Call `call` becomes Note `id` after the calls and results of its answer (FR-9).
   | { type: 'PairToNote'; id: number; call: number }
+  // Accepted Compaction (FR-16): Note `noteId` with `content` replaces `sources` at the first one's place.
+  | { type: 'Compact'; sources: number[]; instruction: string; noteId: number; content: string }
   // Display label only, never sent; empty = reset to the default title.
   | { type: 'Rename'; id: number; title: string }
   // Counter-event (NFR-3): cancels the event at index `eventId` of the Session Log.
