@@ -80,7 +80,7 @@ test('first start: a found model is offered, written to the global config and op
   expect(frame).toMatch(/llama\.cpp\s+qwen3-8b\.gguf\s+http:\/\/localhost:\d+/);
   ui.mockInput.pressEnter();
   const gate = await frameMatching(ui, f => f.includes('/ 4k'));
-  expect(gate).toMatch(/^ qwen3-8b +/m);
+  expect(gate).toMatch(/^ {2}resector {2}qwen3-8b +/m);
   expect(JSON.parse(readFileSync(paths.global, 'utf8'))).toEqual({
     $schema: SCHEMA_URL,
     profiles: { 'qwen3-8b': { backend: 'llamacpp', endpoint: fake.url, model: 'qwen3-8b.gguf' } },
@@ -109,7 +109,7 @@ test('first start: an oMLX server on the LM Studio port is recognised, chosen an
     const { paths } = await launch({ servers: () => [{ backend: 'lmstudio', endpoint: omlx.url }] });
     expect(await frameMatching(ui, f => f.includes('Qwen3-8B-4bit'))).toMatch(/oMLX\s+Qwen3-8B-4bit\s+http:\/\/localhost:\d+\s*$/m);
     ui.mockInput.pressEnter();
-    expect(await frameMatching(ui, f => f.includes('/ 8k'))).toMatch(/^ Qwen3-8B-4bit +/m);
+    expect(await frameMatching(ui, f => f.includes('/ 8k'))).toMatch(/^ {2}resector {2}Qwen3-8B-4bit +/m);
     expect(JSON.parse(readFileSync(paths.global, 'utf8')).profiles).toEqual({
       'Qwen3-8B-4bit': { backend: 'omlx', endpoint: omlx.url, model: 'Qwen3-8B-4bit' },
     });
@@ -130,7 +130,7 @@ test('first start without any local model server fails with a hint', async () =>
 test('the Gate opens with the default Model Profile, its window and the system.md prompt', async () => {
   await launch({ config: url => profileConfig(url), systemMd: 'You are terse.' });
   const frame = await frameMatching(ui, f => f.includes('/ 2k'));
-  expect(frame).toMatch(/^ local +/m);
+  expect(frame).toMatch(/^ {2}resector {2}local +/m);
   expect(frame).toContain('You are terse.');
 });
 
@@ -176,7 +176,7 @@ test('a resumed session whose Model Profile is gone continues on the default one
   const { store } = await launch({ config: url => profileConfig(url), sessions: { ses_a: chat('gone') }, resume: 'ses_a' });
   const frame = await frameMatching(ui, f => f.includes('not in config'));
   expect(frame).toContain('profile "gone" not in config → local');
-  expect(frame).toMatch(/^ local +/m);
+  expect(frame).toMatch(/^ {2}resector {2}local +/m);
   expect(store.list()[0]!.events.at(-1)).toEqual({ type: 'ProfileFallback', profile: 'local' });
 });
 
@@ -224,11 +224,11 @@ test('/sessions lists the project sessions newest first with marker, profile, Co
     await sessionsView({ ses_a: titled('local', 'fix the build', 1900), ses_b: titled('gone', 'old question'), ses_c: titled('local', 'busy') }, { ses_c: other.pid });
     const frame = await frameMatching(ui, f => f.includes('busy'));
     expect(frame).toContain('Sessions · 4 sessions');
-    expect(line(frame, /\(new session\)/)).toMatch(/^ ● +\(new session\) +now +local +– +2\b/);
+    expect(line(frame, /\(new session\)/)).toMatch(/^[ ┃]● +\(new session\) +now +local +– +2\b/);
     expect(line(frame, /fix the build/)).toMatch(/fix the build +1h ago +local +1\.9k\/2k +4\b/);
     expect(line(frame, /old question/)).toMatch(/old question +2h ago +⚠ gone +20 +4\b/);
-    expect(line(frame, /busy/)).toMatch(/^ {2}⊘ +busy/);
-    expect(frame).toContain('↑↓ select · Enter open · r rename · d delete · n new · / filter · Esc back');
+    expect(line(frame, /busy/)).toMatch(/^[ ┃] ⊘ +busy/);
+    expect(frame).toContain('↑↓ select  enter open  r rename  d delete  n new  / filter  esc back');
     await key('down');
     const preview = await frameMatching(ui, f => f.includes('Preview · ses_a'));
     expect(preview).toMatch(/4 +Assistant +hello/);
@@ -282,7 +282,7 @@ test('d asks before deleting; deleting the current session switches to the newes
   await key('d');
   await key('y');
   const frame = await frameMatching(ui, f => f.includes('switched to "keep me"'));
-  expect(line(frame, /keep me/)).toMatch(/^ ●/);
+  expect(line(frame, /keep me/)).toMatch(/^[ ┃]●/);
   expect(existsSync(join(root, 'sessions', 'ses_test.jsonl'))).toBe(false);
 });
 
@@ -305,7 +305,7 @@ test('deleting the only session starts a new empty one', async () => {
   await key('d');
   await key('y');
   const frame = await frameMatching(ui, f => f.includes('switched to "(new session)"'));
-  expect(line(frame, /\(new session\)/)).toMatch(/^ ●/);
+  expect(line(frame, /\(new session\)/)).toMatch(/^[ ┃]●/);
 });
 
 test('r renames a session, / filters by title, n starts a new session (FR-33, FR-34)', async () => {
@@ -350,15 +350,15 @@ async function until(condition: () => boolean) {
 test('/sessions with more sessions than fit: rows never overlap, the list follows the selection', async () => {
   const many = Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`ses_${i + 1}`, titled('local', `topic ${i + 1}`)]));
   await sessionsView(many);
-  const titles = (f: string) => [...f.matchAll(/^ [● ][⊘ ] {2}(\(new session\)|topic \d)/gm)].map(m => m[1]);
+  const titles = (f: string) => [...f.matchAll(/^[ ┃][● ][⊘ ] {2}(\(new session\)|topic \d)/gm)].map(m => m[1]);
   let frame = await frameMatching(ui, f => f.includes('topic 1'));
-  expect(frame.split('\n')[0]).toMatch(/^ Sessions · 9 sessions/);
-  expect(frame.split('\n')[1]).toMatch(/^ {5}Title +Updated +Profile +Context +Blocks/);
+  expect(frame.split('\n')[0]).toMatch(/^ {2}resector {2}Sessions · 9 sessions/);
+  expect(frame.split('\n')[2]).toMatch(/^ {5}Title +Updated +Profile +Context +Blocks/);
   expect(titles(frame)[0]).toBe('(new session)');
   expect(titles(frame).length).toBeLessThan(9);
   for (let i = 0; i < 8; i++) await key('down');
   frame = await frameMatching(ui, f => f.includes('Preview · ses_8'));
   expect(titles(frame).at(-1)).toBe('topic 8');
   expect(titles(frame)).not.toContain('(new session)');
-  expect(frame.split('\n')[1]).toMatch(/^ {5}Title/);
+  expect(frame.split('\n')[2]).toMatch(/^ {5}Title/);
 });
