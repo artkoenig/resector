@@ -375,6 +375,15 @@ test('typing / suggests the commands, filtered while typing; ↑↓ choose, Ente
   await frameMatching(ui, f => f.includes('unknown command /nope – /sessions /rename /reload'));
 });
 
+test('/ in the Context starts a command in the input line', async () => {
+  await start();
+  await ui.mockInput.typeText('/');
+  const frame = await frameMatching(ui, f => f.includes('/reload'));
+  expect(frame).toContain(' > /');
+  await ui.mockInput.typeText('ren');
+  await frameMatching(ui, f => f.includes('rename session') && !f.includes('/sessions'));
+});
+
 test('Tab completes a command; /rename sets the session title, empty resets it (FR-34)', async () => {
   const { events } = await start();
   ui.mockInput.pressTab();

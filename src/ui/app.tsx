@@ -95,6 +95,10 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   const inputKeys: Record<string, () => void> = { return: submit, tab: leaveInput, escape: leaveInput };
   const contextKeys: Record<string, () => void> = {
     tab: () => setMode('input'),
+    '/': () => {
+      editDraft('/');
+      setMode('input');
+    },
     return: () => void gate.send(),
     up: () => gate.select(-1),
     down: () => gate.select(1),
@@ -242,7 +246,7 @@ const BUSY_KEYS = new Set(['up', 'down', 'shift+up', 'shift+down', 'pageup', 'pa
 const modifierOf = (key: { option?: boolean; meta: boolean; shift: boolean }) => (key.option || key.meta ? 'alt+' : key.shift ? 'shift+' : '');
 
 const LOOK_KEYS = '↑↓ select · PgUp/PgDn scroll · q quit';
-const KEYS = 'Enter send · Tab write · ↑↓ select · ⌥↑↓ move · PgUp/PgDn scroll · r rename · d remove · p pin · Space mark · u undo · q quit';
+const KEYS = 'Enter send · Tab write · / command · ↑↓ select · ⌥↑↓ move · PgUp/PgDn scroll · r rename · d remove · p pin · Space mark · u undo · q quit';
 
 // Status line: a running command, the streaming answer, else the last action.
 function statusOf(gate: Gate): Status | null {
