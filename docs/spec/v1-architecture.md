@@ -27,6 +27,7 @@ src/
   adapters/                I/O at the edge
     backend/               llamacpp | ollama | lmstudio | omlx (chat, tokenize, props)
     bash/                  process runner (timeout, kill, stdin /dev/null)
+    editor/                $EDITOR on a temporary file (suspends the TUI)
     fs/                    @file read, environment probe, AGENTS.md
     store/                 session files, lock files, session index
   ui/                      OpenTUI + Solid views: Gate, preview, input, /sessions
@@ -41,7 +42,7 @@ Core has no I/O; adapters are injected. UI depends on Core, never the reverse.
 - Events: `SessionCreated{profile, protocol}`, `BlockAdded{id, kind, origin: user|model|tool|file|environment|compaction, content, cutOff?, call?, stopped?: killed|timeout}` (`call`: a Tool Result's Tool Call), `Edit{id, revision, content}`, `Move{id, after}`, `Pin{id, top|bottom}`, `Unpin`, `Remove`, `Compact{sources, instruction, noteId}`, `Rename{id, title}` (block, display only), `SessionRenamed{title}`, `ProfileFallback{profile}`, `AllowRuleAdded{pattern}`, `RequestSent{hash, tokens}`, `ResponseReceived{usage, cached}`, `Undo{eventId}`.
 - **Context = fold(events)**. Undo is a counter-event; nothing is deleted within a session. Deleting a session removes its file.
 - Block storage is protocol-neutral: Tool Call = its bash command (the only tool), Tool Result = text (output, then `[exit N]`, `[killed]` or `[timeout after N s]`), Tools Block = tool definitions as JSON. Thinking, Assistant text and each Tool Call are separate blocks; the renderer merges them into one message. Tool Results follow all Tool Calls of their answer, in call order. A Tool Call without Tool Result awaits approval.
-- Only a Tool Call in state *pending approval* accepts `Edit`.
+- Every block but the Tools Block accepts `Edit`; of the Tool Calls only one *pending approval* (FR-8).
 - Responses are appended when complete or aborted (`cut off`); in-flight streams are never persisted.
 
 ## 4. Request pipeline (per Review Gate)

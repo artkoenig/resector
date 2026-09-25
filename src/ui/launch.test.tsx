@@ -53,6 +53,7 @@ async function launch({ config, systemMd, servers, sessions = {}, locks = {}, re
         paths={paths}
         servers={servers?.(fake.url) ?? [{ backend: 'llamacpp', endpoint: fake.url }]}
         store={store}
+        editor={async text => text}
         resume={resume}
         onQuit={() => quit.push('quit')}
         onFatal={m => fatal.push(m)}

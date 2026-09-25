@@ -18,10 +18,13 @@ export type Block = {
   // Flags since the last request (FR-5).
   moved: boolean;
   pinChanged: boolean;
+  // Current Revision (FR-8); revised: another one than at the last request (`✎n`, FR-5).
+  revision: number;
+  revised: boolean;
 };
 export type Context = { profile: string; protocol: ToolProtocol; blocks: Block[]; nextId: number };
 
-type Entry = Block & { hidden: boolean; sentPin: Pin | null };
+type Entry = Omit<Block, 'revised'> & { hidden: boolean; sentPin: Pin | null; sentRevision: number };
 // unsent: indices of events logged since the last request.
 type State = { profile: string; entries: Map<number, Entry>; order: number[]; events: SessionEvent[]; unsent: Set<number> };
 type Apply<T extends SessionEvent['type']> = (state: State, event: Extract<SessionEvent, { type: T }>) => void;
@@ -56,7 +59,7 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   BlockAdded: (state, e) => {
     const block = { id: e.id, kind: e.kind, origin: e.origin, content: e.content, cutOff: e.cutOff === true,
       ...(e.call !== undefined && { call: e.call }), ...(e.stopped && { stopped: e.stopped }) };
-    state.entries.set(e.id, { ...block, title: null, pin: null, removed: false, moved: false, pinChanged: false, hidden: false, sentPin: null });
+    state.entries.set(e.id, { ...block, title: null, pin: null, removed: false, moved: false, pinChanged: false, revision: 1, hidden: false, sentPin: null, sentRevision: 1 });
     const at = e.call === undefined ? firstBottom(state) : afterCalls(state.order.map(id => entry(state, id)), e.call);
     insert(state, at, e.id);
   },
@@ -65,13 +68,14 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
     insert(state, state.order.indexOf(e.after) + 1, e.id);
     entry(state, e.id).moved = true;
   },
+  Edit: (state, e) => void Object.assign(entry(state, e.id), { content: e.content, revision: e.revision }),
   Pin: (state, e) => setPin(state, e.id, e.at),
   Unpin: (state, e) => setPin(state, e.id, null),
   ProfileFallback: (state, e) => void (state.profile = e.profile),
   Remove: (state, e) => void (entry(state, e.id).removed = true),
   Rename: (state, e) => void (entry(state, e.id).title = e.title || null),
   RequestSent: state => {
-    for (const e of state.entries.values()) Object.assign(e, { hidden: e.removed, moved: false, pinChanged: false, sentPin: e.pin });
+    for (const e of state.entries.values()) Object.assign(e, { hidden: e.removed, moved: false, pinChanged: false, sentPin: e.pin, sentRevision: e.revision });
     state.unsent.clear();
   },
   // Undoing an operation that was already sent changes the Context since the last request (FR-5).
@@ -80,6 +84,8 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
     if (state.unsent.has(e.eventId)) return;
     if (target.type === 'Move') entry(state, target.id).moved = true;
     if (target.type === 'Pin' || target.type === 'Unpin') entry(state, target.id).pinChanged = true;
+    // The replay skipped the sent Revision; the one restored differs from it.
+    if (target.type === 'Edit') entry(state, target.id).sentRevision = target.revision;
   },
 };
 
@@ -102,6 +108,7 @@ export function fold(events: SessionEvent[]): Context {
   const blocks = state.order
     .map(id => entry(state, id))
     .filter(e => !e.hidden)
-    .map(({ hidden, sentPin, ...block }) => (block.kind === 'Tool Call' ? { ...block, pending: !answered.has(block.id) } : block));
+    .map(({ hidden, sentPin, sentRevision, ...block }) => ({ ...block, revised: block.revision !== sentRevision }))
+    .map(block => (block.kind === 'Tool Call' ? { ...block, pending: !answered.has(block.id) } : block));
   return { profile: state.profile, protocol: first.protocol, blocks, nextId: Math.max(0, ...state.entries.keys()) + 1 };
 }

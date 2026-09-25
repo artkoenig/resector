@@ -114,6 +114,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     d: gate.remove,
     u: gate.undo,
     r: startRename,
+    e: gate.edit,
     space: gate.toggleMark,
     escape: gate.clearMarks,
     q: props.onQuit,
@@ -252,7 +253,7 @@ const WHEEL: Record<string, number> = { up: -1, down: 1 };
 const modifierOf = (key: { option?: boolean; meta: boolean; shift: boolean }) => (key.option || key.meta ? 'alt+' : key.shift ? 'shift+' : '');
 
 const LOOK_KEYS = '↑↓ select · PgUp/PgDn scroll · q quit';
-const KEYS = 'Enter send · Tab write · / command · ↑↓ select · ⌥↑↓ move · PgUp/PgDn scroll · r rename · d remove · p pin · Space mark · u undo · q quit';
+const KEYS = 'Enter send · Tab write · / command · ↑↓ select · ⌥↑↓ move · PgUp/PgDn scroll · e edit · r rename · d remove · p pin · Space mark · u undo · q quit';
 
 // Status line: a running command, the streaming answer, else the last action.
 function statusOf(gate: Gate): Status | null {
@@ -265,7 +266,7 @@ function statusOf(gate: Gate): Status | null {
 function keysOf(gate: Gate, mode: Mode | 'suggest'): string {
   if (gate.running()) return `Esc kill · ${LOOK_KEYS}`;
   if (gate.streaming()) return `Esc abort · ${LOOK_KEYS}`;
-  if (mode === 'context' && gate.selectedBlock()?.pending) return `y run once · n reject · ${KEYS}`;
+  if (mode === 'context' && gate.selectedBlock()?.pending) return `y run once · n reject · e edit · ${KEYS}`;
   if (mode === 'suggest') return '↑↓ choose · Tab complete · Enter run · Esc back';
   if (mode === 'input') return 'Enter adds a User block (not sent) · Tab/Esc back';
   if (mode === 'rename') return 'Enter sets title (display only, never sent; empty = reset) · Tab/Esc cancel';

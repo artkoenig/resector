@@ -19,12 +19,15 @@ export function titleOf(block: Titled, blocks: readonly Pick<Block, 'id' | 'cont
   return firstLine(block.content) || '(empty)';
 }
 
-// FR-5: changes since the last request (pin set/changed, moved), then persistent status flags.
+// FR-5: changes since the last request: new Revision, pin set/changed, moved.
+const changesOf = (block: Block): string =>
+  (block.revised ? `✎${block.revision}` : '') + ((block.pinChanged && { top: '⤒', bottom: '⤓' }[block.pin!]) || '') + (block.moved ? '⇄' : '');
+
+// Changes since the last request, then persistent status flags.
 // next: the Tool Call to decide on now; later pending calls are queued (FR-24).
 export const flagsOf = (block: Block, next?: number): string =>
   [
-    (block.pinChanged && { top: '⤒', bottom: '⤓' }[block.pin!]) || '',
-    block.moved ? '⇄' : '',
+    changesOf(block),
     block.cutOff ? ' ⚠ cut off' : '',
     block.pending ? (block.id === next ? ' ? approve' : ' · queued') : '',
     block.stopped ? ` ⚠ ${block.stopped}` : '',

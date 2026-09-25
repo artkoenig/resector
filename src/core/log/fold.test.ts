@@ -15,9 +15,9 @@ test('Context holds the session profile and the added blocks in order', () => {
     profile: 'default',
     protocol: 'native',
     blocks: [
-      { id: 1, kind: 'System', origin: 'config', content: 'You are an agent.', cutOff: false, title: null, pin: null, removed: false, moved: false, pinChanged: false },
-      { id: 2, kind: 'User', origin: 'user', content: 'hi', cutOff: false, title: null, pin: null, removed: false, moved: false, pinChanged: false },
-      { id: 3, kind: 'Assistant', origin: 'model', content: 'hello', cutOff: true, title: null, pin: null, removed: false, moved: false, pinChanged: false },
+      { id: 1, kind: 'System', origin: 'config', content: 'You are an agent.', cutOff: false, title: null, pin: null, removed: false, moved: false, pinChanged: false, revision: 1, revised: false },
+      { id: 2, kind: 'User', origin: 'user', content: 'hi', cutOff: false, title: null, pin: null, removed: false, moved: false, pinChanged: false, revision: 1, revised: false },
+      { id: 3, kind: 'Assistant', origin: 'model', content: 'hello', cutOff: true, title: null, pin: null, removed: false, moved: false, pinChanged: false, revision: 1, revised: false },
     ],
     nextId: 4,
   });
@@ -47,7 +47,7 @@ const sent: SessionEvent = { type: 'RequestSent', hash: 'h', tokens: 1 };
 test('a new block starts unpinned, untitled and unflagged', () => {
   expect(block(session(1), 2)).toEqual({
     id: 2, kind: 'User', origin: 'user', content: 'u2', cutOff: false,
-    title: null, pin: null, removed: false, moved: false, pinChanged: false,
+    title: null, pin: null, removed: false, moved: false, pinChanged: false, revision: 1, revised: false,
   });
 });
 
@@ -132,8 +132,8 @@ test('undoing a sent Unpin flags the pin again; undoing other operations flags n
   const unpinned = session(2, { type: 'Pin', id: 2, at: 'top' }, sent, { type: 'Unpin', id: 2 }, sent, { type: 'Undo', eventId: 6 });
   expect(block(unpinned, 2)).toMatchObject({ pin: 'top', pinChanged: true });
   const removed = session(2, { type: 'Remove', id: 3 }, { type: 'Rename', id: 2, title: 'x' }, sent, { type: 'Undo', eventId: 5 }, { type: 'Undo', eventId: 4 });
-  expect(block(removed, 3)).toMatchObject({ moved: false, pinChanged: false, removed: false });
-  expect(block(removed, 2)).toMatchObject({ moved: false, pinChanged: false, title: null });
+  expect(block(removed, 3)).toMatchObject({ moved: false, pinChanged: false, removed: false, revised: false });
+  expect(block(removed, 2)).toMatchObject({ moved: false, pinChanged: false, title: null, revised: false });
 });
 
 test('a ProfileFallback replaces the session profile (FR-35)', () => {
@@ -170,4 +170,26 @@ test('a Tool Call awaits approval until it has a Tool Result, also a removed one
   expect(block(events, 4).pending).toBe(true);
   expect(block(events, 2).pending).toBeUndefined();
   expect(block([...events, { type: 'Remove', id: 5 }, sent], 3).pending).toBe(false);
+});
+
+const edit = (id: number, revision: number, content: string): SessionEvent => ({ type: 'Edit', id, revision, content });
+
+test('Edit replaces the content with the new Revision, keeping kind and place (FR-8)', () => {
+  const events = session(2, edit(2, 2, 'better'));
+  expect(block(events, 2)).toMatchObject({ kind: 'User', content: 'better', revision: 2 });
+  expect(ids(events)).toEqual([1, 2, 3]);
+});
+
+test('a new Revision is flagged until the next request (FR-5)', () => {
+  const events = session(1, edit(2, 2, 'x'));
+  expect(block(events, 2).revised).toBe(true);
+  expect(block([...events, sent], 2)).toMatchObject({ revision: 2, revised: false });
+  expect(block([...events, sent, edit(2, 3, 'y')], 2)).toMatchObject({ revision: 3, revised: true });
+});
+
+test('undoing an Edit restores the earlier Revision; flagged only when that was sent', () => {
+  const unsent = session(1, edit(2, 2, 'x'), { type: 'Undo', eventId: 3 });
+  expect(block(unsent, 2)).toMatchObject({ content: 'u2', revision: 1, revised: false });
+  const afterSend = session(1, edit(2, 2, 'x'), sent, { type: 'Undo', eventId: 3 });
+  expect(block(afterSend, 2)).toMatchObject({ content: 'u2', revision: 1, revised: true });
 });

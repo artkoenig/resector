@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
-import { approvable, isFixed, move, nextCall, pin, reject, remove, rename, toolResult, undo } from './operations';
+import { approvable, edit, isFixed, move, nextCall, pin, reject, remove, rename, toolResult, undo } from './operations';
 
 const session = (...then: SessionEvent[]): SessionEvent[] => [
   { type: 'SessionCreated', profile: 'default', protocol: 'native' },
@@ -68,7 +68,7 @@ test('undo names the latest Context operation not yet undone', () => {
   const events = session({ type: 'Remove', id: 2 }, { type: 'Rename', id: 3, title: 'x' }, { type: 'RequestSent', hash: 'h', tokens: 1 });
   expect(undo(events)).toEqual({ event: { type: 'Undo', eventId: 6 } });
   expect(undo([...events, { type: 'Undo', eventId: 6 }])).toEqual({ event: { type: 'Undo', eventId: 5 } });
-  for (const op of [{ type: 'Move', id: 3, after: 1 }, { type: 'Pin', id: 3, at: 'top' }, { type: 'Unpin', id: 3 }] as SessionEvent[])
+  for (const op of [{ type: 'Move', id: 3, after: 1 }, { type: 'Pin', id: 3, at: 'top' }, { type: 'Unpin', id: 3 }, { type: 'Edit', id: 3, revision: 2, content: 'x' }] as SessionEvent[])
     expect(undo(session(op))).toEqual({ event: { type: 'Undo', eventId: 5 } });
 });
 
@@ -80,7 +80,7 @@ test('undo has nothing to cancel without Context operations', () => {
 const tools: SessionEvent = { type: 'BlockAdded', id: 5, kind: 'Tools', origin: 'config', content: '[]' };
 const call = (id: number): SessionEvent => ({ type: 'BlockAdded', id, kind: 'Tool Call', origin: 'model', content: `cmd ${id}` });
 const answered = (id: number, of: number): SessionEvent => ({ type: 'BlockAdded', id, kind: 'Tool Result', origin: 'tool', content: 'out', call: of });
-const AWAITS = { error: 'Tool Call awaits approval – y run once · n reject' };
+const AWAITS = { error: 'Tool Call awaits approval – y run once · n reject · e edit' };
 
 test('the Tools Block is fixed like System (FR-12)', () => {
   const [context, block] = at(session(tools), 5);
@@ -125,4 +125,38 @@ test('a run becomes the Tool Result of its call, flagged when stopped', () => {
   expect(toolResult(block, 7, { output: '', exit: null, stopped: 'killed' }, 120)).toEqual({
     type: 'BlockAdded', id: 7, kind: 'Tool Result', origin: 'tool', content: '[killed]', call: 6, stopped: 'killed',
   });
+});
+
+const editOf = (events: SessionEvent[], id: number, text: string) => edit(events, at(events, id)[1], text);
+
+test('edit creates the next Revision of the block (FR-8)', () => {
+  expect(editOf(session(), 2, 'better')).toEqual({ event: { type: 'Edit', id: 2, revision: 2, content: 'better' } });
+  const edited = session({ type: 'Edit', id: 2, revision: 2, content: 'x' }, { type: 'Edit', id: 3, revision: 2, content: 'y' });
+  expect(editOf(edited, 2, 'z')).toEqual({ event: { type: 'Edit', id: 2, revision: 3, content: 'z' } });
+});
+
+test('Revision numbers are not reused after an undo: the undone one stays in the Session Log', () => {
+  const events = session({ type: 'Edit', id: 2, revision: 2, content: 'x' }, { type: 'Undo', eventId: 5 });
+  expect(editOf(events, 2, 'y')).toEqual({ event: { type: 'Edit', id: 2, revision: 3, content: 'y' } });
+});
+
+test('an unchanged save creates no Revision', () => {
+  expect(editOf(session(), 2, 'a')).toEqual({ error: 'unchanged – no new Revision' });
+});
+
+test('the newline an editor appends at the end is dropped, unless the content had one; a command loses all', () => {
+  expect(editOf(session(), 2, 'a\n')).toEqual({ error: 'unchanged – no new Revision' });
+  expect(editOf(session(), 2, 'b\n\nc\n\n')).toEqual({ event: { type: 'Edit', id: 2, revision: 2, content: 'b\n\nc\n' } });
+  expect(editOf(session(call(6)), 6, 'ls \\\n  -a\n\n')).toEqual({ event: { type: 'Edit', id: 6, revision: 2, content: 'ls \\\n  -a' } });
+  const multiline = session({ type: 'BlockAdded', id: 5, kind: 'User', origin: 'user', content: 'x\n' });
+  expect(editOf(multiline, 5, 'y\n')).toEqual({ event: { type: 'Edit', id: 5, revision: 2, content: 'y\n' } });
+});
+
+test('editable: all kinds but the Tools Block and executed Tool Calls (FR-8)', () => {
+  const events = session(tools, call(6), answered(7, 6), call(8));
+  expect(editOf(events, 5, '[]x')).toEqual({ error: 'Tools Block is not editable' });
+  expect(editOf(events, 6, 'rm')).toEqual({ error: 'executed Tool Calls are immutable' });
+  expect(editOf(events, 8, 'ls -a')).toEqual({ event: { type: 'Edit', id: 8, revision: 2, content: 'ls -a' } });
+  expect(editOf(events, 7, 'short')).toEqual({ event: { type: 'Edit', id: 7, revision: 2, content: 'short' } });
+  expect(editOf(events, 1, 'new sys')).toEqual({ event: { type: 'Edit', id: 1, revision: 2, content: 'new sys' } });
 });

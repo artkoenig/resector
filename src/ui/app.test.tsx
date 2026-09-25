@@ -23,7 +23,11 @@ afterEach(() => {
 // Where bash runs in these tests.
 const project = realpathSync(mkdtempSync(join(tmpdir(), 'resector-project-')));
 
+// $EDITOR for `e`: the text as the user saves it; default unchanged.
+let editor: (text: string) => Promise<string>;
+
 async function start({ timeout = 120 } = {}) {
+  editor = async text => text;
   fake = startFakeLlamaCpp({ nCtx: 4096 });
   const backend = await connectLlamaCpp(fake.url);
   const log = createSessionLog(mkdtempSync(join(tmpdir(), 'resector-')), 'ses_test');
@@ -32,7 +36,7 @@ async function start({ timeout = 120 } = {}) {
   initial.forEach(log.append);
   const opened: string[] = [];
   ui = await testRender(
-    () => <App backend={backend} runner={runner} log={log} events={initial} reconnect={async () => backend} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
+    () => <App backend={backend} runner={runner} editor={text => editor(text)} log={log} events={initial} reconnect={async () => backend} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
     { width: 80, height: 20 },
   );
   await frameMatching(ui, f => f.includes('52 / 4k'));
@@ -587,4 +591,72 @@ test('the mouse wheel over the block table selects the previous or next block', 
 test('an Assistant block of only whitespace is titled (empty)', async () => {
   await asked(['ls'], { text: '\n\n\n' });
   expect(line(ui.captureCharFrame(), /Assistant/)).toMatch(/Assistant\s+\(empty\)/);
+});
+
+test('e edits the block in $EDITOR: a new Revision flagged ✎2 until sent, the request carries it (FR-5, FR-8)', async () => {
+  const { events } = await withUsers('helo');
+  const opened: string[] = [];
+  editor = async text => (opened.push(text), 'hello\n');
+  await press('e');
+  let frame = await frameMatching(ui, f => f.includes('revision 2'));
+  expect(opened).toEqual(['helo']);
+  expect(line(frame, /User/)).toMatch(/3\s+User\s+hello\s+\d+\s+[●○]?\s+✎2/);
+  expect(frame).toContain('edited: hello → revision 2 · u = undo');
+  expect(events().at(-1)).toEqual({ type: 'Edit', id: 3, revision: 2, content: 'hello' });
+  fake.reply({ chunks: ['hi'] });
+  ui.mockInput.pressEnter();
+  frame = await frameMatching(ui, f => f.includes('answer complete'));
+  expect(frame).not.toContain('✎');
+  expect((fake.chatRequests[0] as { messages: unknown[] }).messages.at(-1)).toEqual({ role: 'user', content: 'hello' });
+});
+
+test('an unchanged save creates no Revision; u undoes an edit', async () => {
+  const { events } = await withUsers('keep');
+  await press('e');
+  await frameMatching(ui, f => f.includes('unchanged – no new Revision'));
+  expect(events().some(e => e.type === 'Edit')).toBe(false);
+  editor = async () => 'changed';
+  await press('e');
+  await frameMatching(ui, f => f.includes('revision 2'));
+  await press('u');
+  const frame = await frameMatching(ui, f => f.includes('undone: edit'));
+  expect(line(frame, /3\s+User/)).toMatch(/User\s+keep\s/);
+  expect(frame).not.toContain('✎');
+});
+
+test('the Tools Block and executed Tool Calls are not opened in $EDITOR', async () => {
+  await asked(['echo hi']);
+  await press('y');
+  await frameMatching(ui, f => f.includes('tool loop paused'));
+  const opened: string[] = [];
+  editor = async text => (opened.push(text), 'x');
+  await press('up');
+  await press('e');
+  await frameMatching(ui, f => f.includes('executed Tool Calls are immutable'));
+  for (const k of ['up', 'up']) await press(k);
+  await frameMatching(ui, f => previewed(f) === '[');
+  await press('e');
+  await frameMatching(ui, f => f.includes('Tools Block is not editable'));
+  expect(opened).toEqual([]);
+});
+
+test('a Tool Call awaiting approval is edited; y runs the edited command (FR-22)', async () => {
+  const { events } = await asked(['echo wrong']);
+  editor = async () => 'echo right\n';
+  await press('e');
+  let frame = await frameMatching(ui, f => f.includes('revision 2'));
+  expect(line(frame, /Tool Call/)).toMatch(/4\s+Tool Call\s+echo right\s+\d+\s+[●○]?\s+✎2 \? approve/);
+  await press('y');
+  frame = await frameMatching(ui, f => f.includes('tool loop paused'));
+  expect(events().at(-1)).toEqual({ type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'right\n[exit 0]', call: 4 });
+});
+
+test('an editor that fails leaves the block unchanged', async () => {
+  const { events } = await withUsers('keep');
+  editor = async () => {
+    throw new Error('vi exited with 1');
+  };
+  await press('e');
+  await frameMatching(ui, f => f.includes('editor failed: vi exited with 1 – unchanged'));
+  expect(events().some(e => e.type === 'Edit')).toBe(false);
 });

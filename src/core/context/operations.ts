@@ -13,10 +13,10 @@ export const isFixed = (block: Block) => block.kind === 'System' || block.kind =
 const NAME = { System: 'System prompt', Tools: 'Tools Block' } as Record<string, string>;
 const fixed = (block: Block) => ({ error: `${NAME[block.kind]} is fixed` });
 // A Tool Call awaiting approval keeps its place until it has a result.
-const AWAITS = { error: 'Tool Call awaits approval – y run once · n reject' };
+const AWAITS = { error: 'Tool Call awaits approval – y run once · n reject · e edit' };
 // Why an operation may not touch the block, if not.
 const guard = (block: Block) => (isFixed(block) ? fixed(block) : block.pending ? AWAITS : null);
-const UNDOABLE = new Set<SessionEvent['type']>(['Move', 'Pin', 'Unpin', 'Remove', 'Rename']);
+const UNDOABLE = new Set<SessionEvent['type']>(['Move', 'Pin', 'Unpin', 'Remove', 'Rename', 'Edit']);
 
 export function move({ blocks }: Context, block: Block, dir: -1 | 1): Outcome {
   const blocked = guard(block);
@@ -41,6 +41,29 @@ export function remove(block: Block): Outcome {
   if (isFixed(block)) return { error: `${NAME[block.kind]} cannot be removed` };
   if (block.pending) return AWAITS;
   return { event: { type: 'Remove', id: block.id } };
+}
+
+// Editor port (adapters/editor): the user edits a text; resolves to the saved text.
+export type Editor = (text: string) => Promise<string>;
+
+// The content a block is added with.
+const FIRST_REVISION = 1;
+
+// Why the block cannot be edited, or null: all kinds but the Tools Block and executed Tool Calls (FR-8).
+export function editable(block: Block): string | null {
+  if (block.kind === 'Tools') return 'Tools Block is not editable';
+  return block.kind === 'Tool Call' && !block.pending ? 'executed Tool Calls are immutable' : null;
+}
+
+// e: the edited text becomes a new Revision, numbered after every Revision logged, undone ones too.
+// Editors end a saved file with a newline; one the content did not have is dropped, from a command all.
+export function edit(events: SessionEvent[], block: Block, edited: string): Outcome {
+  const error = editable(block);
+  if (error) return { error };
+  const content = block.content.endsWith('\n') ? edited : edited.replace(block.kind === 'Tool Call' ? /\n+$/ : /\n$/, '');
+  if (content === block.content) return { error: 'unchanged – no new Revision' };
+  const edits = events.filter(e => e.type === 'Edit' && e.id === block.id).length;
+  return { event: { type: 'Edit', id: block.id, revision: FIRST_REVISION + edits + 1, content } };
 }
 
 export const rename = (block: Block, title: string): Outcome => ({ event: { type: 'Rename', id: block.id, title: title.trim() } });

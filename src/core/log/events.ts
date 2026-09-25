@@ -20,6 +20,8 @@ export type SessionEvent =
   // Tool Call: content = the bash command; Tool Result: `call` = its Tool Call, content = the output.
   | { type: 'BlockAdded'; id: number; kind: Kind; origin: Origin; content: string; cutOff?: true; call?: number; stopped?: Stopped }
   | { type: 'RequestSent'; hash: string; tokens: number }
+  // A new Revision of the block's content (FR-8); the block's first content is Revision 1.
+  | { type: 'Edit'; id: number; revision: number; content: string }
   // Context operations (FR-4, FR-10); `after` is the block the moved block now follows.
   | { type: 'Move'; id: number; after: number }
   | { type: 'Pin'; id: number; at: Pin }

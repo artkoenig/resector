@@ -5,6 +5,7 @@ import { discover, LOCAL_SERVERS, type DiscoveredModel, type LocalServer } from 
 import { createRunner } from '../adapters/bash/runner';
 import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
 import type { OpenSession, SessionStore } from '../adapters/store/sessions';
+import type { Editor } from '../core/context/operations';
 import type { SessionEvent } from '../core/log/events';
 import { fold } from '../core/log/fold';
 import { newSession, summarize, type SessionRef } from '../core/session/session';
@@ -20,6 +21,8 @@ export type LaunchOptions = {
   store: SessionStore;
   // Project root: where bash runs (FR-21); default the working directory.
   cwd?: string;
+  // $EDITOR for `e` (FR-8).
+  editor: Editor;
   // -c [id]: true = the last session (FR-32).
   resume?: SessionRef;
   onQuit: () => void;
@@ -82,7 +85,7 @@ export function Launch(props: LaunchOptions) {
     setCurrent(opened.id);
     setFound(null);
     const runner = createRunner({ cwd: props.cwd ?? process.cwd(), timeout: loaded.config.bash?.timeout ?? DEFAULT_TIMEOUT });
-    setGate({ backend, runner, log: opened.log, events, notice, reconnect: reconnect(profile, opened.id), openSessions: () => setView('sessions') });
+    setGate({ backend, runner, editor: props.editor, log: opened.log, events, notice, reconnect: reconnect(profile, opened.id), openSessions: () => setView('sessions') });
   }
 
   // /sessions (FR-33): switching sessions reconnects; the Gate comes back with the session's logged events.

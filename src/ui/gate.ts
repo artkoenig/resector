@@ -13,10 +13,11 @@ import { errorText, titleOf } from './format';
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
 // events: the Session Log so far (new or resumed); reconnect: re-reads the config and opens the session's
 // Model Profile again (/reload, FR-44); openSessions: shows /sessions; notice: initial status line.
-// runner: runs approved bash calls (FR-21).
+// runner: runs approved bash calls (FR-21); editor: $EDITOR for `e` (FR-8).
 export type GateOptions = {
   backend: Backend;
   runner: Runner;
+  editor: ops.Editor;
   log: SessionLog;
   events: SessionEvent[];
   reconnect: () => Promise<Backend>;
@@ -39,12 +40,12 @@ export type Running = { call: Block; output: string; started: number; abort: Abo
 export type Live = { id: number; kind: Kind; content: string; before: number | null };
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-const APPROVE = 'y run once · n reject';
+const APPROVE = 'y run once · n reject · e edit';
 // The prediction checked against the server (FR-41); a server reusing more than predicted is harmless.
 const cacheMiss = ({ predicted, cached }: ChatResult) =>
   predicted !== null && cached !== null && cached < predicted ? `cache: predicted ${predicted} · server reused ${cached}` : null;
 
-export function createGate({ log, reconnect, openSessions, runner, ...options }: GateOptions) {
+export function createGate({ log, reconnect, openSessions, runner, editor, ...options }: GateOptions) {
   const [events, setEvents] = createSignal(options.events);
   const [counted, setCounted] = createSignal<{ prefixes: Request[]; split: Counted } | null>(null);
   const [streaming, setStreaming] = createSignal<Streaming | null>(null);
@@ -127,8 +128,10 @@ export function createGate({ log, reconnect, openSessions, runner, ...options }:
 
   const PINNED = { top: 'pinned ⤒ top', bottom: 'pinned ⤓ bottom (sent as user-role Note at the end)' };
   const move = (dir: -1 | 1) => operate(b => ops.move(context(), b, dir), () => null);
-  const pinOf = (id: number) => context().blocks.find(b => b.id === id)!.pin;
-  const pin = () => operate(ops.pin, b => (pinOf(b.id) ? PINNED[pinOf(b.id)!] : 'unpinned'));
+  // A block as it is now, after an operation.
+  const blockOf = (id: number) => context().blocks.find(b => b.id === id)!;
+  const pinned = ({ pin }: Block) => (pin ? PINNED[pin] : 'unpinned');
+  const pin = () => operate(ops.pin, b => pinned(blockOf(b.id)));
   function remove() {
     const at = rows().indexOf(selected());
     operate(ops.remove, b => `removed: ${titleOf(b)} · struck through until sent · u = undo`);
@@ -145,6 +148,20 @@ export function createGate({ log, reconnect, openSessions, runner, ...options }:
   }
   const rename = (title: string) =>
     operate(b => ops.rename(b, title), () => (title.trim() ? 'renamed (display only – Context and cache unchanged)' : 'title reset'));
+  const edited = (b: Block) => `edited: ${titleOf(b)} → revision ${b.revision} · u = undo`;
+  // e: the selected block in $EDITOR; a changed save becomes a new Revision (FR-8). Checked first: a
+  // block that cannot be edited is not opened.
+  async function edit() {
+    const block = selectedBlock();
+    const error = block ? ops.editable(block) : null;
+    if (!block || error) return error && setStatus({ text: error, tone: 'info' });
+    try {
+      const text = await editor(block.content);
+      operate(b => ops.edit(events(), b, text), b => edited(blockOf(b.id)));
+    } catch (e) {
+      setStatus({ text: `editor failed: ${errorText(e)} – unchanged`, tone: 'error' });
+    }
+  }
   function toggleMark() {
     const block = selectedBlock();
     if (!block || ops.isFixed(block)) return;
@@ -320,6 +337,7 @@ export function createGate({ log, reconnect, openSessions, runner, ...options }:
     remove,
     undo,
     rename,
+    edit: () => void edit(),
     toggleMark,
     clearMarks: () => setMarked(new Set<number>()),
   };

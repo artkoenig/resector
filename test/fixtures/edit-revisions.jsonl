@@ -1,0 +1,13 @@
+{"type":"SessionCreated","profile":"qwen3-8b","protocol":"native"}
+{"type":"BlockAdded","id":1,"kind":"System","origin":"config","content":"You are a coding agent."}
+{"type":"BlockAdded","id":2,"kind":"User","origin":"user","content":"Fix teh build."}
+{"type":"Edit","id":2,"revision":2,"content":"Fix the build."}
+{"type":"RequestSent","hash":"1a2b","tokens":30}
+{"type":"BlockAdded","id":3,"kind":"Assistant","origin":"model","content":"Running the build."}
+{"type":"BlockAdded","id":4,"kind":"Tool Call","origin":"model","content":"bun run buidl"}
+{"type":"ResponseReceived","usage":null,"cached":null}
+{"type":"Edit","id":4,"revision":2,"content":"bun run build"}
+{"type":"BlockAdded","id":5,"kind":"Tool Result","origin":"tool","content":"ok\n[exit 0]","call":4}
+{"type":"Edit","id":5,"revision":2,"content":"[exit 0]"}
+{"type":"Edit","id":1,"revision":2,"content":"You are a terse coding agent."}
+{"type":"Undo","eventId":11}
