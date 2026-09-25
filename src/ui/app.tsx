@@ -260,8 +260,8 @@ const WHEEL: Record<string, number> = { up: -1, down: 1 };
 
 const modifierOf = (key: { option?: boolean; meta: boolean; shift: boolean }) => (key.option || key.meta ? 'alt+' : key.shift ? 'shift+' : '');
 
-const LOOK_KEYS = '↑↓ select · PgUp/PgDn scroll · q quit';
-const KEYS = 'Enter send · Tab write · / command · ↑↓ select · ⌥↑↓ move · PgUp/PgDn scroll · e edit · r rename · d remove · p pin · Space mark · u undo · q quit';
+const LOOK_KEYS = 'q quit';
+const KEYS = '⌥↑↓ move · e edit · r rename · d remove · p pin · Space mark · u undo · q quit';
 
 // Status line: a running command, the streaming answer, else the last action.
 function statusOf(gate: Gate): Status | null {

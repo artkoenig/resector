@@ -95,7 +95,7 @@ test('Tab and Esc leave input mode without adding a block', async () => {
     await frameMatching(ui, f => f.includes('Enter adds a User block'));
     await ui.mockInput.typeText('draft');
     await leave();
-    const frame = await frameMatching(ui, f => f.includes('Enter send · Tab write'));
+    const frame = await frameMatching(ui, f => f.includes('⌥↑↓ move · e edit'));
     expect(frame).not.toMatch(/3\s+User/);
   }
 });
@@ -141,7 +141,7 @@ test('while the answer streams, ↑↓ select and the preview scrolls; the Conte
   await frameMatching(ui, f => f.includes('60 / 4k'));
   ui.mockInput.pressEnter();
   let frame = await frameMatching(ui, f => /4\s+Assistant\s+Hal/.test(f));
-  expect(frame).toContain('Esc abort · ↑↓ select · PgUp/PgDn scroll · q quit');
+  expect(frame).toContain('Esc abort · q quit');
   await press('up');
   frame = await frameMatching(ui, f => previewed(f) === 'hi there');
   await press('d');
@@ -159,7 +159,7 @@ async function withUsers(...texts: string[]) {
   const started = await start();
   for (const t of texts) {
     await write(t);
-    await frameMatching(ui, f => f.includes(t) && f.includes('Enter send · Tab write'));
+    await frameMatching(ui, f => f.includes(t) && f.includes('⌥↑↓ move · e edit'));
   }
   return started;
 }
@@ -319,7 +319,7 @@ test('the key hints stay visible next to a status', async () => {
   fake.reply({ chunks: ['ok'] });
   ui.mockInput.pressEnter();
   const frame = await frameMatching(ui, f => f.includes('answer complete'));
-  expect(frame).toContain('Enter send · Tab write');
+  expect(frame).toContain('⌥↑↓ move · e edit');
 });
 
 test('a Context changed since the last request can be sent without a new User block', async () => {
@@ -443,7 +443,7 @@ type Sent = { messages: Record<string, unknown>[]; tools?: { function: { name: s
 async function asked(commands: string[], { text = '', timeout = 120 } = {}) {
   const started = await start({ timeout });
   await write('go');
-  await frameMatching(ui, f => f.includes('go') && f.includes('Enter send · Tab write'));
+  await frameMatching(ui, f => f.includes('go') && f.includes('⌥↑↓ move · e edit'));
   fake.reply({ chunks: text ? [text] : [], calls: commands.map(bash) });
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('? approve:') && !/Tool Call .* … /.test(f));
@@ -548,14 +548,14 @@ test('a command running into the timeout ends with ⚠ timeout (FR-21)', async (
 test('an answer cut off at max_tokens runs no call; calls that are no bash command are not run (FR-19)', async () => {
   const { events } = await start();
   await write('go');
-  await frameMatching(ui, f => f.includes('go') && f.includes('Enter send · Tab write'));
+  await frameMatching(ui, f => f.includes('go') && f.includes('⌥↑↓ move · e edit'));
   fake.reply({ chunks: ['Hm'], calls: [bash('ls')], finish: 'length' });
   ui.mockInput.pressEnter();
   let frame = await frameMatching(ui, f => f.includes('cut off at max_tokens'));
   expect(frame).not.toContain('Tool Call');
   expect(events().at(-2)).toEqual({ type: 'BlockAdded', id: 4, kind: 'Assistant', origin: 'model', content: 'Hm\nbash {"command":"ls"}', cutOff: true });
   await write('again');
-  await frameMatching(ui, f => f.includes('again') && f.includes('Enter send · Tab write'));
+  await frameMatching(ui, f => f.includes('again') && f.includes('⌥↑↓ move · e edit'));
   fake.reply({ chunks: [], calls: [{ name: 'python', arguments: '{}' }, bash('pwd')] });
   ui.mockInput.pressEnter();
   frame = await frameMatching(ui, f => f.includes('tool call not run: unknown tool python'));
