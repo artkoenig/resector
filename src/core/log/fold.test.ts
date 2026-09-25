@@ -135,3 +135,11 @@ test('undoing a sent Unpin flags the pin again; undoing other operations flags n
   expect(block(removed, 3)).toMatchObject({ moved: false, pinChanged: false, removed: false });
   expect(block(removed, 2)).toMatchObject({ moved: false, pinChanged: false, title: null });
 });
+
+test('a ProfileFallback replaces the session profile (FR-35)', () => {
+  expect(fold(session(0, { type: 'ProfileFallback', profile: 'qwen' })).profile).toBe('qwen');
+});
+
+test('a session rename changes no block', () => {
+  expect(fold(session(1, { type: 'SessionRenamed', title: 'x' })).blocks).toEqual(fold(session(1)).blocks);
+});

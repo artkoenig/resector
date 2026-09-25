@@ -18,7 +18,7 @@ export type Context = { profile: string; protocol: ToolProtocol; blocks: Block[]
 
 type Entry = Block & { hidden: boolean; sentPin: Pin | null };
 // unsent: indices of events logged since the last request.
-type State = { entries: Map<number, Entry>; order: number[]; events: SessionEvent[]; unsent: Set<number> };
+type State = { profile: string; entries: Map<number, Entry>; order: number[]; events: SessionEvent[]; unsent: Set<number> };
 type Apply<T extends SessionEvent['type']> = (state: State, event: Extract<SessionEvent, { type: T }>) => void;
 
 const entry = (state: State, id: number) => state.entries.get(id)!;
@@ -53,6 +53,7 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   },
   Pin: (state, e) => setPin(state, e.id, e.at),
   Unpin: (state, e) => setPin(state, e.id, null),
+  ProfileFallback: (state, e) => void (state.profile = e.profile),
   Remove: (state, e) => void (entry(state, e.id).removed = true),
   Rename: (state, e) => void (entry(state, e.id).title = e.title || null),
   RequestSent: state => {
@@ -77,12 +78,12 @@ export function fold(events: SessionEvent[]): Context {
   const [first] = events;
   if (first?.type !== 'SessionCreated') throw new Error('Session Log must start with SessionCreated');
   const skip = undone(events);
-  const state: State = { entries: new Map(), order: [], events, unsent: new Set() };
+  const state: State = { profile: first.profile, entries: new Map(), order: [], events, unsent: new Set() };
   events.forEach((e, i) => {
     state.unsent.add(i);
     if (skip.has(i)) return;
     (APPLY[e.type] as Apply<typeof e.type> | undefined)?.(state, e as never);
   });
   const blocks = state.order.map(id => entry(state, id)).filter(e => !e.hidden).map(({ hidden, sentPin, ...block }) => block);
-  return { profile: first.profile, protocol: first.protocol, blocks, nextId: Math.max(0, ...state.entries.keys()) + 1 };
+  return { profile: state.profile, protocol: first.protocol, blocks, nextId: Math.max(0, ...state.entries.keys()) + 1 };
 }

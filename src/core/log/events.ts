@@ -11,6 +11,10 @@ export type Usage = { prompt_tokens: number; completion_tokens: number };
 
 export type SessionEvent =
   | { type: 'SessionCreated'; profile: string; protocol: ToolProtocol }
+  // Resume with a Model Profile missing from the config: the session continues on this one (FR-35).
+  | { type: 'ProfileFallback'; profile: string }
+  // Session title; empty = reset to the first User message (FR-34).
+  | { type: 'SessionRenamed'; title: string }
   | { type: 'BlockAdded'; id: number; kind: Kind; origin: Origin; content: string; cutOff?: true }
   | { type: 'RequestSent'; hash: string; tokens: number }
   // Context operations (FR-4, FR-10); `after` is the block the moved block now follows.
