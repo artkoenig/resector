@@ -140,10 +140,10 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   const width = () => size().width;
   const status = () => (void tick(), statusOf(gate));
   const keys = () => keysOf(gate, suggestion() ? 'suggest' : mode());
-  // Block rows that fit: the screen less header, column header, preview, suggestions,
+  // Block rows that fit: the screen less header, column header, Template, preview, suggestions,
   // separator, input and footer. Lines never shrink, so rows cannot overlap.
   const capacity = () =>
-    Math.max(1, size().height - 2 - previewHeight() - suggestions().length - 2 - linesOf(` ${status()?.text ?? ''}`, width()) - linesOf(` ${keys()}`, width()));
+    Math.max(1, size().height - 3 - previewHeight() - suggestions().length - 2 - linesOf(` ${status()?.text ?? ''}`, width()) - linesOf(` ${keys()}`, width()));
   // The rows shown: a window around the selection.
   const visibleRows = () => around(rows(), rows().findIndex(r => r.id === gate.selected() && !r.removed), capacity());
   // The wheel over the block table moves the selection, like ↑↓ (also while busy).
@@ -174,6 +174,9 @@ export function App(props: GateOptions & { onQuit: () => void }) {
             </text>
           )}
         </For>
+        <text fg={TEMPLATE_COLOR} flexShrink={0}>
+          {`        ${'Template'.padEnd(11)}  ${cell('BOS · generation prompt', titleWidth())}  ${right(gate.split() ? String(gate.split()!.template) : '…', 6)}`}
+        </text>
       </box>
       <box flexDirection="column" height={previewHeight()} flexShrink={0}>
         <Show when={selectedRow()}>

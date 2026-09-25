@@ -59,13 +59,13 @@ async function write(text: string) {
   ui.mockInput.pressEnter();
 }
 
-test('the Gate shows every Context Block with its exact tokens; no Template row (bar only)', async () => {
+test('the Gate shows every Context Block with its exact tokens and the Template row', async () => {
   const { events } = await start();
   const frame = ui.captureCharFrame();
   expect(line(frame, /default/)).toMatch(/^ default +█░+ +52 \/ 4k/);
   expect(line(frame, /Kind/)).toMatch(/#\s+Kind\s+Title\s+Tokens\s+Cache\s+Flags/);
   expect(line(frame, /System prompt/)).toMatch(/1\s+System\s+System prompt\s+12\b/);
-  expect(frame).not.toMatch(/Template/);
+  expect(line(frame, /Template/)).toMatch(/Template\s.*\s4\b/);
   expect(line(frame, /──/)).toMatch(/^── Content ─+$/);
   expect(previewed(frame)).toBe('You are an agent.');
   expect(frame).toContain('You are an agent.');
@@ -560,11 +560,12 @@ test('an answer cut off at max_tokens runs no call; calls that are no bash comma
   expect(line(frame, /Tool Call/)).toMatch(/Tool Call\s+pwd\s.*\? approve/);
 });
 
-test('more rows than fit: rows never overlap, the list follows the selection', async () => {
+test('more rows than fit: rows never overlap, the list follows the selection, Template stays visible', async () => {
   await withUsers(...Array.from({ length: 12 }, (_, i) => `note ${i + 3}`));
   const numbers = (f: string) => [...f.matchAll(/^ {2}[ ●] +(\d+) {2}/gm)].map(m => Number(m[1]));
   let frame = ui.captureCharFrame();
   expect(line(frame, /Kind/)).toMatch(/^ {5}# {2}Kind +Title +Tokens/);
+  expect(frame).toMatch(/Template +BOS/);
   let shown = numbers(frame);
   expect(shown.at(-1)).toBe(14);
   expect(shown).toEqual(Array.from({ length: shown.length }, (_, i) => shown[0]! + i));
@@ -574,6 +575,7 @@ test('more rows than fit: rows never overlap, the list follows the selection', a
   shown = numbers(frame);
   expect(shown[0]).toBe(1);
   expect(line(frame, /System prompt/)).toMatch(/1\s+System\s+System prompt\s+12\b/);
+  expect(frame).toMatch(/Template +BOS/);
 });
 
 test('the mouse wheel over the block table selects the previous or next block', async () => {
