@@ -265,3 +265,25 @@ test('a Context changed since the last request can be sent without a new User bl
   expect(fake.chatRequests).toHaveLength(2);
   expect((fake.chatRequests[1] as { messages: { content: string }[] }).messages.map(m => m.content)).toEqual(['You are an agent.', 'b', 'x']);
 });
+
+test('a rename or an undone change leaves nothing to send', async () => {
+  await withUsers('a');
+  fake.reply({ chunks: ['x'] });
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('answer complete'));
+  await press('r');
+  await frameMatching(ui, f => f.includes('title > x'));
+  await ui.mockInput.typeText('!');
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('renamed (display only'));
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('nothing to send'));
+  await press('up');
+  await press('d');
+  await frameMatching(ui, f => f.includes('removed: a'));
+  await press('u');
+  await frameMatching(ui, f => f.includes('undone: remove'));
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('nothing to send'));
+  expect(fake.chatRequests).toHaveLength(1);
+});
