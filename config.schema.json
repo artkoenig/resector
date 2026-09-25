@@ -19,7 +19,8 @@
             "enum": [
               "llamacpp",
               "ollama",
-              "lmstudio"
+              "lmstudio",
+              "omlx"
             ]
           },
           "endpoint": {

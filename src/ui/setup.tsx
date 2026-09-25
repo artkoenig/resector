@@ -3,9 +3,10 @@ import { useKeyboard } from '@opentui/solid';
 import { createSignal, For } from 'solid-js';
 import { isSupported } from '../adapters/backend/connect';
 import type { DiscoveredModel } from '../adapters/backend/discover';
+import type { BackendKind } from '../core/config/config';
 import { cell } from './format';
 
-const BACKEND_NAME = { llamacpp: 'llama.cpp', ollama: 'Ollama', lmstudio: 'LM Studio' };
+const BACKEND_NAME: Record<BackendKind, string> = { llamacpp: 'llama.cpp', ollama: 'Ollama', lmstudio: 'LM Studio', omlx: 'oMLX' };
 const SELECTED_BG = '#3a3a3a';
 const DIM = '#808080';
 

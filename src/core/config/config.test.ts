@@ -43,8 +43,9 @@ test('the project config is deep merged over the global one', () => {
 });
 
 test('each backend has its default local endpoint', () => {
-  const { profile } = readConfig([{ source: 'global', text: '{ "profiles": { "l": { "backend": "lmstudio" } } }' }]);
+  const { profile } = readConfig([{ source: 'global', text: '{ "profiles": { "l": { "backend": "lmstudio" }, "o": { "backend": "omlx" } } }' }]);
   expect(profile('l').endpoint).toBe('http://localhost:1234');
+  expect(profile('o').endpoint).toBe('http://localhost:1234');
 });
 
 test('a later file replaces values of another type instead of merging into them', () => {
@@ -70,7 +71,7 @@ test('a JSONC syntax error names the file, line and column', () => {
 test('an invalid config names every offending key', () => {
   const invalid = [{ source: 'global', text: '{ "profiles": { "qwen": { "backend": "vllm", "window": -1 } }, "colour": "red" }' }];
   expect(() => readConfig(invalid)).toThrow(
-    'invalid config: profiles.qwen.backend: Invalid option: expected one of "llamacpp"|"ollama"|"lmstudio"; ' +
+    'invalid config: profiles.qwen.backend: Invalid option: expected one of "llamacpp"|"ollama"|"lmstudio"|"omlx"; ' +
       'profiles.qwen.window: Too small: expected number to be >0; Unrecognized key: "colour"',
   );
 });

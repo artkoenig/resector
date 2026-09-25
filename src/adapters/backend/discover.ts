@@ -4,28 +4,34 @@ import { DEFAULT_ENDPOINTS, type BackendKind } from '../../core/config/config';
 export type LocalServer = { backend: BackendKind; endpoint: string };
 export type DiscoveredModel = LocalServer & { model: string };
 
-export const LOCAL_SERVERS: LocalServer[] = Object.entries(DEFAULT_ENDPOINTS).map(([backend, endpoint]) => ({
-  backend: backend as BackendKind,
-  endpoint,
-}));
+// One scan per port: the backend of a shared port (1234: LM Studio or oMLX) is told by its answer.
+export const LOCAL_SERVERS: LocalServer[] = Object.entries(DEFAULT_ENDPOINTS)
+  .filter(([, endpoint], i, all) => all.findIndex(([, e]) => e === endpoint) === i)
+  .map(([backend, endpoint]) => ({ backend: backend as BackendKind, endpoint }));
 
-type ModelList = { data?: { id: string }[]; models?: { name: string }[] };
+type ModelList = { data?: { id: string; owned_by?: string }[]; models?: { name: string }[] };
+type Found = { backend: BackendKind; model: string };
 
-// Ollama lists models natively; llama.cpp and LM Studio via the OpenAI-compatible endpoint.
-const OPENAI = { path: '/v1/models', names: (l: ModelList) => l.data!.map(m => m.id) };
+// Ollama lists models natively; the others via the OpenAI-compatible endpoint, where oMLX names itself as owner.
+const OPENAI = {
+  path: '/v1/models',
+  models: (l: ModelList, backend: BackendKind): Found[] =>
+    l.data!.map(m => ({ backend: m.owned_by === 'omlx' ? 'omlx' : backend, model: m.id })),
+};
 const MODELS = {
   llamacpp: OPENAI,
   lmstudio: OPENAI,
-  ollama: { path: '/api/tags', names: (l: ModelList) => l.models!.map(m => m.name) },
+  omlx: OPENAI,
+  ollama: { path: '/api/tags', models: (l: ModelList, backend: BackendKind): Found[] => l.models!.map(m => ({ backend, model: m.name })) },
 };
 
 export async function discover(servers = LOCAL_SERVERS, timeoutMs = 500): Promise<DiscoveredModel[]> {
   const lists = await Promise.all(
     servers.map(async server => {
-      const { path, names } = MODELS[server.backend];
+      const { path, models } = MODELS[server.backend];
       try {
         const res = await fetch(server.endpoint + path, { signal: AbortSignal.timeout(timeoutMs) });
-        return names((await res.json()) as ModelList).map(model => ({ ...server, model }));
+        return models((await res.json()) as ModelList, server.backend).map(found => ({ ...found, endpoint: server.endpoint }));
       } catch {
         return [];
       }

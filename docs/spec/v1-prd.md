@@ -12,7 +12,7 @@ A text-based (TUI) coding agent whose core is the **Review Gate**: a pause befor
 
 ## 3. Users & scope
 
-- One developer, one machine, local OpenAI-compatible backends: llama.cpp server, Ollama, LM Studio.
+- One developer, one machine, local OpenAI-compatible backends: llama.cpp server, Ollama, LM Studio, oMLX.
 - Platforms: macOS and Linux (arm64, x64). No Windows.
 - **Out of scope v1:** automatic placement rules / auto-compaction, MCP, LSP, web tools, cloud-provider optimisation, bash sandboxing, forking sessions, file snapshots/restore, auto-update, tools other than `bash`.
 
@@ -94,7 +94,7 @@ A text-based (TUI) coding agent whose core is the **Review Gate**: a pause befor
 
 ### 4.9 Model Profiles & protocols
 
-- **FR-38** Model Profile fields: `name`, `backend` (`llamacpp`|`ollama`|`lmstudio`), `endpoint`, `model`, `window` (auto, overridable), `tokenizer` (auto, override path), `toolProtocol` (`native`|`text-xml`), `resultFormat` (`native`|`toon`), `sampling`, `thinking`, `compactionProfile`, `systemPrompt`; measured `promptTokPerSec` stored for cache estimates.
+- **FR-38** Model Profile fields: `name`, `backend` (`llamacpp`|`ollama`|`lmstudio`|`omlx`), `endpoint`, `model`, `window` (auto, overridable), `tokenizer` (auto, override path), `toolProtocol` (`native`|`text-xml`), `resultFormat` (`native`|`toon`), `sampling`, `thinking`, `compactionProfile`, `systemPrompt`; measured `promptTokPerSec` stored for cache estimates.
 - **FR-39** *Dropped:* no profile switch within a session; the Model Profile (and thus the Tool Protocol) is fixed at session creation, except the resume fallback of FR-35.
 - **FR-40** llamacpp backend: check `--jinja` at startup; error with hint if missing.
 - **FR-41** After each response, compare pre-count with `usage.prompt_tokens` and reported cached tokens; show drift in the status line.
@@ -104,7 +104,7 @@ A text-based (TUI) coding agent whose core is the **Review Gate**: a pause befor
 - **FR-42** JSONC with `$schema`. Global `~/.config/resector/config.jsonc`, project `.resector/config.jsonc`, deep merge (project wins, except permission loosening, FR-25); `RESECTOR_CONFIG` overrides the path. Long texts as files next to the config: `system.md`, `compaction.md`.
 - **FR-43** Keys: `profiles`, `defaultProfile`, `permission`, `keybindings` (action → key), `bash.timeout`.
 - **FR-44** Runtime changes (system prompt edit, session allow rules) are Session Log events, never written back to config. `/reload` re-reads config; no hot reload.
-- **FR-45** First start without config: scan 8080 (llama.cpp), 11434 (Ollama), 1234 (LM Studio), offer found models, write choice to the global config.
+- **FR-45** First start without config: scan 8080 (llama.cpp), 11434 (Ollama), 1234 (LM Studio or oMLX, told apart by the model list), offer found models, write choice to the global config.
 
 ### 4.11 Thinking
 
@@ -116,7 +116,7 @@ A text-based (TUI) coding agent whose core is the **Review Gate**: a pause befor
 
 ## 5. Non-functional requirements
 
-- **NFR-1** Token counts are exact on llama.cpp; Ollama/LM Studio best effort with visible drift.
+- **NFR-1** Token counts are exact on llama.cpp and oMLX; Ollama/LM Studio best effort with visible drift.
 - **NFR-2** Cache invalidation prediction is exact for plain-attention models on llama.cpp; approximate (and labelled so) for SWA/recurrent models.
 - **NFR-3** Nothing inside a session is ever deleted: every operation is an append-only event; undo is a counter-event.
 - **NFR-4** Quality gates (block merge): CRAP ≤ 8 per function (all code); mutation score 100 % incl. NoCoverage for Core, suppressions only with reason comment; dependency-cruiser: Core never imports UI. jscpd reports duplication (non-blocking).

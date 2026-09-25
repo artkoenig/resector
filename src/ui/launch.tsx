@@ -40,7 +40,7 @@ export function Launch(props: LaunchOptions) {
   async function firstStart() {
     const models = await discover(props.servers ?? LOCAL_SERVERS);
     if (!models.length)
-      throw new Error(`no model server found on localhost:8080 (llama.cpp), :11434 (Ollama), :1234 (LM Studio): start one or write ${props.paths.global}`);
+      throw new Error(`no model server found on localhost:8080 (llama.cpp), :11434 (Ollama), :1234 (LM Studio, oMLX): start one or write ${props.paths.global}`);
     setFound(models);
   }
 
