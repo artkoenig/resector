@@ -150,7 +150,7 @@ test('/reload re-reads the config and reconnects; an invalid config keeps the cu
   await command('/reload');
   // The config path is long enough to wrap the status line, so whitespace is ignored.
   const frame = (await frameMatching(ui, f => f.includes('reload failed'))).replace(/\s+/g, '');
-  expect(frame).toMatch(/\/3k.*reloadfailed:.*config\.jsonc:1:\d+:ValueExpected/);
+  expect(frame).toMatch(/\/3k.*✗reloadfailed┃.*config\.jsonc:1:\d+:ValueExpected/);
 });
 
 const chat = (profile: string): SessionEvent[] => [
@@ -269,7 +269,7 @@ test('d asks before deleting; deleting the current session switches to the newes
   await key('down');
   await key('down');
   await key('d');
-  await frameMatching(ui, f => f.includes('Delete "drop me"? y / N'));
+  await frameMatching(ui, f => f.includes('Delete this session? y / N'));
   await key('n');
   await frameMatching(ui, f => f.includes('delete cancelled'));
   await key('d');

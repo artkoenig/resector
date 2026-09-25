@@ -5,7 +5,7 @@ import { createEffect, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import type { Kind } from '../core/log/events';
 import { COMMANDS, createGate, type Gate, type GateOptions, type Status } from './gate';
 import { around, cell, flagsOf, formatTokens, right, titleOf } from './format';
-import { Footer, footerLines, HeaderBand, type Hint, PROMPT_LINES, PromptBand } from './parts';
+import { Band, ErrorBand, errorBandLines, Footer, footerLines, HeaderBand, type Hint, PROMPT_LINES, PromptBand } from './parts';
 import { ACCENT, BG, BORDER, FAINT, KIND_COLOR, MUTED, PANEL_BG, SELECTED_BG, TEXT, TONE } from './theme';
 
 const SPINNER = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
@@ -90,8 +90,11 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   };
   // The preview scrolls on its own; a newly selected block starts at its top.
   let preview: ScrollBoxRenderable | undefined;
-  const previewHeight = () => Math.max(4, Math.floor((size().height - 6) / 3));
+  // About a third of the screen: the kind line, at least 2 lines of content.
+  const previewHeight = () => Math.max(3, Math.floor((size().height - 6) / 3));
   const scrollPreview = (lines: number) => preview?.scrollBy(lines);
+  // A page keeps one line of the last: the band shows previewHeight() less the kind line.
+  const previewPage = () => Math.max(1, previewHeight() - 2);
   createEffect(on(gate.selected, () => preview?.scrollTo(0)));
 
   const inputKeys: Record<string, () => void> = { return: submit, tab: leaveInput, escape: leaveInput };
@@ -108,8 +111,8 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     'alt+down': () => gate.move(1),
     'shift+up': () => scrollPreview(-1),
     'shift+down': () => scrollPreview(1),
-    pageup: () => scrollPreview(-(previewHeight() - 2)),
-    pagedown: () => scrollPreview(previewHeight() - 2),
+    pageup: () => scrollPreview(-previewPage()),
+    pagedown: () => scrollPreview(previewPage()),
     y: gate.approve,
     n: gate.reject,
     p: gate.pin,
@@ -118,7 +121,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     r: startRename,
     e: gate.edit,
     space: gate.toggleMark,
-    escape: gate.clearMarks,
+    escape: () => (gate.status()?.tone === 'error' ? gate.dismiss() : gate.clearMarks()),
     q: props.onQuit,
   };
   // The key pressed last in the Context: only the same key again confirms (FR-9).
@@ -144,11 +147,16 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   });
 
   const width = () => size().width;
-  const status = () => (void tick(), statusOf(gate));
-  const keys = () => keysOf(gate, suggestion() ? 'suggest' : mode());
-  // Block rows that fit: the screen less header band, column header, Template, preview, suggestions,
-  // prompt band and footer. The preview has a blank line above its own height. Lines never shrink, so rows cannot overlap.
-  const capacity = () => Math.max(1, size().height - 2 - 2 - (previewHeight() + 1) - suggestions().length - PROMPT_LINES - footerLines(status()?.text ?? '', keys(), width()));
+  const status = () => statusOf(gate, SPINNER[tick() % SPINNER.length]!);
+  // An error has its own band; the footer then shows only the hints.
+  const error = () => (status()?.tone === 'error' ? status()!.text : null);
+  const footerStatus = () => (error() === null ? status() : null);
+  const keys = () => keysOf(gate, suggestion() ? 'suggest' : mode(), error() !== null);
+  const errorLines = () => (error() === null ? 0 : errorBandLines(error()!, width()) + 1);
+  // Block rows that fit: the screen less header band, column header, Template, preview band, error band, suggestions,
+  // prompt band and footer. Preview and error band have a blank line above, the prompt band too. Lines never shrink, so rows cannot overlap.
+  const capacity = () =>
+    Math.max(1, size().height - 2 - 2 - (previewHeight() + 1) - errorLines() - 1 - suggestions().length - PROMPT_LINES - footerLines(footerStatus()?.text ?? '', keys(), width()));
   // The rows shown: a window around the selection.
   const visibleRows = () => around(rows(), rows().findIndex(r => r.id === gate.selected() && !r.removed), capacity());
   // The wheel over the block table moves the selection, like ↑↓ (also while busy).
@@ -196,20 +204,30 @@ export function App(props: GateOptions & { onQuit: () => void }) {
           {(row: () => Row) => (
             <>
               <text flexShrink={0}> </text>
-              <text flexShrink={0}>
-                <span>{'  '}</span>
-                <strong>
-                  <span style={{ fg: KIND_COLOR[row().kind] }}>{row().kind}</span>
-                </strong>
-                <span style={{ fg: MUTED }}>{`  #${row().n}${row().live ? '' : ` · ${row().tokens} tokens`}`}</span>
-              </text>
-              <scrollbox ref={preview} flexGrow={1} paddingLeft={2}>
-                <text fg={TEXT}>{row().content}</text>
-              </scrollbox>
+              <Band color={KIND_COLOR[row().kind]} lines={previewHeight()}>
+                <text flexShrink={0}>
+                  <strong>
+                    <span style={{ fg: KIND_COLOR[row().kind] }}>{row().kind}</span>
+                  </strong>
+                  <span style={{ fg: MUTED }}>{`  #${row().n}${row().live ? '' : ` · ${row().tokens} tokens`}`}</span>
+                </text>
+                <scrollbox ref={preview} flexGrow={1}>
+                  <text fg={TEXT}>{row().content}</text>
+                </scrollbox>
+              </Band>
             </>
           )}
         </Show>
       </box>
+      <Show when={error()}>
+        {(text: () => string) => (
+          <>
+            <text flexShrink={0}> </text>
+            <ErrorBand text={text()} width={width()} />
+          </>
+        )}
+      </Show>
+      <text flexShrink={0}> </text>
       <For each={suggestions()}>
         {c => (
           <text flexShrink={0} bg={c === suggestion() ? SELECTED_BG : undefined}>
@@ -233,7 +251,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
           />
         </Show>
       </PromptBand>
-      <Footer status={status()} hints={keys()} width={width()} />
+      <Footer status={footerStatus()} hints={keys()} width={width()} />
     </box>
   );
 }
@@ -306,15 +324,19 @@ const modifierOf = (key: { option?: boolean; meta: boolean; shift: boolean }) =>
 const LOOK_KEYS: Hint[] = [['q', 'quit']];
 const KEYS: Hint[] = [['⌥↑↓', 'move'], ['e', 'edit'], ['r', 'rename'], ['d', 'remove'], ['p', 'pin'], ['space', 'mark'], ['u', 'undo'], ['q', 'quit']];
 
-// Status line: a running command, the streaming answer, else the last action.
-function statusOf(gate: Gate): Status | null {
+// Status line: a running command, the streaming answer (both with the row's spinner), else the last action.
+function statusOf(gate: Gate, spin: string): Status | null {
   const r = gate.running();
-  if (r) return { text: `running: ${cell(titleOf(r.call), 50).trimEnd()} · ${Math.round((Date.now() - r.started) / 1000)}s / ${gate.timeout}s`, tone: 'warn' };
-  return gate.streaming() ? { text: 'model is responding …', tone: 'warn' } : gate.status();
+  if (r) return { text: `${spin} running: ${cell(titleOf(r.call), 50).trimEnd()} · ${Math.round((Date.now() - r.started) / 1000)}s / ${gate.timeout}s`, tone: 'warn' };
+  return gate.streaming() ? { text: `${spin} model is responding`, tone: 'warn' } : gate.status();
 }
 
-// Key hints right of the status; they stay visible.
-function keysOf(gate: Gate, mode: Mode | 'suggest'): Hint[] {
+// Key hints right of the status; they stay visible. An error band adds how to dismiss it.
+function keysOf(gate: Gate, mode: Mode | 'suggest', error: boolean): Hint[] {
+  const keys = modeKeys(gate, mode);
+  return error && mode === 'context' ? [...keys.slice(0, -1), ['esc', 'dismiss'], keys.at(-1)!] : keys;
+}
+function modeKeys(gate: Gate, mode: Mode | 'suggest'): Hint[] {
   if (gate.running()) return [['esc', 'kill'], ...LOOK_KEYS];
   if (gate.streaming()) return [['esc', 'abort'], ...LOOK_KEYS];
   if (mode === 'context' && gate.selectedBlock()?.pending) return [['y', 'run once'], ['n', 'reject'], ...KEYS];

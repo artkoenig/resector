@@ -70,7 +70,7 @@ test('the Gate shows every Context Block with its exact tokens and the Template 
   expect(line(frame, /Kind/)).toMatch(/#\s+Kind\s+Title\s+Tokens\s+Cache\s+Flags/);
   expect(line(frame, /System prompt/)).toMatch(/1\s+System\s+System prompt\s+12\b/);
   expect(line(frame, /Template/)).toMatch(/Template\s.*\s4\b/);
-  expect(line(frame, /#1 · /)).toMatch(/^ {2}System {2}#1 · 12 tokens/);
+  expect(line(frame, /#1 · /)).toMatch(/^┃ System {2}#1 · 12 tokens/);
   expect(previewed(frame)).toBe('You are an agent.');
   expect(frame).toContain('You are an agent.');
   expect(events()).toEqual([
@@ -218,9 +218,9 @@ test('p cycles pin top → bottom → off; a bottom pin is sent as a user-role m
 test('d strikes the block through until sent; u brings it back as a counter-event', async () => {
   const { events } = await withUsers('keep', 'drop');
   await press('d');
-  let frame = await frameMatching(ui, f => f.includes('removed: drop'));
+  let frame = await frameMatching(ui, f => f.includes('removed ·'));
   expect(line(frame, /drop/)).toMatch(/^ {8}User\s+drop\s+removed/);
-  const struck = ui.captureSpans().lines.flatMap(l => l.spans).find(s => s.text.includes('drop') && !s.text.includes('removed:'))!;
+  const struck = ui.captureSpans().lines.flatMap(l => l.spans).find(s => s.text.includes('drop') && !s.text.includes('removed ·'))!;
   expect(struck.attributes & TextAttributes.STRIKETHROUGH).toBeTruthy();
   frame = await frameMatching(ui, f => f.includes('58 / 4k'));
   expect(line(frame, /keep/)).toMatch(/3\s+User\s+keep/);
@@ -333,7 +333,7 @@ test('a Context changed since the last request can be sent without a new User bl
   await press('up');
   await press('up');
   await press('d');
-  await frameMatching(ui, f => f.includes('removed: a'));
+  await frameMatching(ui, f => f.includes('struck through until sent'));
   fake.reply({ chunks: ['y'] });
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('answer complete') && /y\s+\d+/.test(f));
@@ -355,7 +355,7 @@ test('a rename or an undone change leaves nothing to send', async () => {
   await frameMatching(ui, f => f.includes('nothing to send'));
   await press('up');
   await press('d');
-  await frameMatching(ui, f => f.includes('removed: a'));
+  await frameMatching(ui, f => f.includes('struck through until sent'));
   await press('u');
   await frameMatching(ui, f => f.includes('undone: remove'));
   ui.mockInput.pressEnter();
@@ -413,7 +413,7 @@ test('Tab completes a command; /rename sets the session title, empty resets it (
 // The first line of the Content preview: shows which block is selected.
 const previewed = (frame: string) => {
   const lines = frame.split('\n');
-  return (lines[lines.findIndex(l => /^ {2}[A-Z][\w ]* {2}#\d+/.test(l)) + 1] ?? '').slice(0, -1).trim(); // last column: scrollbar
+  return (lines[lines.findIndex(l => /^┃ [A-Z][\w ]* {2}#\d+/.test(l)) + 1] ?? '').slice(2, -1).trim(); // ┃ bar, last column: scrollbar
 };
 
 async function until(condition: () => boolean) {
@@ -447,7 +447,7 @@ async function asked(commands: string[], { text = '', timeout = 120 } = {}) {
   await frameMatching(ui, f => f.includes('go') && f.includes('⌥↑↓ move  e edit'));
   fake.reply({ chunks: text ? [text] : [], calls: commands.map(bash) });
   ui.mockInput.pressEnter();
-  await frameMatching(ui, f => f.includes('? approve:') && !/Tool Call .* … /.test(f));
+  await frameMatching(ui, f => f.includes('? approve –') && !/Tool Call .* … /.test(f));
   return started;
 }
 
@@ -477,7 +477,7 @@ test('a Tool Call waits at ? approve; y runs it once, its result is a Tool Resul
   frame = await frameMatching(ui, f => f.includes('tool loop paused'));
   expect(line(frame, /Tool Result/)).toMatch(/6\s+Tool Result\s+→ echo hello\s+\d+/);
   expect(line(frame, /Tool Call/)).not.toContain('? approve');
-  expect(frame).toMatch(/^ {2}hello\s*$/m);
+  expect(frame).toMatch(/^┃ hello\s*$/m);
   expect(frame).toContain('[exit 0]');
   expect(fake.chatRequests).toHaveLength(1);
   expect(events().slice(-4)).toEqual([
@@ -516,7 +516,7 @@ test('several calls are decided one by one in order; results keep call order (FR
   await frameMatching(ui, f => f.includes('approve the earlier Tool Call first'));
   await press('up');
   await press('y');
-  frame = await frameMatching(ui, f => f.includes('? approve: echo two'));
+  frame = await frameMatching(ui, f => f.includes('? approve –') && previewed(f) === 'echo two');
   expect(previewed(frame)).toBe('echo two');
   await press('n');
   frame = await frameMatching(ui, f => f.includes('tool loop paused'));
@@ -527,7 +527,7 @@ test('several calls are decided one by one in order; results keep call order (FR
 test('Esc kills a running command: partial output + ⚠ killed (FR-21)', async () => {
   const { events } = await asked(['echo partial; sleep 5']);
   await press('y');
-  let frame = await frameMatching(ui, f => f.includes('running: echo partial') && /^ {2}partial\s*$/m.test(f));
+  let frame = await frameMatching(ui, f => f.includes('running: echo partial') && /^┃ partial\s*$/m.test(f));
   expect(frame).toMatch(/\d+s \/ 120s/);
   expect(frame).toContain('esc kill');
   expect(line(frame, /Tool Result/)).toMatch(/5\s+Tool Result\s+→ echo partial.*[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
@@ -605,7 +605,7 @@ test('e edits the block in $EDITOR: a new Revision flagged ✎2 until sent, the 
   let frame = await frameMatching(ui, f => f.includes('revision 2'));
   expect(opened).toEqual(['helo']);
   expect(line(frame, /User/)).toMatch(/3\s+User\s+hello\s+\d+\s+[●○]?\s+✎2/);
-  expect(frame).toContain('edited: hello → revision 2 · u = undo');
+  expect(frame).toContain('edited → revision 2 · u = undo');
   expect(events().at(-1)).toEqual({ type: 'Edit', id: 3, revision: 2, content: 'hello' });
   fake.reply({ chunks: ['hi'] });
   ui.mockInput.pressEnter();
@@ -661,7 +661,7 @@ test('an editor that fails leaves the block unchanged', async () => {
     throw new Error('vi exited with 1');
   };
   await press('e');
-  await frameMatching(ui, f => f.includes('editor failed: vi exited with 1 – unchanged'));
+  await frameMatching(ui, f => f.includes('✗ editor failed') && f.includes('┃ vi exited with 1 – unchanged'));
   expect(events().some(e => e.type === 'Edit')).toBe(false);
 });
 

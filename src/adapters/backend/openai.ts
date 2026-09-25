@@ -19,12 +19,22 @@ export function httpClient(name: string, endpoint: string) {
     const res = await fetch(base + path, init).catch(e => {
       throw init?.signal?.aborted ? e : new Error(`cannot reach ${name} at ${base}`);
     });
-    if (!res.ok) throw new Error(`${name} ${path}: ${res.status} ${await res.text()}`);
+    if (!res.ok) throw new Error(`${name} ${res.status}: ${reason(await res.text())}`);
     return res;
   };
   const post = async <T>(path: string, body: unknown): Promise<T> =>
     (await request(path, jsonPost(body))).json() as Promise<T>;
   return { request, post };
+}
+
+// Servers wrap the reason in JSON ({error: {message}} or FastAPI's {detail}); the user needs only the reason.
+function reason(body: string): string {
+  try {
+    const json = JSON.parse(body) as { error?: { message?: string } | string; detail?: unknown };
+    const message = typeof json.error === 'string' ? json.error : (json.error?.message ?? json.detail);
+    if (typeof message === 'string') return message;
+  } catch {}
+  return body.trim();
 }
 
 // Without the content type fetch sends text/plain, which FastAPI servers (oMLX) reject.

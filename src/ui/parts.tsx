@@ -29,22 +29,30 @@ function fitting(status: string, hints: readonly Hint[], width: number): Hint[] 
   while (shown.length > 1 && !fits(status, shown, width)) shown.splice(shown.length - 2, 1);
   return fits(status, shown, width) ? shown : [];
 }
-// Only a status too long for the line wraps.
+// Only a status too long for the line wraps, inside the margins so it stays one block.
 export const footerLines = (status: string, hints: readonly Hint[], width: number) =>
-  fitting(status, hints, width).length ? 1 : linesOf(`  ${status}`, width);
+  fitting(status, hints, width).length ? 1 : linesOf(status, width - 4);
 
 export function Footer(props: { status: Status | null; hints: readonly Hint[]; width: number }) {
   const text = () => props.status?.text ?? '';
   const shown = () => fitting(text(), props.hints, props.width);
   const gap = () => ' '.repeat(Math.max(1, props.width - 2 - text().length - hintsText(shown()).length - 2));
+  const fg = () => TONE[props.status?.tone ?? 'info'];
   return (
-    <text flexShrink={0}>
-      <span style={{ fg: TONE[props.status?.tone ?? 'info'] }}>{`  ${text()}`}</span>
-      <Show when={shown().length}>
+    <Show
+      when={shown().length}
+      fallback={
+        <box flexShrink={0} paddingLeft={2} paddingRight={2}>
+          <text fg={fg()}>{text()}</text>
+        </box>
+      }
+    >
+      <text flexShrink={0}>
+        <span style={{ fg: fg() }}>{`  ${text()}`}</span>
         <span>{gap()}</span>
         <Hints hints={shown()} />
-      </Show>
-    </text>
+      </text>
+    </Show>
   );
 }
 
@@ -69,19 +77,54 @@ export function HeaderBand(props: { title: JSX.Element; titleWidth: number; righ
   );
 }
 
-// The band below: ┃ in the accent colour down the left edge, the input line, a meta line.
-export function PromptBand(props: { children: JSX.Element; meta?: JSX.Element }) {
+// A band: its lines on the panel ground, ┃ in `color` down the left edge of every one.
+export function Band(props: { color: string; lines: number; children: JSX.Element }) {
   return (
-    <box flexDirection="column" flexShrink={0} backgroundColor={PANEL_BG}>
-      <box flexDirection="row">
-        <text fg={ACCENT}>{'┃ '}</text>
+    <box flexDirection="row" flexShrink={0} height={props.lines} backgroundColor={PANEL_BG}>
+      <text fg={props.color} flexShrink={0}>
+        {Array.from({ length: props.lines }, () => '┃ ').join('\n')}
+      </text>
+      <box flexDirection="column" flexGrow={1}>
         {props.children}
       </box>
-      <text>
-        <span style={{ fg: ACCENT }}>{'┃ '}</span>
-        {props.meta}
-      </text>
     </box>
   );
 }
+
+// The band below, ┃ in the accent colour: the input line, a meta line.
+export function PromptBand(props: { children: JSX.Element; meta?: JSX.Element }) {
+  return (
+    <Band color={ACCENT} lines={PROMPT_LINES}>
+      <box flexDirection="row">{props.children}</box>
+      <text>{props.meta}</text>
+    </Band>
+  );
+}
 export const PROMPT_LINES = 2;
+
+// An error gets its own band above the prompt, ┃ in the error colour: `✗ source`, then the reason in at most 3 lines.
+const ERROR_BODY_LINES = 3;
+function errorParts(text: string, width: number): { head: string; body: string[] } {
+  const at = text.indexOf(': ');
+  const head = at < 0 ? text : text.slice(0, at);
+  const rest = at < 0 ? '' : text.slice(at + 2);
+  const size = Math.max(1, width - 4);
+  const body = Array.from({ length: Math.ceil(rest.length / size) }, (_, i) => rest.slice(i * size, (i + 1) * size));
+  if (body.length <= ERROR_BODY_LINES) return { head, body };
+  return { head, body: [...body.slice(0, ERROR_BODY_LINES - 1), `${body[ERROR_BODY_LINES - 1]!.slice(0, size - 2)} …`] };
+}
+export const errorBandLines = (text: string, width: number) => 1 + errorParts(text, width).body.length;
+
+export function ErrorBand(props: { text: string; width: number }) {
+  const parts = () => errorParts(props.text, props.width);
+  return (
+    <Band color={TONE.error} lines={1 + parts().body.length}>
+      <text>
+        <strong>
+          <span style={{ fg: TONE.error }}>{`✗ ${parts().head}`}</span>
+        </strong>
+      </text>
+      <For each={parts().body}>{line => <text fg={TEXT}>{line}</text>}</For>
+    </Band>
+  );
+}

@@ -114,7 +114,7 @@ export function Sessions(props: SessionsProps) {
 
   const titleWidth = () => Math.max(8, size().width - FIXED_COLUMNS);
   const hints = () => (editing() ? EDIT_KEYS : KEYS);
-  const footerStatus = (): Status | null => (editing() ? null : confirm() ? { text: `Delete "${confirm()!.title}"? y / N`, tone: 'error' } : status());
+  const footerStatus = (): Status | null => (editing() ? null : confirm() ? { text: 'Delete this session? y / N', tone: 'error' } : status());
   // Session rows that fit: the screen less header band, column header, blank line, preview (header + blocks),
   // the input line while editing and the footer. Lines never shrink, so rows cannot overlap.
   const capacity = () =>
