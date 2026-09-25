@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { testRender } from '@opentui/solid';
 import { startFakeLlamaCpp } from '../../test/fake-llamacpp';
+import { frameMatching } from '../../test/frames';
 import { startFakeOmlx } from '../../test/fake-omlx';
 import type { LocalServer } from '../adapters/backend/discover';
 import { configPaths } from '../adapters/fs/config';
@@ -57,12 +58,12 @@ const profileConfig = (url: string, extra = '') => `{
 
 test('first start: a found model is offered, written to the global config and opened at the Gate', async () => {
   const { paths, log } = await launch();
-  await frameMatching(f => f.includes('qwen3-8b.gguf'));
+  await frameMatching(ui, f => f.includes('qwen3-8b.gguf'));
   const frame = ui.captureCharFrame();
   expect(frame).toContain('first start');
   expect(frame).toMatch(/llama\.cpp\s+qwen3-8b\.gguf\s+http:\/\/localhost:\d+/);
   ui.mockInput.pressEnter();
-  const gate = await frameMatching(f => f.includes('/ 4k'));
+  const gate = await frameMatching(ui, f => f.includes('/ 4k'));
   expect(gate).toMatch(/^ qwen3-8b +/m);
   expect(JSON.parse(readFileSync(paths.global, 'utf8'))).toEqual({
     $schema: SCHEMA_URL,
@@ -76,7 +77,7 @@ test('first start offers models of backends not supported yet, but does not let 
   const ollama = Bun.serve({ port: 0, fetch: () => Response.json({ models: [{ name: 'gemma3:4b' }] }) });
   try {
     const { paths } = await launch({ servers: () => [{ backend: 'ollama', endpoint: `http://localhost:${ollama.port}` }] });
-    const frame = await frameMatching(f => f.includes('gemma3:4b'));
+    const frame = await frameMatching(ui, f => f.includes('gemma3:4b'));
     expect(frame).toMatch(/Ollama\s+gemma3:4b\s+http:\/\/localhost:\d+\s+unsupported/);
     ui.mockInput.pressEnter();
     await Bun.sleep(50);
@@ -90,9 +91,9 @@ test('first start: an oMLX server on the LM Studio port is recognised, chosen an
   const omlx = startFakeOmlx({ models: [{ id: 'Qwen3-8B-4bit', maxModelLen: 8192 }] });
   try {
     const { paths } = await launch({ servers: () => [{ backend: 'lmstudio', endpoint: omlx.url }] });
-    expect(await frameMatching(f => f.includes('Qwen3-8B-4bit'))).toMatch(/oMLX\s+Qwen3-8B-4bit\s+http:\/\/localhost:\d+\s*$/m);
+    expect(await frameMatching(ui, f => f.includes('Qwen3-8B-4bit'))).toMatch(/oMLX\s+Qwen3-8B-4bit\s+http:\/\/localhost:\d+\s*$/m);
     ui.mockInput.pressEnter();
-    expect(await frameMatching(f => f.includes('/ 8k'))).toMatch(/^ Qwen3-8B-4bit +/m);
+    expect(await frameMatching(ui, f => f.includes('/ 8k'))).toMatch(/^ Qwen3-8B-4bit +/m);
     expect(JSON.parse(readFileSync(paths.global, 'utf8')).profiles).toEqual({
       'Qwen3-8B-4bit': { backend: 'omlx', endpoint: omlx.url, model: 'Qwen3-8B-4bit' },
     });
@@ -112,7 +113,7 @@ test('first start without any local model server fails with a hint', async () =>
 
 test('the Gate opens with the default Model Profile, its window and the system.md prompt', async () => {
   await launch({ config: url => profileConfig(url), systemMd: 'You are terse.' });
-  const frame = await frameMatching(f => f.includes('/ 2k'));
+  const frame = await frameMatching(ui, f => f.includes('/ 2k'));
   expect(frame).toMatch(/^ local +/m);
   expect(frame).toContain('You are terse.');
 });
@@ -125,13 +126,15 @@ test('a Model Profile whose backend cannot be opened fails before the Gate', asy
 
 test('/reload re-reads the config and reconnects; an invalid config keeps the current one', async () => {
   const { paths } = await launch({ config: url => profileConfig(url) });
-  await frameMatching(f => f.includes('/ 2k'));
+  await frameMatching(ui, f => f.includes('/ 2k'));
   put(paths.global, profileConfig(fake.url).replace('2048', '3072'));
   await command('/reload');
-  expect(await frameMatching(f => f.includes('/ 3k'))).toContain('config reloaded');
+  expect(await frameMatching(ui, f => f.includes('/ 3k'))).toContain('config reloaded');
   put(paths.global, '{ "profiles": ');
   await command('/reload');
-  expect(await frameMatching(f => f.includes('reload failed'))).toMatch(/\/ 3k[\s\S]*reload failed: [\s\S]*config\.jsonc:1:\d+: ValueExpected/);
+  // The config path is long enough to wrap the status line, so whitespace is ignored.
+  const frame = (await frameMatching(ui, f => f.includes('reload failed'))).replace(/\s+/g, '');
+  expect(frame).toMatch(/\/3k.*reloadfailed:.*config\.jsonc:1:\d+:ValueExpected/);
 });
 
 async function command(text: string) {
@@ -139,17 +142,6 @@ async function command(text: string) {
   await ui.flush();
   await ui.mockInput.typeText(text);
   ui.mockInput.pressEnter();
-}
-
-// Startup waits on real HTTP, so frames are polled over time rather than render passes.
-async function frameMatching(predicate: (frame: string) => boolean): Promise<string> {
-  for (let i = 0; i < 200; i++) {
-    await ui.renderOnce();
-    const current = ui.captureCharFrame();
-    if (predicate(current)) return current;
-    await Bun.sleep(10);
-  }
-  throw new Error(`no matching frame:\n${ui.captureCharFrame()}`);
 }
 
 async function until(condition: () => boolean) {

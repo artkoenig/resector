@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { testRender } from '@opentui/solid';
 import { startFakeLlamaCpp } from '../../test/fake-llamacpp';
+import { frameMatching } from '../../test/frames';
 import { connectLlamaCpp } from '../adapters/backend/llamacpp';
 import { createSessionLog } from '../adapters/store/session-log';
 import { App } from './app';
@@ -23,7 +24,7 @@ async function start() {
     () => <App backend={backend} log={log} profile="default" systemPrompt="You are an agent." reconnect={async () => backend} onQuit={() => {}} />,
     { width: 80, height: 16 },
   );
-  await ui.waitForFrame(f => f.includes('16 / 4k'));
+  await frameMatching(ui, f => f.includes('16 / 4k'));
   const events = () => readFileSync(log.path, 'utf8').trim().split('\n').map(l => JSON.parse(l));
   return { events };
 }
@@ -61,7 +62,7 @@ test('the Gate shows every Context Block with its exact tokens and the Template 
 test('Enter in input mode adds a User block without sending', async () => {
   const { events } = await start();
   await write('hi there');
-  const frame = await ui.waitForFrame(f => f.includes('24 / 4k'));
+  const frame = await frameMatching(ui, f => f.includes('24 / 4k'));
   expect(line(frame, /hi there/)).toMatch(/2\s+User\s+hi there\s+8\b/);
   expect(fake.chatRequests).toEqual([]);
   expect(events().at(-1)).toEqual({ type: 'BlockAdded', id: 2, kind: 'User', origin: 'user', content: 'hi there' });
@@ -71,10 +72,10 @@ test('Tab and Esc leave input mode without adding a block', async () => {
   await start();
   for (const leave of [async () => ui.mockInput.pressTab(), escape]) {
     ui.mockInput.pressTab();
-    await ui.waitForFrame(f => f.includes('Enter adds a User block'));
+    await frameMatching(ui, f => f.includes('Enter adds a User block'));
     await ui.mockInput.typeText('draft');
     await leave();
-    const frame = await ui.waitForFrame(f => f.includes('Enter send · Tab write'));
+    const frame = await frameMatching(ui, f => f.includes('Enter send · Tab write'));
     expect(frame).not.toMatch(/2\s+User/);
   }
 });
@@ -83,9 +84,9 @@ test('Enter sends the Context; the answer streams in as a new row and is logged 
   const { events } = await start();
   fake.reply({ chunks: ['Hello', ' world'], usage: { prompt_tokens: 24, completion_tokens: 2 }, cacheN: 16 });
   await write('hi there');
-  await ui.waitForFrame(f => f.includes('24 / 4k'));
+  await frameMatching(ui, f => f.includes('24 / 4k'));
   ui.mockInput.pressEnter();
-  const frame = await ui.waitForFrame(f => f.includes('32 / 4k'));
+  const frame = await frameMatching(ui, f => f.includes('32 / 4k'));
   expect(line(frame, /Assistant/)).toMatch(/3\s+Assistant\s+Hello world\s+8\b/);
   expect(fake.chatRequests).toHaveLength(1);
   expect(events().slice(3)).toEqual([
@@ -99,13 +100,13 @@ test('Esc aborts streaming; the partial answer is kept as cut off', async () => 
   const { events } = await start();
   fake.reply({ chunks: ['Hal'], hang: true });
   await write('hi there');
-  await ui.waitForFrame(f => f.includes('24 / 4k'));
+  await frameMatching(ui, f => f.includes('24 / 4k'));
   ui.mockInput.pressEnter();
-  const streaming = await ui.waitForFrame(f => /3\s+Assistant\s+Hal/.test(f));
+  const streaming = await frameMatching(ui, f => /3\s+Assistant\s+Hal/.test(f));
   expect(line(streaming, /Assistant/)).toMatch(/Hal\s+[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
   expect(events().at(-1).type).toBe('RequestSent');
   await escape();
-  const frame = await ui.waitForFrame(f => f.includes('⚠ cut off'));
+  const frame = await frameMatching(ui, f => /Hal\s+\d+\s+⚠ cut off/.test(f));
   expect(line(frame, /Assistant/)).toMatch(/3\s+Assistant\s+Hal\s+\d+\s+⚠ cut off/);
   expect(events().slice(-2)).toEqual([
     { type: 'BlockAdded', id: 3, kind: 'Assistant', origin: 'model', content: 'Hal', cutOff: true },
