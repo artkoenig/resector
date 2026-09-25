@@ -17,7 +17,8 @@ export type Block = {
 export type Context = { profile: string; protocol: ToolProtocol; blocks: Block[]; nextId: number };
 
 type Entry = Block & { hidden: boolean; sentPin: Pin | null };
-type State = { entries: Map<number, Entry>; order: number[] };
+// unsent: indices of events logged since the last request.
+type State = { entries: Map<number, Entry>; order: number[]; events: SessionEvent[]; unsent: Set<number> };
 type Apply<T extends SessionEvent['type']> = (state: State, event: Extract<SessionEvent, { type: T }>) => void;
 
 const entry = (state: State, id: number) => state.entries.get(id)!;
@@ -56,6 +57,14 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   Rename: (state, e) => void (entry(state, e.id).title = e.title || null),
   RequestSent: state => {
     for (const e of state.entries.values()) Object.assign(e, { hidden: e.removed, moved: false, pinChanged: false, sentPin: e.pin });
+    state.unsent.clear();
+  },
+  // Undoing an operation that was already sent changes the Context since the last request (FR-5).
+  Undo: (state, e) => {
+    const target = state.events[e.eventId]!;
+    if (state.unsent.has(e.eventId)) return;
+    if (target.type === 'Move') entry(state, target.id).moved = true;
+    if (target.type === 'Pin' || target.type === 'Unpin') entry(state, target.id).pinChanged = true;
   },
 };
 
@@ -68,8 +77,12 @@ export function fold(events: SessionEvent[]): Context {
   const [first] = events;
   if (first?.type !== 'SessionCreated') throw new Error('Session Log must start with SessionCreated');
   const skip = undone(events);
-  const state: State = { entries: new Map(), order: [] };
-  events.forEach((e, i) => skip.has(i) || (APPLY[e.type] as Apply<typeof e.type> | undefined)?.(state, e as never));
+  const state: State = { entries: new Map(), order: [], events, unsent: new Set() };
+  events.forEach((e, i) => {
+    state.unsent.add(i);
+    if (skip.has(i)) return;
+    (APPLY[e.type] as Apply<typeof e.type> | undefined)?.(state, e as never);
+  });
   const blocks = state.order.map(id => entry(state, id)).filter(e => !e.hidden).map(({ hidden, sentPin, ...block }) => block);
   return { profile: first.profile, protocol: first.protocol, blocks, nextId: Math.max(0, ...state.entries.keys()) + 1 };
 }

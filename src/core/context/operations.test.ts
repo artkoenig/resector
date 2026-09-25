@@ -60,7 +60,8 @@ test('remove any block but System', () => {
 });
 
 test('rename trims the title; empty resets', () => {
-  expect(rename(at(session(), 2)[1], '  greeting ')).toEqual({ type: 'Rename', id: 2, title: 'greeting' });
+  expect(rename(at(session(), 2)[1], '  greeting ')).toEqual({ event: { type: 'Rename', id: 2, title: 'greeting' } });
+  expect(rename(at(session(), 2)[1], '  ')).toEqual({ event: { type: 'Rename', id: 2, title: '' } });
 });
 
 test('undo names the latest Context operation not yet undone', () => {

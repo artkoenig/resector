@@ -116,3 +116,22 @@ test('Undo cancels the named event, even across a request', () => {
 test('undone lists the event ids cancelled by Undo events', () => {
   expect([...undone(session(1, { type: 'Remove', id: 2 }, { type: 'Undo', eventId: 3 }))]).toEqual([3]);
 });
+
+test('undoing an operation already sent flags the change again', () => {
+  const moved = session(2, { type: 'Move', id: 3, after: 1 }, { type: 'Pin', id: 2, at: 'top' }, sent);
+  const undoneAfterSend = [...moved, { type: 'Undo', eventId: 5 }, { type: 'Undo', eventId: 4 }] satisfies SessionEvent[];
+  expect(block(undoneAfterSend, 3)).toMatchObject({ moved: true });
+  expect(block(undoneAfterSend, 2)).toMatchObject({ pin: null, pinChanged: true });
+  const undoneBeforeSend = session(2, { type: 'Move', id: 3, after: 1 }, { type: 'Pin', id: 2, at: 'top' }, { type: 'Undo', eventId: 5 }, { type: 'Undo', eventId: 4 });
+  expect(block(undoneBeforeSend, 3)).toMatchObject({ moved: false });
+  expect(block(undoneBeforeSend, 2)).toMatchObject({ pin: null, pinChanged: false });
+  expect(block([...undoneAfterSend, sent], 3)).toMatchObject({ moved: false });
+});
+
+test('undoing a sent Unpin flags the pin again; undoing other operations flags nothing', () => {
+  const unpinned = session(2, { type: 'Pin', id: 2, at: 'top' }, sent, { type: 'Unpin', id: 2 }, sent, { type: 'Undo', eventId: 6 });
+  expect(block(unpinned, 2)).toMatchObject({ pin: 'top', pinChanged: true });
+  const removed = session(2, { type: 'Remove', id: 3 }, { type: 'Rename', id: 2, title: 'x' }, sent, { type: 'Undo', eventId: 5 }, { type: 'Undo', eventId: 4 });
+  expect(block(removed, 3)).toMatchObject({ moved: false, pinChanged: false, removed: false });
+  expect(block(removed, 2)).toMatchObject({ moved: false, pinChanged: false, title: null });
+});

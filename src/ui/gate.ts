@@ -68,20 +68,24 @@ export function createGate({ log, profile, systemPrompt, reconnect, ...options }
     setSelected(id);
   }
 
-  // Applies a Context operation to the selected block; `done` describes the result in the status line.
-  function operate(outcome: (block: Block) => ops.Outcome, done: (block: Block) => string | null) {
+  // Appends the operation's event, or shows why not (FR-10, NFR-3). Returns whether it was applied.
+  function apply(result: ops.Outcome): boolean {
+    if ('error' in result) setStatus({ text: result.error, tone: 'info' });
+    else append(result.event);
+    return !('error' in result);
+  }
+  // A Context operation on the selected block; `describe` gives the status line text afterwards.
+  function operate(operation: (block: Block) => ops.Outcome, describe: (block: Block) => string | null) {
     const block = selectedBlock();
-    if (!block) return;
-    const result = outcome(block);
-    if ('error' in result) return setStatus({ text: result.error, tone: 'info' });
-    append(result.event);
-    const text = done(block);
+    if (!block || !apply(operation(block))) return;
+    const text = describe(block);
     setStatus(text ? { text, tone: 'info' } : null);
   }
 
   const PINNED = { top: 'pinned ⤒ top', bottom: 'pinned ⤓ bottom (sent as user-role Note at the end)' };
   const move = (dir: -1 | 1) => operate(b => ops.move(context(), b, dir), () => null);
-  const pin = () => operate(ops.pin, b => { const now = context().blocks.find(x => x.id === b.id)!.pin; return now ? PINNED[now] : 'unpinned'; });
+  const pinOf = (id: number) => context().blocks.find(b => b.id === id)!.pin;
+  const pin = () => operate(ops.pin, b => (pinOf(b.id) ? PINNED[pinOf(b.id)!] : 'unpinned'));
   function remove() {
     const at = rows().indexOf(selected());
     operate(ops.remove, b => `removed: ${titleOf(b)} · struck through until sent · u = undo`);
@@ -90,17 +94,17 @@ export function createGate({ log, profile, systemPrompt, reconnect, ...options }
   }
   function undo() {
     const result = ops.undo(events());
-    if ('error' in result) return setStatus({ text: result.error, tone: 'info' });
-    const target = events()[(result.event as Extract<SessionEvent, { type: 'Undo' }>).eventId]!;
-    append(result.event);
+    if ('error' in result) return apply(result);
+    const { type } = events()[result.event.eventId]!;
+    apply(result);
     keepSelection();
-    setStatus({ text: `undone: ${target.type.toLowerCase()} (counter-event in Session Log)`, tone: 'info' });
+    setStatus({ text: `undone: ${type.toLowerCase()} (counter-event in Session Log)`, tone: 'info' });
   }
   const rename = (title: string) =>
-    operate(b => ({ event: ops.rename(b, title) }), () => (title.trim() ? 'renamed (display only – Context and cache unchanged)' : 'title reset'));
+    operate(b => ops.rename(b, title), () => (title.trim() ? 'renamed (display only – Context and cache unchanged)' : 'title reset'));
   function toggleMark() {
     const block = selectedBlock();
-    if (!block || block.kind === 'System') return;
+    if (!block || ops.isFixed(block)) return;
     const next = new Set(marked());
     if (!next.delete(block.id)) next.add(block.id);
     setMarked(next);
