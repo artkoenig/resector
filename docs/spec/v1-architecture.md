@@ -79,7 +79,7 @@ fold(log) → Context
 | LM Studio | SDK `applyPromptTemplate` + `countTokens`; tool overhead measured once with `max_tokens:1`; window from `/api/v1/models` | no → drift |
 | oMLX | `/v1/messages/count_tokens` (Anthropic format: System → `system`, rest → `messages`; chat template + generation prompt applied, `tools` accepted); window from `max_model_len` in `/v1/models`; OpenAI-compatible `/v1/chat/completions`, cached tokens from `usage.prompt_tokens_details` | yes (tool overhead not counted until tool definitions are sent → drift) |
 
-Per-block split via offset mapping / prefix differences; remainder = `Template` row. After each response: drift = `usage.prompt_tokens` − pre-count; last drift is subtracted from the window for inexact backends.
+Per-block split via offset mapping / prefix differences; remainder = Template (bar segment only, no row). After each response: drift = `usage.prompt_tokens` − pre-count; last drift is subtracted from the window for inexact backends.
 
 ### Prefix cache
 
