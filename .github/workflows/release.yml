@@ -1,0 +1,90 @@
+name: Release
+
+# Tag push (v<package.json version>) → binaries for all NFR-5 targets, smoke-tested on
+# native runners, uploaded to GitHub Releases, formula pushed to the Homebrew tap.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck && bun test
+      # Cross-compiling needs every platform's OpenTUI native package in node_modules.
+      - run: bun install --frozen-lockfile --os='*' --cpu='*'
+      - run: bun scripts/build.ts --tag "$GITHUB_REF_NAME"
+      - run: bun scripts/formula.ts --tag "$GITHUB_REF_NAME" > dist/resector.rb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
+            dist/resector.rb
+          if-no-files-found: error
+
+  smoke:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: darwin-arm64, os: macos-latest }
+          - { target: darwin-x64, os: macos-15-intel }
+          - { target: linux-x64, os: ubuntu-latest }
+          - { target: linux-arm64, os: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+      - run: |
+          tar -xzf "resector-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz"
+          out="$(./resector --version)"
+          echo "$out"
+          test "$out" = "resector ${GITHUB_REF_NAME#v}"
+
+  release:
+    needs: smoke
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+      - run: gh release create "$GITHUB_REF_NAME" *.tar.gz SHA256SUMS resector.rb --repo "$GITHUB_REPOSITORY" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    env:
+      TAP: artkoenig/homebrew-tap
+      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+      - run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "::warning::HOMEBREW_TAP_TOKEN not set; formula is attached to the release but not pushed to $TAP"
+            exit 0
+          fi
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/${TAP}.git" tap
+          mkdir -p tap/Formula
+          cp resector.rb tap/Formula/resector.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/resector.rb
+          git commit -m "resector ${GITHUB_REF_NAME}"
+          git push
