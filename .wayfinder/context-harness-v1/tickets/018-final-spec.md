@@ -4,7 +4,7 @@ title: Finale v1-Spec zusammenführen
 labels: [wayfinder:task]
 parent: context-harness-v1
 status: open
-assignee:
+assignee: artkoenig
 blocked_by: [012, 013, 014, 015, 016, 017, 019]
 ---
 
