@@ -40,7 +40,7 @@ Context Block of free text without API role semantics, keeping a reference to it
 Marker that keeps a Context Block at the top (after System and Tools Block) or the very end of the Context, countering lost-in-the-middle. Pinned blocks keep their order among themselves.
 
 **Model Profile**:
-Per-model settings: endpoint, tokenizer, window size, Tool Protocol.
+Per-model settings: backend, endpoint, tokenizer, window size, Tool Protocol, tool result format, sampling. Can be switched within a session; the whole Context is then re-rendered.
 
 **Tool Protocol**:
-How tool definitions and tool calls travel between harness and model: `native` (API tool calling), `text-json` or `text-xml` (defined in the prompt).
+How tool definitions and tool calls travel between harness and model: `native` (API tool calling) or `text-xml` (defined in the prompt). Blocks are stored protocol-neutral; the protocol only affects rendering of a request.

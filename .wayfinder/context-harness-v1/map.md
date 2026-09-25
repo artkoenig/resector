@@ -23,7 +23,7 @@ Umsetzbare **Spec für v1** (PRD + Architektur + Glossar) eines textbasierten Co
   - Gegen Lost-in-the-Middle: manuelles Verschieben + Pin top/bottom.
   - Gate zeigt an, wie viele Prefix-Cache-Tokens eine Änderung invalidiert (Info, kein Verbot).
   - Session Log als JSONL auf Platte; Context = abgeleiteter Zustand + Edit-Operationen.
-  - Tool Protocol pro Model Profile wählbar (`native` | `text-json` | `text-xml`) – Details offen.
+  - Tool Protocol pro Model Profile wählbar – siehe Decisions.
 
 ## Decisions so far
 
@@ -37,6 +37,7 @@ Umsetzbare **Spec für v1** (PRD + Architektur + Glossar) eines textbasierten Co
 - [Context-Block-Domänenmodell](tickets/008-context-block-model.md): 7 Block-Arten inkl. Tools Block; Session Log als Event-Folge, Context = Fold; Tool Pair wird beim Verschieben zur Note; Revisionen, Restore, Pin bottom = ganz am Ende
 - [Review-Gate-UI im opencode-Stil](tickets/009-review-gate-ui.md): ein Screen – Gate-Tabelle ist Chat-Verlauf (entfernte Blocks durchgestrichen sichtbar), Vorschau, Eingabe unten, Streaming inline; kein Budget-Balken/Summenzeile, Cache-Kurzinfo im Kopf
 - [Tech-Stack festlegen](tickets/006-tech-stack.md): TS/Bun + OpenTUI + SolidJS, ein Prozess mit Core/UI-Modulgrenze; Risiko OpenTUI pre-1.0
+- [Tool Protocol & Model Profile](tickets/007-tool-protocol-model-profile.md): v1 `native` + `text-xml`; Blocks protokollneutral, Rendering pro Request; verschobenes Tool Pair = Klartext-Note; kaputte Calls ⚠ am Gate; Profilwechsel in Session erlaubt; llama.cpp braucht `--jinja`
 
 ## Not yet specified
 
