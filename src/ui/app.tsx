@@ -1,6 +1,6 @@
 // The one screen (FR-1): header · block table · preview · input line · status line.
 import type { MouseEvent, ScrollBoxRenderable } from '@opentui/core';
-import { useKeyboard, useTerminalDimensions } from '@opentui/solid';
+import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/solid';
 import { createEffect, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import type { Kind } from '../core/log/events';
 import { COMMANDS, createGate, type Gate, type GateOptions, type Status } from './gate';
@@ -18,6 +18,7 @@ type Row = { id: number; n: string; kind: Kind; title: string; content: string; 
 
 export function App(props: GateOptions & { onQuit: () => void }) {
   const gate = createGate(props);
+  const renderer = useRenderer();
   const size = useTerminalDimensions();
   const [mode, setMode] = createSignal<Mode>('context');
   const [draft, setDraft] = createSignal('');
@@ -153,9 +154,16 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   };
   const titleWidth = () => Math.max(8, width() - FIXED_COLUMNS);
   const selectedRow = () => rows().find(r => r.id === gate.selected() && !r.removed);
+  // Copy on select: the text selected with the mouse goes to the clipboard on release.
+  const copySelection = () => {
+    const text = renderer.getSelection()?.getSelectedText();
+    if (!text) return;
+    gate.copy(text);
+    renderer.clearSelection();
+  };
 
   return (
-    <box flexDirection="column" width="100%" height="100%">
+    <box flexDirection="column" width="100%" height="100%" onMouseUp={copySelection}>
       <Header gate={gate} width={width()} />
       <text fg={TEMPLATE_COLOR} flexShrink={0}>{`     #  ${'Kind'.padEnd(11)}  ${cell('Title', titleWidth())}  Tokens  ${gate.approximate() ? 'Cache≈' : 'Cache '} Flags`}</text>
       <box flexDirection="column" flexGrow={1} overflow="hidden" onMouseScroll={wheel}>

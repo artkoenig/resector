@@ -54,6 +54,7 @@ async function launch({ config, systemMd, servers, sessions = {}, locks = {}, re
         servers={servers?.(fake.url) ?? [{ backend: 'llamacpp', endpoint: fake.url }]}
         store={store}
         editor={async text => text}
+        clipboard={async () => {}}
         resume={resume}
         onQuit={() => quit.push('quit')}
         onFatal={m => fatal.push(m)}

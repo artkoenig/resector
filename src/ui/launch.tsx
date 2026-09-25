@@ -3,6 +3,7 @@ import { createSignal, onMount, Show } from 'solid-js';
 import { connect } from '../adapters/backend/connect';
 import { discover, LOCAL_SERVERS, type DiscoveredModel, type LocalServer } from '../adapters/backend/discover';
 import { createRunner } from '../adapters/bash/runner';
+import type { Clipboard } from '../adapters/clipboard/clipboard';
 import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
 import type { OpenSession, SessionStore } from '../adapters/store/sessions';
 import type { Editor } from '../core/context/operations';
@@ -23,6 +24,8 @@ export type LaunchOptions = {
   cwd?: string;
   // $EDITOR for `e` (FR-8).
   editor: Editor;
+  // Copy on select.
+  clipboard: Clipboard;
   // -c [id]: true = the last session (FR-32).
   resume?: SessionRef;
   onQuit: () => void;
@@ -85,7 +88,7 @@ export function Launch(props: LaunchOptions) {
     setCurrent(opened.id);
     setFound(null);
     const runner = createRunner({ cwd: props.cwd ?? process.cwd(), timeout: loaded.config.bash?.timeout ?? DEFAULT_TIMEOUT });
-    setGate({ backend, runner, editor: props.editor, log: opened.log, events, notice, reconnect: reconnect(profile, opened.id), openSessions: () => setView('sessions') });
+    setGate({ backend, runner, editor: props.editor, clipboard: props.clipboard, log: opened.log, events, notice, reconnect: reconnect(profile, opened.id), openSessions: () => setView('sessions') });
   }
 
   // /sessions (FR-33): switching sessions reconnects; the Gate comes back with the session's logged events.

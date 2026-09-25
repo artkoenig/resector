@@ -28,6 +28,7 @@ src/
     backend/               llamacpp | ollama | lmstudio | omlx (chat, tokenize, props)
     bash/                  process runner (timeout, kill, stdin /dev/null)
     editor/                $EDITOR on a temporary file (suspends the TUI)
+    clipboard/             copy on select: OSC 52 + pbcopy / wl-copy / xclip
     fs/                    @file read, environment probe, AGENTS.md
     store/                 session files, lock files, session index
   ui/                      OpenTUI + Solid views: Gate, preview, input, /sessions

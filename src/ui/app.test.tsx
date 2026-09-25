@@ -25,9 +25,12 @@ const project = realpathSync(mkdtempSync(join(tmpdir(), 'resector-project-')));
 
 // $EDITOR for `e`: the text as the user saves it; default unchanged.
 let editor: (text: string) => Promise<string>;
+// What copy on select put into the clipboard.
+let copied: string[];
 
 async function start({ timeout = 120 } = {}) {
   editor = async text => text;
+  copied = [];
   fake = startFakeLlamaCpp({ nCtx: 4096 });
   const backend = await connectLlamaCpp(fake.url);
   const log = createSessionLog(mkdtempSync(join(tmpdir(), 'resector-')), 'ses_test');
@@ -36,7 +39,7 @@ async function start({ timeout = 120 } = {}) {
   initial.forEach(log.append);
   const opened: string[] = [];
   ui = await testRender(
-    () => <App backend={backend} runner={runner} editor={text => editor(text)} log={log} events={initial} reconnect={async () => backend} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
+    () => <App backend={backend} runner={runner} editor={text => editor(text)} clipboard={async text => void copied.push(text)} log={log} events={initial} reconnect={async () => backend} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
     { width: 80, height: 20 },
   );
   await frameMatching(ui, f => f.includes('52 / 4k'));
@@ -659,4 +662,17 @@ test('an editor that fails leaves the block unchanged', async () => {
   await press('e');
   await frameMatching(ui, f => f.includes('editor failed: vi exited with 1 – unchanged'));
   expect(events().some(e => e.type === 'Edit')).toBe(false);
+});
+
+test('text selected with the mouse is copied to the clipboard on release', async () => {
+  await start();
+  const frame = ui.captureCharFrame();
+  const y = frame.split('\n').findIndex(l => l.includes('You are an agent.'));
+  const x = frame.split('\n')[y]!.indexOf('You');
+  await ui.mockMouse.drag(x, y, x + 6, y);
+  await frameMatching(ui, f => /copied 7 chars/.test(f));
+  expect(copied).toEqual(['You are']);
+  await ui.mockMouse.click(x, y);
+  await ui.flush();
+  expect(copied).toEqual(['You are']);
 });

@@ -1,5 +1,6 @@
 // Review Gate state: the Session Log in memory, Context = fold(events), token split, streaming answer.
 import { createEffect, createMemo, createSignal } from 'solid-js';
+import type { Clipboard } from '../adapters/clipboard/clipboard';
 import type { Backend, ChatResult, Counted } from '../core/backend';
 import { warmRows } from '../core/cache/cache';
 import * as ops from '../core/context/operations';
@@ -13,11 +14,12 @@ import { errorText, titleOf } from './format';
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
 // events: the Session Log so far (new or resumed); reconnect: re-reads the config and opens the session's
 // Model Profile again (/reload, FR-44); openSessions: shows /sessions; notice: initial status line.
-// runner: runs approved bash calls (FR-21); editor: $EDITOR for `e` (FR-8).
+// runner: runs approved bash calls (FR-21); editor: $EDITOR for `e` (FR-8); clipboard: copy on select.
 export type GateOptions = {
   backend: Backend;
   runner: Runner;
   editor: ops.Editor;
+  clipboard: Clipboard;
   log: SessionLog;
   events: SessionEvent[];
   reconnect: () => Promise<Backend>;
@@ -45,7 +47,7 @@ const APPROVE = 'y run once · n reject · e edit';
 const cacheMiss = ({ predicted, cached }: ChatResult) =>
   predicted !== null && cached !== null && cached < predicted ? `cache: predicted ${predicted} · server reused ${cached}` : null;
 
-export function createGate({ log, reconnect, openSessions, runner, editor, ...options }: GateOptions) {
+export function createGate({ log, reconnect, openSessions, runner, editor, clipboard, ...options }: GateOptions) {
   const [events, setEvents] = createSignal(options.events);
   const [counted, setCounted] = createSignal<{ prefixes: Request[]; split: Counted } | null>(null);
   const [streaming, setStreaming] = createSignal<Streaming | null>(null);
@@ -162,6 +164,8 @@ export function createGate({ log, reconnect, openSessions, runner, editor, ...op
       setStatus({ text: `editor failed: ${errorText(e)} – unchanged`, tone: 'error' });
     }
   }
+  // Text selected with the mouse, copied on release.
+  const copy = (text: string) => clipboard(text).then(() => setStatus({ text: `copied ${text.length} chars`, tone: 'info' }));
   function toggleMark() {
     const block = selectedBlock();
     if (!block || ops.isFixed(block)) return;
@@ -338,6 +342,7 @@ export function createGate({ log, reconnect, openSessions, runner, editor, ...op
     undo,
     rename,
     edit: () => void edit(),
+    copy: (text: string) => void copy(text),
     toggleMark,
     clearMarks: () => setMarked(new Set<number>()),
   };
