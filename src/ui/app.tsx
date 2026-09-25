@@ -122,9 +122,10 @@ export function App(props: GateOptions & { onQuit: () => void }) {
       key.preventDefault();
       onSuggestion();
     } else if (mode() !== 'context') inputKeys[key.name]?.();
-    else if (gate.busy()) key.name === 'escape' && gate.abort();
     else {
-      const action = contextKeys[modifierOf(key) + key.name];
+      const name = modifierOf(key) + key.name;
+      // Streaming or running: only looking around (select, scroll, quit); Esc aborts, the Context stays as sent.
+      const action = gate.busy() ? (name === 'escape' ? gate.abort : BUSY_KEYS.has(name) ? contextKeys[name] : undefined) : contextKeys[name];
       // Handled here only: `r` must not also type into the input it focuses.
       if (action) key.preventDefault();
       action?.();
@@ -227,8 +228,11 @@ function contextBar(gate: Gate, width: number): { char: string; color: string }[
   return cells;
 }
 
+const BUSY_KEYS = new Set(['up', 'down', 'shift+up', 'shift+down', 'pageup', 'pagedown', 'q']);
+
 const modifierOf = (key: { option?: boolean; meta: boolean; shift: boolean }) => (key.option || key.meta ? 'alt+' : key.shift ? 'shift+' : '');
 
+const LOOK_KEYS = '↑↓ select · PgUp/PgDn scroll · q quit';
 const KEYS = 'Enter send · Tab write · ↑↓ select · ⌥↑↓ move · PgUp/PgDn scroll · r rename · d remove · p pin · Space mark · u undo · q quit';
 
 // Status line of the last action, then the key hints, which stay visible.
@@ -242,8 +246,8 @@ function Footer(props: { gate: Gate; mode: Mode | 'suggest'; tick: number }) {
     return props.gate.streaming() ? { text: 'model is responding …', tone: 'warn' as const } : props.gate.status();
   };
   const keys = () => {
-    if (props.gate.running()) return 'Esc kill';
-    if (props.gate.streaming()) return 'Esc abort';
+    if (props.gate.running()) return `Esc kill · ${LOOK_KEYS}`;
+    if (props.gate.streaming()) return `Esc abort · ${LOOK_KEYS}`;
     if (props.mode === 'context' && props.gate.selectedBlock()?.pending) return `y run once · n reject · ${KEYS}`;
     if (props.mode === 'suggest') return '↑↓ choose · Tab complete · Enter run · Esc back';
     if (props.mode === 'input') return 'Enter adds a User block (not sent) · Tab/Esc back';

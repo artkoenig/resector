@@ -126,6 +126,27 @@ test('Esc aborts streaming; the partial answer is kept as cut off', async () => 
   ]);
 });
 
+test('while the answer streams, ↑↓ select and the preview scrolls; the Context stays as sent', async () => {
+  const { events } = await start();
+  fake.reply({ chunks: ['Hal'], hang: true });
+  await write('hi there');
+  await frameMatching(ui, f => f.includes('60 / 4k'));
+  ui.mockInput.pressEnter();
+  let frame = await frameMatching(ui, f => /4\s+Assistant\s+Hal/.test(f));
+  expect(frame).toContain('Esc abort · ↑↓ select · PgUp/PgDn scroll · q quit');
+  await press('up');
+  frame = await frameMatching(ui, f => /── #3 User · hi there/.test(f));
+  await press('d');
+  await press('p');
+  await press('down');
+  frame = await frameMatching(ui, f => /── #4 Assistant/.test(f));
+  expect(frame).not.toContain('removed');
+  expect(events().at(-1).type).toBe('RequestSent');
+  await escape();
+  await frameMatching(ui, f => f.includes('⚠ cut off'));
+  expect(events().filter(e => ['Remove', 'Pin'].includes(e.type))).toEqual([]);
+});
+
 async function withUsers(...texts: string[]) {
   const started = await start();
   for (const t of texts) {
