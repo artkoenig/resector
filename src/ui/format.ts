@@ -20,3 +20,12 @@ export const cell = (s: string, width: number): string =>
 export const right = (s: string, width: number): string => s.padStart(width);
 
 export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+// Age of a session for /sessions (FR-33).
+export function ago(then: Date, now = Date.now()): string {
+  const minutes = (now - then.getTime()) / 60_000;
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${Math.round(minutes)}m ago`;
+  if (minutes < 24 * 60) return `${Math.round(minutes / 60)}h ago`;
+  return `${Math.round(minutes / (24 * 60))}d ago`;
+}

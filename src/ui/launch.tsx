@@ -10,6 +10,7 @@ import { newSession, summarize } from '../core/session/summary';
 import { App } from './app';
 import { errorText } from './format';
 import type { GateOptions } from './gate';
+import { Sessions } from './sessions';
 import { Setup } from './setup';
 
 export type LaunchOptions = {
@@ -27,7 +28,9 @@ type Loaded = NonNullable<ReturnType<typeof loadConfig>>;
 export function Launch(props: LaunchOptions) {
   const [found, setFound] = createSignal<DiscoveredModel[] | null>(null);
   const [gate, setGate] = createSignal<GateOptions | null>(null);
+  const [view, setView] = createSignal<'gate' | 'sessions'>('gate');
   let session: OpenSession | null = null;
+  const [current, setCurrent] = createSignal('');
 
   const load = () => {
     const loaded = loadConfig(props.paths);
@@ -42,7 +45,7 @@ export function Launch(props: LaunchOptions) {
     const profile = loaded.profile();
     const events = newSession(profile.name, loaded.systemPrompt(profile));
     events.forEach(opened.log.append);
-    return { opened, events, notice: undefined };
+    return { opened, events, notice: { text: 'new session', tone: 'ok' as const } };
   }
 
   // Resume = replay; a Model Profile missing from the config falls back to the default one (FR-35).
@@ -60,15 +63,52 @@ export function Launch(props: LaunchOptions) {
     return { opened, events, notice: { text: texts.join(' · '), tone: texts.length > 1 ? ('warn' as const) : ('ok' as const) } };
   }
 
-  async function open(loaded = load(), which = props.resume) {
+  // which: a session to resume (true = the last one), else a new session.
+  async function open(loaded: Loaded, which: true | string | undefined) {
     const { opened, events, notice } = which ? resume(loaded, which) : create(loaded);
-    session?.release();
-    session = opened;
     const profile = fold(events).profile;
-    const backend = await connect(loaded.profile(profile));
+    const backend = await connect(loaded.profile(profile)).catch(e => {
+      opened.release();
+      throw e;
+    });
+    if (session?.id !== opened.id) session?.release();
+    session = opened;
+    setCurrent(opened.id);
     setFound(null);
-    setGate({ backend, log: opened.log, events, notice, reconnect: reconnect(profile), openSessions: () => {} });
+    setGate({ backend, log: opened.log, events, notice, reconnect: reconnect(profile), openSessions: () => setView('sessions') });
   }
+
+  // /sessions (FR-33): switching sessions reconnects; the Gate comes back with the session's logged events.
+  const switchTo = (which?: string) => open(load(), which).then(() => void setView('gate'));
+  const back = () => {
+    const events = props.store.list().find(s => s.id === current())!.events;
+    setGate({ ...gate()!, events, notice: undefined });
+    setView('gate');
+  };
+  // Deleting the current session switches to the newest other one, or a new empty session.
+  async function remove(id: string): Promise<string> {
+    const title = props.store.list().find(s => s.id === id)!.title;
+    if (id !== current()) {
+      props.store.delete(id);
+      return `deleted "${title}"`;
+    }
+    session!.release();
+    session = null;
+    props.store.delete(id);
+    const next = props.store.list().find(s => !s.locked);
+    await open(load(), next?.id);
+    return `deleted "${title}" · switched to "${props.store.list().find(s => s.id === current())!.title}"`;
+  }
+  const rename = (id: string, title: string) => {
+    const event: SessionEvent = { type: 'SessionRenamed', title };
+    if (id === current()) session!.log.append(event);
+    else props.store.append(id, event);
+  };
+  const windowOf = (profile: string) => {
+    const options = gate();
+    if (options && profile === fold(options.events).profile) return options.backend.window;
+    return load().config.profiles[profile]?.window;
+  };
 
   async function firstStart() {
     const models = await discover(props.servers ?? LOCAL_SERVERS);
@@ -84,13 +124,13 @@ export function Launch(props: LaunchOptions) {
   };
   const choose = (model: DiscoveredModel) => {
     writeInitialConfig(props.paths, model);
-    open().catch(fail);
+    open(load(), undefined).catch(fail);
   };
 
   onMount(() => {
     const start = async () => {
       const loaded = loadConfig(props.paths);
-      return loaded ? open(loaded) : firstStart();
+      return loaded ? open(loaded, props.resume) : firstStart();
     };
     start().catch(fail);
   });
@@ -98,8 +138,21 @@ export function Launch(props: LaunchOptions) {
   return (
     <>
       <Show when={found()}>{(models: () => DiscoveredModel[]) => <Setup found={models()} configPath={props.paths.global} onChoose={choose} onQuit={quit} />}</Show>
-      <Show when={gate()} keyed>
+      <Show when={view() === 'gate' && gate()} keyed>
         {(options: GateOptions) => <App {...options} onQuit={quit} />}
+      </Show>
+      <Show when={view() === 'sessions'}>
+        <Sessions
+          store={props.store}
+          current={current}
+          profiles={Object.keys(load().config.profiles)}
+          windowOf={windowOf}
+          open={id => (id === current() ? Promise.resolve(back()) : switchTo(id))}
+          create={() => switchTo()}
+          remove={remove}
+          rename={rename}
+          back={back}
+        />
       </Show>
     </>
   );

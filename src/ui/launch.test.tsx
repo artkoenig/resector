@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { testRender } from '@opentui/solid';
@@ -36,8 +36,15 @@ async function launch({ config, systemMd, servers, sessions = {}, locks = {}, re
   if (config) put(paths.global, config(fake.url));
   if (systemMd) put(join(dirname(paths.global), 'system.md'), systemMd);
   const fatal: string[] = [];
-  const store = openSessionStore(join(root, 'sessions'), { id: () => 'ses_test' });
-  for (const [id, events] of Object.entries(sessions)) put(join(root, 'sessions', `${id}.jsonl`), events.map(e => JSON.stringify(e) + '\n').join(''));
+  let created = 0;
+  const store = openSessionStore(join(root, 'sessions'), { id: () => (created++ ? `ses_new${created - 1}` : 'ses_test') });
+  // Sessions are written oldest last: the first one given is the newest.
+  Object.entries(sessions).forEach(([id, events], i) => {
+    const path = join(root, 'sessions', `${id}.jsonl`);
+    put(path, events.map(e => JSON.stringify(e) + '\n').join(''));
+    const t = new Date(Date.now() - (i + 1) * 3_600_000);
+    utimesSync(path, t, t);
+  });
   for (const [id, pid] of Object.entries(locks)) put(join(root, 'sessions', `${id}.lock`), String(pid));
   const quit: string[] = [];
   ui = await testRender(
@@ -189,6 +196,124 @@ test('quitting releases the session lock', async () => {
   await until(() => quit.length > 0);
   expect(readdirSync(join(root, 'sessions'))).toEqual(['ses_test.jsonl']);
 });
+
+async function sessionsView(sessions: Record<string, SessionEvent[]>, locks: Record<string, number> = {}) {
+  const started = await launch({ config: url => profileConfig(url), sessions, locks });
+  await frameMatching(ui, f => f.includes('/ 2k'));
+  await command('/sessions');
+  await frameMatching(ui, f => f.includes('Sessions ·'));
+  return started;
+}
+const titled = (profile: string, title: string, tokens = 20) =>
+  chat(profile).map(e => (e.type === 'BlockAdded' && e.kind === 'User' ? { ...e, content: title } : e.type === 'RequestSent' ? { ...e, tokens } : e));
+const key = async (name: string) => {
+  if (name === 'up' || name === 'down') ui.mockInput.pressArrow(name);
+  else if (name === 'enter') ui.mockInput.pressEnter();
+  else if (name === 'escape') {
+    ui.mockInput.pressEscape();
+    await Bun.sleep(50);
+  } else ui.mockInput.pressKey(name);
+  await ui.flush();
+};
+
+test('/sessions lists the project sessions newest first with marker, profile, Context and blocks (FR-33)', async () => {
+  const other = Bun.spawn(['sleep', '10']);
+  try {
+    await sessionsView({ ses_a: titled('local', 'fix the build', 1900), ses_b: titled('gone', 'old question'), ses_c: titled('local', 'busy') }, { ses_c: other.pid });
+    const frame = await frameMatching(ui, f => f.includes('busy'));
+    expect(frame).toContain('Sessions · 4 sessions');
+    expect(line(frame, /\(new session\)/)).toMatch(/^ ● +\(new session\) +now +local +– +1\b/);
+    expect(line(frame, /fix the build/)).toMatch(/fix the build +1h ago +local +1\.9k\/2k +3\b/);
+    expect(line(frame, /old question/)).toMatch(/old question +2h ago +⚠ gone +20 +3\b/);
+    expect(line(frame, /busy/)).toMatch(/^ {2}⊘ +busy/);
+    expect(frame).toContain('↑↓ select · Enter open · r rename · d delete · n new · / filter · Esc back');
+    await key('down');
+    const preview = await frameMatching(ui, f => f.includes('Preview · ses_a'));
+    expect(preview).toMatch(/3 +Assistant +hello/);
+  } finally {
+    other.kill();
+  }
+});
+
+test('Enter opens the selected session; the lock moves with it; Esc goes back', async () => {
+  const { root } = await sessionsView({ ses_a: titled('local', 'fix the build') });
+  await key('escape');
+  await frameMatching(ui, f => f.includes('/ 2k') && !f.includes('Sessions ·'));
+  await command('/sessions');
+  await frameMatching(ui, f => f.includes('Sessions ·'));
+  await key('down');
+  await key('enter');
+  const frame = await frameMatching(ui, f => f.includes('resumed "fix the build"'));
+  expect(frame).toMatch(/2\s+User\s+fix the build/);
+  expect(readdirSync(join(root, 'sessions')).filter(f => f.endsWith('.lock'))).toEqual(['ses_a.lock']);
+});
+
+test('a session open in another instance is neither opened nor deleted (FR-36)', async () => {
+  const other = Bun.spawn(['sleep', '10']);
+  try {
+    await sessionsView({ ses_c: titled('local', 'busy') }, { ses_c: other.pid });
+    await key('down');
+    await key('enter');
+    await frameMatching(ui, f => f.includes('⊘ "busy" is open in another resector instance'));
+    await key('d');
+    await frameMatching(ui, f => f.includes('⊘ cannot delete: open in another instance'));
+  } finally {
+    other.kill();
+  }
+});
+
+test('d asks before deleting; deleting the current session switches to the newest other one', async () => {
+  const { root } = await sessionsView({ ses_a: titled('local', 'keep me'), ses_b: titled('local', 'drop me') });
+  await key('down');
+  await key('down');
+  await key('d');
+  await frameMatching(ui, f => f.includes('Delete "drop me"? y / N'));
+  await key('n');
+  await frameMatching(ui, f => f.includes('delete cancelled'));
+  await key('d');
+  await key('y');
+  const deleted = await frameMatching(ui, f => f.includes('deleted "drop me"'));
+  expect(line(deleted, /1h ago|2h ago/)).toMatch(/keep me/);
+  expect(existsSync(join(root, 'sessions', 'ses_b.jsonl'))).toBe(false);
+  await key('up');
+  await key('up');
+  await key('d');
+  await key('y');
+  const frame = await frameMatching(ui, f => f.includes('switched to "keep me"'));
+  expect(line(frame, /keep me/)).toMatch(/^ ●/);
+  expect(existsSync(join(root, 'sessions', 'ses_test.jsonl'))).toBe(false);
+});
+
+test('deleting the only session starts a new empty one', async () => {
+  await sessionsView({});
+  await key('d');
+  await key('y');
+  const frame = await frameMatching(ui, f => f.includes('switched to "(new session)"'));
+  expect(line(frame, /\(new session\)/)).toMatch(/^ ●/);
+});
+
+test('r renames a session, / filters by title, n starts a new session (FR-33, FR-34)', async () => {
+  const { store } = await sessionsView({ ses_a: titled('local', 'fix the build'), ses_b: titled('local', 'other') });
+  await key('down');
+  await key('r');
+  await frameMatching(ui, f => f.includes('title > fix the build'));
+  for (let i = 0; i < 'fix the build'.length; i++) ui.mockInput.pressBackspace();
+  await ui.mockInput.typeText('build fix');
+  await key('enter');
+  await frameMatching(ui, f => /build fix +now/.test(f));
+  expect(store.list().find(s => s.id === 'ses_a')!.title).toBe('build fix');
+  await key('/');
+  await ui.mockInput.typeText('oth');
+  let frame = await frameMatching(ui, f => !f.includes('build fix'));
+  expect(frame).toContain('other');
+  await key('escape');
+  frame = await frameMatching(ui, f => f.includes('build fix'));
+  await key('n');
+  frame = await frameMatching(ui, f => f.includes('new session') && !f.includes('Sessions ·'));
+  expect(store.list().map(s => s.id)).toContain('ses_new1');
+});
+
+const line = (frame: string, pattern: RegExp) => frame.split('\n').find(l => pattern.test(l));
 
 async function command(text: string) {
   ui.mockInput.pressTab();

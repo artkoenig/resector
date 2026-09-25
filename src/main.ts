@@ -9,22 +9,24 @@ export type Command = Result | { start: Start } | { exportFixture: true | string
 
 const USAGE = 'usage: resector [-c [id]] | resector --export-fixture [id] | resector --version\n';
 
+const OPTIONS = { version: { type: 'boolean' }, continue: { type: 'boolean', short: 'c' }, 'export-fixture': { type: 'boolean' } } as const;
+const USAGE_ERROR: Result = { code: 1, out: USAGE };
+
 export function main(argv: string[]): Command {
   try {
-    const { values, positionals } = parseArgs({
-      args: argv,
-      allowPositionals: true,
-      options: { version: { type: 'boolean' }, continue: { type: 'boolean', short: 'c' }, 'export-fixture': { type: 'boolean' } },
-    });
-    const [id, ...rest] = positionals;
-    const withId = values.continue || values['export-fixture'];
-    if (rest.length || (id && !withId)) return { code: 1, out: USAGE };
-    if (values.version) return { code: 0, out: `resector ${pkg.version}\n` };
-    if (values['export-fixture']) return { exportFixture: id ?? true };
-    return { start: values.continue ? { resume: id ?? true } : {} };
+    const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: OPTIONS });
+    return positionals.length > 1 ? USAGE_ERROR : command(values, positionals[0]);
   } catch {
-    return { code: 1, out: USAGE };
+    return USAGE_ERROR;
   }
+}
+
+// id: the one positional, taken by -c and --export-fixture only.
+function command(values: { version?: boolean; continue?: boolean; 'export-fixture'?: boolean }, id?: string): Command {
+  if (values.version) return { code: 0, out: `resector ${pkg.version}\n` };
+  if (values['export-fixture']) return { exportFixture: id ?? true };
+  if (values.continue) return { start: { resume: id ?? true } };
+  return id ? USAGE_ERROR : { start: {} };
 }
 
 async function run(command: Command) {

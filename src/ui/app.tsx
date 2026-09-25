@@ -102,10 +102,13 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     escape: gate.clearMarks,
     q: props.onQuit,
   };
+  // Keys of the command suggestions win while any are shown.
+  const suggestionKey = (name: string) => (suggestion() ? suggestionKeys[name] : undefined);
   useKeyboard(key => {
-    if (suggestion() && suggestionKeys[key.name]) {
+    const onSuggestion = suggestionKey(key.name);
+    if (onSuggestion) {
       key.preventDefault();
-      suggestionKeys[key.name]!();
+      onSuggestion();
     } else if (mode() !== 'context') inputKeys[key.name]?.();
     else if (gate.streaming()) key.name === 'escape' && gate.abort();
     else {
