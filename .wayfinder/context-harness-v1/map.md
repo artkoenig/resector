@@ -21,7 +21,6 @@ Umsetzbare **Spec für v1** (PRD + Architektur + Glossar) eines textbasierten Co
   - Manuelles Editieren: einzelner Block in `$EDITOR`; Reorder/Delete/Pin in der TUI-Liste.
   - Compaction: gleiches Modell (optional separates), User wählt Blocks + Anweisung, **Diff vor Freigabe** (Tokens vorher/nachher).
   - Gegen Lost-in-the-Middle: manuelles Verschieben + Pin top/bottom.
-  - Verschobene/editierte Tool-Results werden zu **Notes** (vorbehaltlich Tool-Protocol-Entscheidung).
   - Gate zeigt an, wie viele Prefix-Cache-Tokens eine Änderung invalidiert (Info, kein Verbot).
   - Session Log als JSONL auf Platte; Context = abgeleiteter Zustand + Edit-Operationen.
   - Tool Protocol pro Model Profile wählbar (`native` | `text-json` | `text-xml`) – Details offen.
@@ -35,6 +34,7 @@ Umsetzbare **Spec für v1** (PRD + Architektur + Glossar) eines textbasierten Co
 - [Prefix-/KV-Cache-Verhalten lokaler Backends](tickets/005-prefix-cache.md): Cache = gemeinsamer Token-Präfix; Invalidierung ab erster Änderung exakt vorhersagbar, Gate zeigt Tokens + geschätzte Sekunden
 - [Token-effiziente Serialisierung für Tool-Schemas & -Results](tickets/004-compact-serialization.md): Tool-Calls in JSON; Results als natives Tool-Textformat bzw. TOON-Tabellen; Schemas als kompakte Signaturen (−66 %)
 - [Tool-Protokolle anderer Agents & lokale Modelle](tickets/003-tool-protocols.md): Default `native`; `text-xml`/`text-json` spiegeln trainierte Formate (Qwen3-Coder-XML, Hermes-JSON); Protokoll pro Session fixiert
+- [Context-Block-Domänenmodell](tickets/008-context-block-model.md): 7 Block-Arten inkl. Tools Block; Session Log als Event-Folge, Context = Fold; Tool Pair wird beim Verschieben zur Note; Revisionen, Restore, Pin bottom = ganz am Ende
 
 ## Not yet specified
 

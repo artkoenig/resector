@@ -10,4 +10,4 @@ blocked_by: [003, 004, 008]
 
 ## Question
 
-Wie sieht das Model Profile aus (Felder: Endpoint, Tokenizer, Fenstergröße, Tool Protocol, Serialisierung), welche Tool Protocols unterstützt v1 wirklich, und wie werden verschobene/editierte Tool-Calls/-Results je Protokoll behandelt (Note-Umwandlung vs. frei verschiebbar)?
+Wie sieht das Model Profile aus (Felder: Endpoint, Tokenizer, Fenstergröße, Tool Protocol, Serialisierung), welche Tool Protocols unterstützt v1 wirklich, und wie werden Tool Pairs und in Notes umgewandelte Tool Pairs je Protokoll gerendert (Domänenregel steht: Move → Note, siehe Context-Block-Domänenmodell)? Klären: rendert llama.cpp `/apply-template` das `tools`-Feld mit (Widerspruch zwischen Token- und Tool-Protokoll-Research)?
