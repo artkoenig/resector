@@ -3,6 +3,7 @@
 // Cross-compiling embeds OpenTUI's native library only if every platform's
 // @opentui/core-* package is installed: run `bun install --os='*' --cpu='*'` first.
 import { $ } from 'bun';
+import solid from '@opentui/solid/bun-plugin';
 import { parseArgs } from 'node:util';
 import pkg from '../package.json';
 import { TARGETS, assetName, versionFromTag, type Target } from './release';
@@ -18,7 +19,14 @@ await $`rm -rf dist`;
 const sums: string[] = [];
 for (const target of targets) {
   const dir = `dist/${target}`;
-  await $`bun build --compile --minify --target=bun-${target} src/main.ts --outfile ${dir}/resector`;
+  const build = await Bun.build({
+    entrypoints: ['src/main.ts'],
+    plugins: [solid], // Solid JSX transform; bunfig's runtime preload does not reach the bundler
+    minify: true,
+    // Resector runs inside users' projects: their bunfig.toml and .env must not configure it.
+    compile: { target: `bun-${target}`, outfile: `${dir}/resector`, autoloadBunfig: false, autoloadDotenv: false },
+  });
+  if (!build.success) throw new AggregateError(build.logs, `build failed for ${target}`);
   await $`cp LICENSE ${dir}/`;
   const asset = assetName(version, target);
   await $`tar -czf dist/${asset} -C ${dir} resector LICENSE`;

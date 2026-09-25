@@ -5,7 +5,7 @@ Distribution per NFR-5: single binaries from `bun build --compile` for darwin-ar
 1. Optionally run the live suite against a local backend (`bun test:live`, architecture §7).
 2. Bump `version` in `package.json` and merge to `main`.
 3. Tag and push: `git tag v<version> && git push origin v<version>`. The tag must match `package.json`, otherwise the build fails.
-4. `.github/workflows/release.yml` runs the full gate (`bun run gate`), builds all targets, smoke-tests `resector --version` on a native runner per target, creates the GitHub Release (tarballs, `SHA256SUMS`, `resector.rb`) and commits `Formula/resector.rb` to the tap.
+4. `.github/workflows/release.yml` runs the full gate (`bun run gate`), builds all targets, smoke-tests each binary on a native runner (`scripts/smoke.ts`: `--version`, then the Gate rendered in a PTY against the fake backend), creates the GitHub Release (tarballs, `SHA256SUMS`, `resector.rb`) and commits `Formula/resector.rb` to the tap.
 
 Users install with `brew install artkoenig/tap/resector` or by unpacking a release tarball. Update via `brew upgrade`; there is no auto-update.
 
@@ -21,4 +21,5 @@ Users install with `brew install artkoenig/tap/resector` or by unpacking a relea
 bun install --os='*' --cpu='*'   # every platform's OpenTUI native library, needed to cross-compile
 bun scripts/build.ts             # all targets → dist/; --target linux-x64 for one
 bun scripts/formula.ts > dist/resector.rb
+bun scripts/smoke.ts dist/linux-x64/resector <version>   # binary for this machine
 ```

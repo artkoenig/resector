@@ -46,14 +46,17 @@ jobs:
           - { target: linux-arm64, os: ubuntu-24.04-arm }
     runs-on: ${{ matrix.os }}
     steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile # bunfig.toml preloads @opentui/solid
       - uses: actions/download-artifact@v4
         with:
           name: release
+          path: release
+      # --version, then the Gate rendered in a PTY against the fake backend (loads the OpenTUI native lib).
       - run: |
-          tar -xzf "resector-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz"
-          out="$(./resector --version)"
-          echo "$out"
-          test "$out" = "resector ${GITHUB_REF_NAME#v}"
+          tar -xzf "release/resector-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz" -C release
+          bun scripts/smoke.ts release/resector "${GITHUB_REF_NAME#v}"
 
   release:
     needs: smoke
