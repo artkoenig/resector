@@ -46,8 +46,8 @@ A text-based (TUI) coding agent whose core is the **Review Gate**: a pause befor
 - **FR-8** Editable: all kinds except Tools Block and executed Tool Calls. A Tool Call awaiting approval is editable (FR-22). Edit keeps the kind.
 - **FR-9** Tool Pair: removed/compacted only as a whole; editing the result in place keeps the pair; moving or pinning it asks for confirmation (same key again) and turns it into a Note `[Tool bash: <cmd>]` + result.
 - **FR-10** Pin top = right after System + Tools Block (+ environment/project Notes); pin bottom = very end, sent as user-role Note. Pinned blocks keep their order and can be reordered among themselves.
-- **FR-11** Restore returns a block to its original position (after its former predecessor, else the nearest existing one before). A trash view lists removed blocks.
-- **FR-12** Tools are toggled per session (in v1: `bash` on/off), never edited freely.
+- **FR-11** *Dropped:* no trash view; removed blocks come back only via undo (`u`).
+- **FR-12** The Tools Block (`bash`) is always sent and never edited; no tool toggle.
 
 ### 4.3 Compaction
 
@@ -95,7 +95,7 @@ A text-based (TUI) coding agent whose core is the **Review Gate**: a pause befor
 ### 4.9 Model Profiles & protocols
 
 - **FR-38** Model Profile fields: `name`, `backend` (`llamacpp`|`ollama`|`lmstudio`), `endpoint`, `model`, `window` (auto, overridable), `tokenizer` (auto, override path), `toolProtocol` (`native`|`text-xml`), `resultFormat` (`native`|`toon`), `sampling`, `thinking`, `compactionProfile`, `systemPrompt`; measured `promptTokPerSec` stored for cache estimates.
-- **FR-39** Switching profile (including protocol) mid-session is allowed; the whole Context is re-rendered and the Gate shows "cache fully cold".
+- **FR-39** *Dropped:* no profile switch within a session; the Model Profile (and thus the Tool Protocol) is fixed at session creation, except the resume fallback of FR-35.
 - **FR-40** llamacpp backend: check `--jinja` at startup; error with hint if missing.
 - **FR-41** After each response, compare pre-count with `usage.prompt_tokens` and reported cached tokens; show drift in the status line.
 
@@ -103,7 +103,7 @@ A text-based (TUI) coding agent whose core is the **Review Gate**: a pause befor
 
 - **FR-42** JSONC with `$schema`. Global `~/.config/resector/config.jsonc`, project `.resector/config.jsonc`, deep merge (project wins, except permission loosening, FR-25); `RESECTOR_CONFIG` overrides the path. Long texts as files next to the config: `system.md`, `compaction.md`.
 - **FR-43** Keys: `profiles`, `defaultProfile`, `permission`, `keybindings` (action → key), `bash.timeout`.
-- **FR-44** Runtime changes (profile switch, tool toggle, system prompt edit, session allow rules) are Session Log events, never written back to config. `/reload` re-reads config; no hot reload.
+- **FR-44** Runtime changes (system prompt edit, session allow rules) are Session Log events, never written back to config. `/reload` re-reads config; no hot reload.
 - **FR-45** First start without config: scan 8080 (llama.cpp), 11434 (Ollama), 1234 (LM Studio), offer found models, write choice to the global config.
 
 ### 4.11 Thinking
@@ -111,7 +111,7 @@ A text-based (TUI) coding agent whose core is the **Review Gate**: a pause befor
 - **FR-46** Model reasoning (`reasoning_content` or `<think>…</think>`) becomes its own Thinking block before the Assistant block of the same answer; own row, own token count; edited, moved, removed and compacted like any block.
 - **FR-47** Thinking blocks stay in the Context and are sent with every request until the user removes them.
 - **FR-48** If the model's chat template drops a Thinking block (e.g. Qwen3 strips thinking before the last user message), its token count is what actually gets rendered (0), the row is dimmed and flagged `✂ template`. Resector does not bypass the template. Exact on llama.cpp, best effort on Ollama/LM Studio.
-- **FR-49** Thinking is set per Model Profile only: `thinking: off | on | low | medium | high`, restricted to what the model supports (e.g. Qwen3 on/off, gpt-oss low/medium/high). No runtime switch; use another profile.
+- **FR-49** Thinking is set per Model Profile only: `thinking: off | on | low | medium | high`, restricted to what the model supports (e.g. Qwen3 on/off, gpt-oss low/medium/high). No runtime switch; start a new session with another profile.
 - **FR-50** While the model thinks, the header tag is `THINKING` and the preview streams the thinking dimmed.
 
 ## 5. Non-functional requirements
@@ -131,7 +131,7 @@ Where earlier decisions conflicted, the later or more specific one wins:
 | Tool Calls not editable (block model) vs. `e` before execution (Tool Approval) | Editable only while awaiting approval; executed calls stay immutable. |
 | Flags `📌` `◇` (block model) vs. `⤒ ⤓`, no `◇` (Compaction flow) | `⤒ ⤓ ⇄ ✎n`; compaction visible via title. |
 | `Enter` opens detail (block model) vs. `Enter` sends (Gate UI) | `Enter` sends; the preview pane shows details. |
-| Protocol fixed per session (tool protocols research) vs. switchable (Model Profile) | Switchable; one protocol per request. `text-json` deferred. |
+| Protocol fixed per session (tool protocols research) vs. switchable (Model Profile) | Fixed per session; profile switch dropped (complete prototype). `text-json` deferred. |
 | Removed blocks always visible (Gate UI) vs. until sent (Compaction flow) | Struck through until sent. |
 | `n` = new Note vs. `n` = reject | `n` only rejects (on a selected `? approve` row); free-text Notes dropped (complete prototype). |
 | Changed AGENTS.md on resume → stale-content ticket vs. no staleness at all | Read once at session creation; snapshot. |
