@@ -3,7 +3,7 @@ id: 009
 title: Review-Gate-UI im opencode-Stil
 labels: [wayfinder:prototype]
 parent: context-harness-v1
-status: closed
+status: open
 assignee: artkoenig
 blocked_by: []
 ---
@@ -16,9 +16,9 @@ Wie sieht der Hauptbildschirm aus: Chat + Context-Ansicht (Block-Liste mit Token
 
 Branch `prototype/review-gate-ui` (commit 32d61e8), `prototypes/review-gate-ui.prototype.mjs` – Node-TUI ohne Deps, drei Varianten (A Split/opencode, B Gate-Vollbild, C Prompt-Dokument), `<`/`>` wechselt. Start: `node prototypes/review-gate-ui.prototype.mjs B`.
 
-## Resolution
+## Resolution (vorläufig, wieder geöffnet)
 
-Gewählt: **Variante B – Gate-Vollbild**.
+Gewählt: **Variante B – Gate-Vollbild**. Wieder geöffnet: Braucht es den Chat als eigenen Screen, oder reicht die Gate-Ansicht mit Eingabe unten? → zweiter Prototyp.
 
 - Gate ist ein eigener Vollbild-Modus, erscheint vor jedem Request; Chat (Session Log, entfernte/umgewandelte Blocks ausgegraut) ist separater Screen, `Tab` wechselt.
 - Oben: Budget-Balken über ganze Breite (Farbe je Block-Art, `▓` = cache-kalt, `░` = Antwort-Reserve), Summen je Block-Art + Template, Cache-Zeile „kalt ab #N: X tok ≈ Ys, davon invalidiert Z“.
