@@ -4,7 +4,7 @@ title: Review-Gate-UI im opencode-Stil
 labels: [wayfinder:prototype]
 parent: context-harness-v1
 status: open
-assignee:
+assignee: artkoenig
 blocked_by: []
 ---
 
