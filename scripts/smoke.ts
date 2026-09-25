@@ -1,7 +1,7 @@
 // Smoke test for a compiled release binary (NFR-5): prints the version, and renders the Gate
 // in a pseudo-terminal against the fake backend — proof the embedded OpenTUI native library loads.
 //   bun scripts/smoke.ts <binary> <version>
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { startFakeLlamaCpp } from '../test/fake-llamacpp';
@@ -14,15 +14,17 @@ const out = (await Bun.$`${bin} --version`.text()).trim();
 if (out !== `resector ${version}`) throw new Error(`--version printed "${out}", expected "resector ${version}"`);
 console.log(out);
 
-// The Gate header shows the Model Profile; "default" is the placeholder profile (src/ui/start.tsx).
-const EXPECTED = 'default';
+// The Gate header shows the Model Profile of the config written here.
+const EXPECTED = 'probe';
 const fake = startFakeLlamaCpp();
 const home = mkdtempSync(join(tmpdir(), 'resector-smoke-'));
+const config = join(home, 'config.jsonc');
+writeFileSync(config, JSON.stringify({ profiles: { probe: { backend: 'llamacpp', endpoint: fake.url } }, defaultProfile: 'probe' }));
 let screen = '';
 const rendered = Promise.withResolvers<void>();
-const proc = Bun.spawn([bin, '--endpoint', fake.url], {
+const proc = Bun.spawn([bin], {
   cwd: home,
-  env: { ...process.env, HOME: home },
+  env: { ...process.env, HOME: home, RESECTOR_CONFIG: config },
   terminal: {
     cols: 100,
     rows: 30,
