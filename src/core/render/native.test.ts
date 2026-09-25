@@ -15,3 +15,20 @@ test('each block becomes one chat message with its role', () => {
     { role: 'assistant', content: 'hello' },
   ]);
 });
+
+test('removed blocks are not sent; a bottom pin is sent as a user-role Note at the very end', () => {
+  const context = fold([
+    { type: 'SessionCreated', profile: 'default', protocol: 'native' },
+    { type: 'BlockAdded', id: 1, kind: 'System', origin: 'config', content: 'sys' },
+    { type: 'BlockAdded', id: 2, kind: 'User', origin: 'user', content: 'hi' },
+    { type: 'BlockAdded', id: 3, kind: 'Assistant', origin: 'model', content: 'rules' },
+    { type: 'BlockAdded', id: 4, kind: 'User', origin: 'user', content: 'gone' },
+    { type: 'Pin', id: 3, at: 'bottom' },
+    { type: 'Remove', id: 4 },
+  ]);
+  expect(renderNative(context)).toEqual([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: 'hi' },
+    { role: 'user', content: 'rules' },
+  ]);
+});

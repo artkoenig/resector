@@ -1,11 +1,12 @@
 // Review Gate state: the Session Log in memory, Context = fold(events), token split, streaming answer.
 import { createEffect, createMemo, createSignal } from 'solid-js';
 import type { Backend, ChatResult } from '../core/backend';
+import * as ops from '../core/context/operations';
 import type { SessionEvent, SessionLog } from '../core/log/events';
-import { fold } from '../core/log/fold';
-import { renderNative, type Message } from '../core/render/native';
+import { fold, type Block } from '../core/log/fold';
+import { renderNative, sentBlocks, type Message } from '../core/render/native';
 import type { TokenSplit } from '../core/tokens/split';
-import { errorText } from './format';
+import { errorText, titleOf } from './format';
 
 // reconnect: re-reads the config and opens the session's Model Profile again (/reload, FR-44).
 export type GateOptions = { backend: Backend; log: SessionLog; profile: string; systemPrompt: string; reconnect: () => Promise<Backend> };
@@ -22,10 +23,12 @@ export function createGate({ log, profile, systemPrompt, reconnect, ...options }
   ];
   initial.forEach(log.append);
   const [events, setEvents] = createSignal(initial);
-  const [split, setSplit] = createSignal<TokenSplit | null>(null);
+  const [counted, setCounted] = createSignal<{ messages: Message[]; split: TokenSplit } | null>(null);
   const [streaming, setStreaming] = createSignal<Streaming | null>(null);
   const [status, setStatus] = createSignal<Status | null>(null);
-  const [selected, setSelected] = createSignal(0);
+  const [selected, setSelected] = createSignal(1);
+  // Marked blocks (Space) for Compaction; UI state, not logged.
+  const [marked, setMarked] = createSignal<ReadonlySet<number>>(new Set());
   const [backend, setBackend] = createSignal(options.backend);
 
   const append = (event: SessionEvent) => {
@@ -33,23 +36,74 @@ export function createGate({ log, profile, systemPrompt, reconnect, ...options }
     setEvents([...events(), event]);
   };
   const context = createMemo(() => fold(events()));
+  const sent = createMemo(() => sentBlocks(context()));
+  // Unchanged messages (e.g. after a rename) keep the memo value, so nothing is recounted.
   const messages = createMemo(() => renderNative(context()), [], { equals: sameMessages });
-  const nextId = () => context().blocks.length + 1;
-  // The streaming answer is a row after the last block.
-  const lastRow = () => context().blocks.length - (streaming() ? 0 : 1);
-  const selectLast = () => setSelected(lastRow());
+  // Token split of the current messages only; a stale split would misalign rows after a move.
+  const split = () => (counted()?.messages === messages() ? counted()!.split : null);
+  const nextId = () => context().nextId;
+  // Selectable rows in order: sent blocks; the streaming answer sits before the bottom pins.
+  const rows = createMemo(() => {
+    const ids = sent().map(b => b.id);
+    if (!streaming()) return ids;
+    const bottom = sent().findIndex(b => b.pin === 'bottom');
+    ids.splice(bottom < 0 ? ids.length : bottom, 0, nextId());
+    return ids;
+  });
+  const selectedBlock = (): Block | undefined => sent().find(b => b.id === selected());
+  const selectAt = (i: number) => setSelected(rows()[Math.max(0, Math.min(rows().length - 1, i))]!);
+  const keepSelection = () => rows().includes(selected()) || selectAt(rows().length - 1);
 
   createEffect(() => {
     const current = messages();
     backend().count(current).then(
-      s => messages() === current && setSplit(s),
+      s => messages() === current && setCounted({ messages: current, split: s }),
       e => setStatus({ text: String(e), tone: 'error' }),
     );
   });
 
   function addUser(content: string) {
-    append({ type: 'BlockAdded', id: nextId(), kind: 'User', origin: 'user', content });
-    selectLast();
+    const id = nextId();
+    append({ type: 'BlockAdded', id, kind: 'User', origin: 'user', content });
+    setSelected(id);
+  }
+
+  // Applies a Context operation to the selected block; `done` describes the result in the status line.
+  function operate(outcome: (block: Block) => ops.Outcome, done: (block: Block) => string | null) {
+    const block = selectedBlock();
+    if (!block) return;
+    const result = outcome(block);
+    if ('error' in result) return setStatus({ text: result.error, tone: 'info' });
+    append(result.event);
+    const text = done(block);
+    setStatus(text ? { text, tone: 'info' } : null);
+  }
+
+  const PINNED = { top: 'pinned ⤒ top', bottom: 'pinned ⤓ bottom (sent as user-role Note at the end)' };
+  const move = (dir: -1 | 1) => operate(b => ops.move(context(), b, dir), () => null);
+  const pin = () => operate(ops.pin, b => { const now = context().blocks.find(x => x.id === b.id)!.pin; return now ? PINNED[now] : 'unpinned'; });
+  function remove() {
+    const at = rows().indexOf(selected());
+    operate(ops.remove, b => `removed: ${titleOf(b)} · struck through until sent · u = undo`);
+    setMarked(new Set([...marked()].filter(id => sent().some(b => b.id === id))));
+    selectAt(at);
+  }
+  function undo() {
+    const result = ops.undo(events());
+    if ('error' in result) return setStatus({ text: result.error, tone: 'info' });
+    const target = events()[(result.event as Extract<SessionEvent, { type: 'Undo' }>).eventId]!;
+    append(result.event);
+    keepSelection();
+    setStatus({ text: `undone: ${target.type.toLowerCase()} (counter-event in Session Log)`, tone: 'info' });
+  }
+  const rename = (title: string) =>
+    operate(b => ({ event: ops.rename(b, title) }), () => (title.trim() ? 'renamed (display only – Context and cache unchanged)' : 'title reset'));
+  function toggleMark() {
+    const block = selectedBlock();
+    if (!block || block.kind === 'System') return;
+    const next = new Set(marked());
+    if (!next.delete(block.id)) next.add(block.id);
+    setMarked(next);
   }
 
   function finish(result: ChatResult) {
@@ -65,7 +119,7 @@ export function createGate({ log, profile, systemPrompt, reconnect, ...options }
 
   async function send() {
     if (streaming()) return;
-    if (context().blocks.at(-1)?.kind !== 'User') {
+    if (sent().filter(b => b.pin !== 'bottom').at(-1)?.kind !== 'User') {
       setStatus({ text: 'nothing to send – Tab to write', tone: 'info' });
       return;
     }
@@ -81,7 +135,8 @@ export function createGate({ log, profile, systemPrompt, reconnect, ...options }
         return;
       }
       append({ type: 'RequestSent', hash: Bun.hash(JSON.stringify(request)).toString(16), tokens: total });
-      selectLast();
+      setMarked(new Set<number>());
+      setSelected(nextId());
       const onDelta = (d: string) => setStreaming({ text: streaming()!.text + d, abort });
       const result = await backend().chat(request, { signal: abort.signal, onDelta });
       setStreaming(null);
@@ -90,7 +145,7 @@ export function createGate({ log, profile, systemPrompt, reconnect, ...options }
       setStreaming(null);
       setStatus({ text: `backend error: ${errorText(e)}`, tone: 'error' });
     }
-    selectLast();
+    keepSelection();
   }
 
   async function reload() {
@@ -112,16 +167,27 @@ export function createGate({ log, profile, systemPrompt, reconnect, ...options }
 
   return {
     context,
+    sent,
     split,
     streaming,
     status,
+    rows,
     selected,
+    selectedBlock,
+    marked,
     window: () => backend().window,
     profile,
     submit,
     send,
     abort: () => streaming()?.abort.abort(),
-    select: (i: number) => setSelected(Math.max(0, Math.min(lastRow(), i))),
+    select: (delta: number) => selectAt(rows().indexOf(selected()) + delta),
+    move,
+    pin,
+    remove,
+    undo,
+    rename,
+    toggleMark,
+    clearMarks: () => setMarked(new Set<number>()),
   };
 }
 
