@@ -13,7 +13,7 @@ Umsetzbare **Spec für v1** (PRD + Architektur + Glossar) eines textbasierten Co
 - Domäne: Glossar in [CONTEXT.md](../../CONTEXT.md) – Begriffe dort verwenden (Context Block, Context, Session Log, Review Gate, Compaction, Model Profile, Tool Protocol, Note, Pin).
 - Jede Session: Skills `grilling` + `domain-modeling`; `prototype` für UX-Tickets; `research` für Research.
 - Tracker: local-markdown. Ticket = Datei in `tickets/`, Frontmatter `status`, `assignee` (Claim), `blocked_by` (ids). Frontier = open, alle blocker closed, kein assignee.
-- UX-Vorbild: opencode.
+- UX-Vorbild: opencode. UI-Sprache: Englisch.
 - Beim Charting festgelegt:
   - Coding-Agent (read mit Zeilenbereich, edit, grep/glob, bash). Neu bauen, opencode als UX-Vorbild.
   - Backends über OpenAI-kompatible API (llama.cpp, Ollama, LM Studio); exakte Token-Zählung per Modell-Tokenizer.

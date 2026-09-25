@@ -21,7 +21,8 @@ Branch `prototype/review-gate-ui` (Stand siehe Branch-HEAD), `prototypes/review-
 Gewählt: **Variante D – ein einziger Screen**: Gate-Tabelle ist zugleich Chat-Verlauf; kein separater Chat-Screen.
 
 - Kopf (einzige Zeile über der Tabelle): Modell · Backend · Tool Protocol · `GATE` · Tokens gesamt / Fenster (Reserve) · Cache-Kurzinfo „○ kalt ab #N: X ≈ Ys“. **Kein** Budget-Balken, **keine** Summenzeile je Block-Art.
-- Tabelle: `# · Art · Titel · Tokens · Cache ●/○ · Flags (✎n ⤒ ⤓ ⇄ ◇)`, Markierung `●`.
+- **UI-Sprache Englisch** (alle Labels, Meldungen, Hilfezeilen).
+- Tabelle: `# · Kind · Title · Tokens · Cache ●/○ · Flags (✎n ⤒ ⤓ ⇄ ◇)`, Markierung `●`. Kind ausgeschrieben (System, Tools, User, Assistant, Tool Call, Tool Result, Note), keine Abkürzungen.
 - **Verlauf immer sichtbar** (keine Umschaltung): entfernte/umgewandelte Blocks als durchgestrichene, nicht nummerierte Zeilen an ursprünglicher Position mit Grund („entfernt“, „⇄ in Note #n“, „◇ in Compaction“).
 - Darunter: Vorschau des gewählten Blocks (Art, Herkunft, Revision, Inhalt).
 - Unten: Eingabefeld + Statuszeile (Meldungen, Drift nach Senden, Bestätigungen).
