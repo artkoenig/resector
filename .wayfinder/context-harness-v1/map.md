@@ -15,7 +15,7 @@ Umsetzbare **Spec für v1** (PRD + Architektur + Glossar) eines textbasierten Co
 - Tracker: local-markdown. Ticket = Datei in `tickets/`, Frontmatter `status`, `assignee` (Claim), `blocked_by` (ids). Frontier = open, alle blocker closed, kein assignee.
 - UX-Vorbild: opencode. UI-Sprache: Englisch.
 - Beim Charting festgelegt:
-  - Coding-Agent (read mit Zeilenbereich, edit, grep/glob, bash). Neu bauen, opencode als UX-Vorbild.
+  - Coding-Agent, v1 nur Tool `bash` (siehe Decisions: System-Prompt). Neu bauen, opencode als UX-Vorbild.
   - Backends über OpenAI-kompatible API (llama.cpp, Ollama, LM Studio); exakte Token-Zählung per Modell-Tokenizer.
   - Review Gate vor **jedem** Request, auch im Tool-Loop. `Enter` senden, `e` editieren, `c` kompaktieren.
   - Manuelles Editieren: einzelner Block in `$EDITOR`; Reorder/Delete/Pin in der TUI-Liste.
@@ -38,6 +38,7 @@ Umsetzbare **Spec für v1** (PRD + Architektur + Glossar) eines textbasierten Co
 - [Compaction-Flow mit Diff](tickets/010-compaction-flow.md): Vorschlag inline im Gate, nur Auswahl + Anweisung (Default als Hint), zu groß = blockieren, Refine ab Quellen; optionales `compactionProfile`; Flags = Änderungen seit letztem Request
 - [Budget-Überschreitung am Gate](tickets/011-budget-overflow.md): keine Antwort-Reserve, `max_tokens` = Rest; blockiert nur ab vollem Fenster; gelb ab 90 %, rot „over by X“; Drift-Abzug bei ungenauem Tokenizer; „⚠ cut off“ statt Auto-Continue
 - [Default-Kürzung großer Tool-Outputs](tickets/012-tool-output-truncation.md): keine Kürzung, auch nicht in Anzeige; User kürzt per `e`; zu groß = normale Budget-Blockade; Sparsamkeit via System-Prompt
+- [System-Prompt-Design für kleine Modelle](tickets/013-system-prompt.md): v1 nur `bash`; Default ≤400 Tokens, englisch, extrem knapp, bash-Konventionen; Umgebung als eigene Note (Pin top, bei Änderung neu); AGENTS.md als Note
 - [Review-Gate-UI im opencode-Stil](tickets/009-review-gate-ui.md): ein Screen – Gate-Tabelle ist Chat-Verlauf (entfernte Blocks durchgestrichen sichtbar), Vorschau, Eingabe unten, Streaming inline; kein Budget-Balken/Summenzeile, Cache-Kurzinfo im Kopf
 - [Tech-Stack festlegen](tickets/006-tech-stack.md): TS/Bun + OpenTUI + SolidJS, ein Prozess mit Core/UI-Modulgrenze; Risiko OpenTUI pre-1.0
 - [Tool Protocol & Model Profile](tickets/007-tool-protocol-model-profile.md): v1 `native` + `text-xml`; Blocks protokollneutral, Rendering pro Request; verschobenes Tool Pair = Klartext-Note; kaputte Calls ⚠ am Gate; Profilwechsel in Session erlaubt; llama.cpp braucht `--jinja`

@@ -34,7 +34,7 @@ User-controlled rewrite of selected Context Blocks by the LLM, following a user 
 _Avoid_: summarization, auto-compact
 
 **Note**:
-Context Block of free text without API role semantics, keeping a reference to its origin: a moved Tool Pair, a Compaction result, a file or free text added by the user.
+Context Block of free text without API role semantics, keeping a reference to its origin: a moved Tool Pair, a Compaction result, the session environment (working directory, OS, date, branch; refreshed by the harness when it changes), project instructions, a file or free text added by the user.
 
 **Pin**:
 Marker that keeps a Context Block at the top (after System and Tools Block) or the very end of the Context, countering lost-in-the-middle. Pinned blocks keep their order among themselves.
