@@ -108,7 +108,7 @@ test('aborting keeps the partial answer', async () => {
 
 test('stream errors surface: missing reply, error event, dropped connection', async () => {
   const backend = await open();
-  await expect(chatOnce(backend)).rejects.toThrow('oMLX /v1/chat/completions: 500');
+  await expect(chatOnce(backend)).rejects.toThrow('oMLX 500: no scripted reply');
   fake.reply({ chunks: ['Hel'], error: 'model unloaded' });
   await expect(chatOnce(backend)).rejects.toThrow('oMLX stream: model unloaded');
   fake.reply({ chunks: ['Hel'], truncate: true });

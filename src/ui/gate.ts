@@ -9,7 +9,7 @@ import { afterCalls, fold, pairOf, type Block } from '../core/log/fold';
 import { renderNative, renderPrefixes, sentBlocks, type Request } from '../core/render/native';
 import { answerBlocks } from '../core/toolcall/answer';
 import type { Runner } from '../core/toolcall/bash';
-import { errorText, titleOf } from './format';
+import { errorText } from './format';
 
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
 // events: the Session Log so far (new or resumed); reconnect: re-reads the config and opens the session's
@@ -155,7 +155,7 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
   const whole = (b: Block) => (ops.inPair(b) ? ' (whole Tool Pair)' : '');
   function remove() {
     const at = rows().indexOf(selected());
-    operate(ops.remove, b => `removed: ${titleOf(b, context().blocks)}${whole(b)} · struck through until sent · u = undo`);
+    operate(ops.remove, b => `removed${whole(b)} · struck through until sent · u = undo`);
     setMarked(new Set([...marked()].filter(id => sent().some(b => b.id === id))));
     selectAt(at);
   }
@@ -169,7 +169,7 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
   }
   const rename = (title: string) =>
     operate(b => ops.rename(b, title), () => (title.trim() ? 'renamed (display only – Context and cache unchanged)' : 'title reset'));
-  const edited = (b: Block) => `edited: ${titleOf(b)} → revision ${b.revision} · u = undo`;
+  const edited = (b: Block) => `edited → revision ${b.revision} · u = undo`;
   // e: the selected block in $EDITOR; a changed save becomes a new Revision (FR-8). Checked first: a
   // block that cannot be edited is not opened.
   async function edit() {
@@ -194,15 +194,15 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
     setMarked(new Set([...marked()].filter(id => !pair.includes(id)).concat(on ? pair : [])));
   }
 
-  // The status line for the Tool Call to decide on next (FR-23).
-  const askFor = (call: Block): Status => ({ text: `? approve: ${titleOf(call)} – ${APPROVE}`, tone: 'warn' });
+  // The status line for the Tool Call to decide on next (FR-23); the call itself is in the preview.
+  const askFor = (): Status => ({ text: `? approve – ${APPROVE}`, tone: 'warn' });
 
   // The status line after an answer: how it ended, else the call to decide on next.
   function answerStatus(result: ChatResult, notRun: string | null, next: Block | undefined): Status {
     if (result.finish === 'aborted') return { text: '⚠ aborted – partial answer kept (cut off)', tone: 'warn' };
     if (result.finish === 'length') return { text: '⚠ cut off at max_tokens', tone: 'warn' };
     if (notRun) return { text: `⚠ tool call not run: ${notRun}`, tone: 'warn' };
-    return next ? askFor(next) : { text: 'answer complete', tone: 'ok' };
+    return next ? askFor() : { text: 'answer complete', tone: 'ok' };
   }
 
   // The answer's text and Tool Calls become blocks; the first call to decide on is selected.
@@ -222,7 +222,7 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
     const next = ops.nextCall(context());
     setSelected(next?.id ?? result.id);
     const ended = result.stopped ? `⚠ ${result.stopped}` : null;
-    if (next) setStatus(ended ? { text: `${ended} · ${askFor(next).text}`, tone: 'warn' } : askFor(next));
+    if (next) setStatus(ended ? { text: `${ended} · ${askFor().text}`, tone: 'warn' } : askFor());
     else setStatus({ text: `${ended ?? 'tool loop paused'} – review the results, Enter sends`, tone: ended ? 'warn' : 'ok' });
   }
   const resultOf = (call: Block) => context().blocks.find(b => b.call === call.id)!;
@@ -368,6 +368,7 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
       setConfirming(null);
     },
     clearMarks: () => setMarked(new Set<number>()),
+    dismiss: () => setStatus(null),
   };
 }
 

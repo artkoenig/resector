@@ -65,11 +65,12 @@ async function write(text: string) {
 test('the Gate shows every Context Block with its exact tokens and the Template row', async () => {
   const { events } = await start();
   const frame = ui.captureCharFrame();
-  expect(line(frame, /default/)).toMatch(/^ default +█░+ +52 \/ 4k/);
-  expect(line(frame, /Kind/)).toMatch(/#\s+Kind\s+Title\s+Tokens\s+Cache\s+Flags/);
+  expect(line(frame, /default/)).toMatch(/^ {2}resector {2}default +52 \/ 4k/);
+  expect(frame.split('\n')[1]).toMatch(/^ {2}▀+/);
+  expect(line(frame, /Type/)).toMatch(/#\s+Type\s+Content\s+Tokens\s+Cache\s+Flags/);
   expect(line(frame, /System prompt/)).toMatch(/1\s+System\s+System prompt\s+12\b/);
   expect(line(frame, /Template/)).toMatch(/Template\s.*\s4\b/);
-  expect(line(frame, /──/)).toMatch(/^── Content ─+$/);
+  expect(line(frame, /#1 · /)).toMatch(/^┃ System {2}#1 · 12 tokens/);
   expect(previewed(frame)).toBe('You are an agent.');
   expect(frame).toContain('You are an agent.');
   expect(events()).toEqual([
@@ -92,10 +93,10 @@ test('Tab and Esc leave input mode without adding a block', async () => {
   await start();
   for (const leave of [async () => ui.mockInput.pressTab(), escape]) {
     ui.mockInput.pressTab();
-    await frameMatching(ui, f => f.includes('Enter adds a User block'));
+    await frameMatching(ui, f => f.includes('adds a block, not sent'));
     await ui.mockInput.typeText('draft');
     await leave();
-    const frame = await frameMatching(ui, f => f.includes('⌥↑↓ move · e edit'));
+    const frame = await frameMatching(ui, f => f.includes('⌥↑↓ move  e edit'));
     expect(frame).not.toMatch(/3\s+User/);
   }
 });
@@ -141,7 +142,7 @@ test('while the answer streams, ↑↓ select and the preview scrolls; the Conte
   await frameMatching(ui, f => f.includes('60 / 4k'));
   ui.mockInput.pressEnter();
   let frame = await frameMatching(ui, f => /4\s+Assistant\s+Hal/.test(f));
-  expect(frame).toContain('Esc abort · q quit');
+  expect(frame).toContain('esc abort  q quit');
   await press('up');
   frame = await frameMatching(ui, f => previewed(f) === 'hi there');
   await press('d');
@@ -159,7 +160,7 @@ async function withUsers(...texts: string[]) {
   const started = await start();
   for (const t of texts) {
     await write(t);
-    await frameMatching(ui, f => f.includes(t) && f.includes('⌥↑↓ move · e edit'));
+    await frameMatching(ui, f => f.includes(t) && f.includes('⌥↑↓ move  e edit'));
   }
   return started;
 }
@@ -168,7 +169,7 @@ const press = async (key: string, modifiers?: { meta?: boolean }) => {
   else ui.mockInput.pressKey(key, modifiers);
   await ui.flush();
 };
-const order = (frame: string) => [...frame.matchAll(/^ {2}[ ●] +(\d+) {2}\w+ +(\S+)/gm)].map(m => `${m[1]} ${m[2]}`);
+const order = (frame: string) => [...frame.matchAll(/^[ ┃] [ ●] +(\d+) {2}\w+ +(\S+)/gm)].map(m => `${m[1]} ${m[2]}`);
 
 test('⌥↑⌥↓ move the selected block inside its area and flag it ⇄ until sent', async () => {
   const { events } = await withUsers('first', 'second');
@@ -217,9 +218,9 @@ test('p cycles pin top → bottom → off; a bottom pin is sent as a user-role m
 test('d strikes the block through until sent; u brings it back as a counter-event', async () => {
   const { events } = await withUsers('keep', 'drop');
   await press('d');
-  let frame = await frameMatching(ui, f => f.includes('removed: drop'));
+  let frame = await frameMatching(ui, f => f.includes('removed ·'));
   expect(line(frame, /drop/)).toMatch(/^ {8}User\s+drop\s+removed/);
-  const struck = ui.captureSpans().lines.flatMap(l => l.spans).find(s => s.text.includes('drop') && !s.text.includes('removed:'))!;
+  const struck = ui.captureSpans().lines.flatMap(l => l.spans).find(s => s.text.includes('drop') && !s.text.includes('removed ·'))!;
   expect(struck.attributes & TextAttributes.STRIKETHROUGH).toBeTruthy();
   frame = await frameMatching(ui, f => f.includes('58 / 4k'));
   expect(line(frame, /keep/)).toMatch(/3\s+User\s+keep/);
@@ -243,13 +244,13 @@ test('Space marks and unmarks the selected block; the selection stays', async ()
   expect(previewed(frame)).toBe('two');
   await press(' ');
   frame = await frameMatching(ui, f => !f.includes('●'));
-  expect(line(frame, /two/)).toMatch(/^ {3} +4\s+User/);
+  expect(line(frame, /two/)).toMatch(/^[ ┃] {2} +4\s+User/);
 });
 
 test('r renames the block for display only; empty resets', async () => {
   const { events } = await withUsers('hello there');
   await press('r');
-  await frameMatching(ui, f => f.includes('title > hello there'));
+  await frameMatching(ui, f => f.includes('┃ hello there') && f.includes('display only'));
   for (let i = 0; i < 'hello there'.length; i++) ui.mockInput.pressBackspace();
   await ui.mockInput.typeText('greeting');
   ui.mockInput.pressEnter();
@@ -258,7 +259,7 @@ test('r renames the block for display only; empty resets', async () => {
   expect(line(frame, /default/)).toMatch(/60 \/ 4k/);
   expect(events().at(-1)).toEqual({ type: 'Rename', id: 3, title: 'greeting' });
   await press('r');
-  await frameMatching(ui, f => f.includes('title > greeting'));
+  await frameMatching(ui, f => f.includes('┃ greeting') && f.includes('display only'));
   for (let i = 0; i < 'greeting'.length; i++) ui.mockInput.pressBackspace();
   ui.mockInput.pressEnter();
   frame = await frameMatching(ui, f => f.includes('title reset'));
@@ -268,8 +269,8 @@ test('r renames the block for display only; empty resets', async () => {
 test('the header Context bar highlights the selected block', async () => {
   await start();
   await write('x '.repeat(300));
-  const bar = () => ui.captureSpans().lines[0]!.spans.filter(s => s.text.includes('█'));
-  const white = () => bar().filter(s => Array.from(s.fg.buffer.slice(0, 3)).join() === '255,255,255').map(s => s.text.length);
+  const bar = () => ui.captureSpans().lines[1]!.spans.filter(s => s.text.includes('▀'));
+  const white = () => bar().filter(s => Array.from(s.fg.buffer.slice(0, 3)).join() === '238,238,238').map(s => s.text.length);
   await frameMatching(ui, f => /\d+ \/ 4k/.test(f) && !f.includes('52 / 4k'));
   const user = white();
   await press('up');
@@ -281,7 +282,7 @@ test('the header Context bar highlights the selected block', async () => {
 });
 
 // Per numbered row: its number and Cache column.
-const cache = (frame: string) => [...frame.matchAll(/^ {2}[ ●] +(\d+) {2}.*\d +([●○]) /gm)].map(m => m[1]! + m[2]!);
+const cache = (frame: string) => [...frame.matchAll(/^[ ┃] [ ●] +(\d+) {2}.*\d +([●○]) /gm)].map(m => m[1]! + m[2]!);
 
 test('the Cache column shows ● for rows before the invalidation point, ○ from it on (FR-3)', async () => {
   await withUsers('hi there');
@@ -293,7 +294,7 @@ test('the Cache column shows ● for rows before the invalidation point, ○ fro
   await write('more');
   let frame = await frameMatching(ui, f => cache(f).length === 5);
   expect(cache(frame)).toEqual(['1●', '2●', '3●', '4●', '5○']);
-  expect(line(frame, /Kind/)).toMatch(/Tokens\s+Cache\s+Flags/);
+  expect(line(frame, /Type/)).toMatch(/Tokens\s+Cache\s+Flags/);
   await press('up', { meta: true });
   frame = await frameMatching(ui, f => /4\s+User\s+more/.test(f) && cache(f).length === 5);
   expect(cache(frame)).toEqual(['1●', '2●', '3●', '4○', '5○']);
@@ -311,7 +312,7 @@ test('a server reusing fewer tokens than predicted is reported (FR-41)', async (
   const frame = await frameMatching(ui, f => f.includes('server reused'));
   // BOS + System 12 + Tools 36 + User 8 + <|im_start|> assistant \n hello
   expect(frame).toContain('answer complete · ⚠ cache: predicted 61 · server reused 3');
-  expect(line(frame, /Kind/)).toMatch(/Tokens +Cache +Flags/);
+  expect(line(frame, /Type/)).toMatch(/Tokens +Cache +Flags/);
 });
 
 test('the key hints stay visible next to a status', async () => {
@@ -319,7 +320,7 @@ test('the key hints stay visible next to a status', async () => {
   fake.reply({ chunks: ['ok'] });
   ui.mockInput.pressEnter();
   const frame = await frameMatching(ui, f => f.includes('answer complete'));
-  expect(frame).toContain('⌥↑↓ move · e edit');
+  expect(frame).toContain('⌥↑↓ move  e edit');
 });
 
 test('a Context changed since the last request can be sent without a new User block', async () => {
@@ -332,7 +333,7 @@ test('a Context changed since the last request can be sent without a new User bl
   await press('up');
   await press('up');
   await press('d');
-  await frameMatching(ui, f => f.includes('removed: a'));
+  await frameMatching(ui, f => f.includes('struck through until sent'));
   fake.reply({ chunks: ['y'] });
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('answer complete') && /y\s+\d+/.test(f));
@@ -346,7 +347,7 @@ test('a rename or an undone change leaves nothing to send', async () => {
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('answer complete'));
   await press('r');
-  await frameMatching(ui, f => f.includes('title > x'));
+  await frameMatching(ui, f => f.includes('┃ x') && f.includes('display only'));
   await ui.mockInput.typeText('!');
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('renamed (display only'));
@@ -354,7 +355,7 @@ test('a rename or an undone change leaves nothing to send', async () => {
   await frameMatching(ui, f => f.includes('nothing to send'));
   await press('up');
   await press('d');
-  await frameMatching(ui, f => f.includes('removed: a'));
+  await frameMatching(ui, f => f.includes('struck through until sent'));
   await press('u');
   await frameMatching(ui, f => f.includes('undone: remove'));
   ui.mockInput.pressEnter();
@@ -368,7 +369,7 @@ test('typing / suggests the commands, filtered while typing; ↑↓ choose, Ente
   await ui.flush();
   await ui.mockInput.typeText('/');
   let frame = await frameMatching(ui, f => f.includes('/reload'));
-  expect(frame).toContain('↑↓ choose · Tab complete · Enter run · Esc back');
+  expect(frame).toContain('↑↓ choose  tab complete  enter run  esc back');
   expect(line(frame, /\/sessions/)).toMatch(/\/sessions\s+list, resume, rename, delete sessions/);
   expect(line(frame, /\/rename/)).toMatch(/\/rename <title>\s+rename session/);
   await ui.mockInput.typeText('re');
@@ -387,7 +388,7 @@ test('/ in the Context starts a command in the input line', async () => {
   await start();
   await ui.mockInput.typeText('/');
   const frame = await frameMatching(ui, f => f.includes('/reload'));
-  expect(frame).toContain(' > /');
+  expect(frame).toContain('┃ /');
   await ui.mockInput.typeText('ren');
   await frameMatching(ui, f => f.includes('rename session') && !f.includes('/sessions'));
 });
@@ -399,7 +400,7 @@ test('Tab completes a command; /rename sets the session title, empty resets it (
   await ui.mockInput.typeText('/ren');
   await frameMatching(ui, f => f.includes('rename session'));
   ui.mockInput.pressTab();
-  await frameMatching(ui, f => f.includes('> /rename '));
+  await frameMatching(ui, f => f.includes('┃ /rename '));
   await ui.mockInput.typeText('my  title');
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('session renamed: my  title'));
@@ -412,7 +413,7 @@ test('Tab completes a command; /rename sets the session title, empty resets it (
 // The first line of the Content preview: shows which block is selected.
 const previewed = (frame: string) => {
   const lines = frame.split('\n');
-  return (lines[lines.findIndex(l => l.startsWith('── Content')) + 1] ?? '').slice(0, -1).trim(); // last column: scrollbar
+  return (lines[lines.findIndex(l => /^┃ [A-Z][\w ]* {2}#\d+/.test(l)) + 1] ?? '').slice(2, -1).trim(); // ┃ bar, last column: scrollbar
 };
 
 async function until(condition: () => boolean) {
@@ -443,10 +444,10 @@ type Sent = { messages: Record<string, unknown>[]; tools?: { function: { name: s
 async function asked(commands: string[], { text = '', timeout = 120 } = {}) {
   const started = await start({ timeout });
   await write('go');
-  await frameMatching(ui, f => f.includes('go') && f.includes('⌥↑↓ move · e edit'));
+  await frameMatching(ui, f => f.includes('go') && f.includes('⌥↑↓ move  e edit'));
   fake.reply({ chunks: text ? [text] : [], calls: commands.map(bash) });
   ui.mockInput.pressEnter();
-  await frameMatching(ui, f => f.includes('? approve:') && !/Tool Call .* … /.test(f));
+  await frameMatching(ui, f => f.includes('? approve –') && !/Tool Call .* … /.test(f));
   return started;
 }
 
@@ -469,14 +470,14 @@ test('a Tool Call waits at ? approve; y runs it once, its result is a Tool Resul
   let frame = ui.captureCharFrame();
   expect(line(frame, /Let me look/)).toMatch(/4\s+Assistant\s+Let me look\./);
   expect(line(frame, /Tool Call/)).toMatch(/5\s+Tool Call\s+echo hello\s+\d+\s+[●○]\s+\? approve/);
-  expect(frame).toContain('y run once · n reject');
+  expect(frame).toMatch(/y run once.*n reject/);
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('Tool Calls await approval'));
   await press('y');
   frame = await frameMatching(ui, f => f.includes('tool loop paused'));
   expect(line(frame, /Tool Result/)).toMatch(/6\s+Tool Result\s+→ echo hello\s+\d+/);
   expect(line(frame, /Tool Call/)).not.toContain('? approve');
-  expect(frame).toMatch(/^hello\s*$/m);
+  expect(frame).toMatch(/^┃ hello\s*$/m);
   expect(frame).toContain('[exit 0]');
   expect(fake.chatRequests).toHaveLength(1);
   expect(events().slice(-4)).toEqual([
@@ -515,7 +516,7 @@ test('several calls are decided one by one in order; results keep call order (FR
   await frameMatching(ui, f => f.includes('approve the earlier Tool Call first'));
   await press('up');
   await press('y');
-  frame = await frameMatching(ui, f => f.includes('? approve: echo two'));
+  frame = await frameMatching(ui, f => f.includes('? approve –') && previewed(f) === 'echo two');
   expect(previewed(frame)).toBe('echo two');
   await press('n');
   frame = await frameMatching(ui, f => f.includes('tool loop paused'));
@@ -526,9 +527,9 @@ test('several calls are decided one by one in order; results keep call order (FR
 test('Esc kills a running command: partial output + ⚠ killed (FR-21)', async () => {
   const { events } = await asked(['echo partial; sleep 5']);
   await press('y');
-  let frame = await frameMatching(ui, f => f.includes('running: echo partial') && /^partial\s*$/m.test(f));
+  let frame = await frameMatching(ui, f => f.includes('running: echo partial') && /^┃ partial\s*$/m.test(f));
   expect(frame).toMatch(/\d+s \/ 120s/);
-  expect(frame).toContain('Esc kill');
+  expect(frame).toContain('esc kill');
   expect(line(frame, /Tool Result/)).toMatch(/5\s+Tool Result\s+→ echo partial.*[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
   expect(line(frame, /Tool Call/)).not.toContain('? approve');
   await escape();
@@ -548,14 +549,14 @@ test('a command running into the timeout ends with ⚠ timeout (FR-21)', async (
 test('an answer cut off at max_tokens runs no call; calls that are no bash command are not run (FR-19)', async () => {
   const { events } = await start();
   await write('go');
-  await frameMatching(ui, f => f.includes('go') && f.includes('⌥↑↓ move · e edit'));
+  await frameMatching(ui, f => f.includes('go') && f.includes('⌥↑↓ move  e edit'));
   fake.reply({ chunks: ['Hm'], calls: [bash('ls')], finish: 'length' });
   ui.mockInput.pressEnter();
   let frame = await frameMatching(ui, f => f.includes('cut off at max_tokens'));
   expect(frame).not.toContain('Tool Call');
   expect(events().at(-2)).toEqual({ type: 'BlockAdded', id: 4, kind: 'Assistant', origin: 'model', content: 'Hm\nbash {"command":"ls"}', cutOff: true });
   await write('again');
-  await frameMatching(ui, f => f.includes('again') && f.includes('⌥↑↓ move · e edit'));
+  await frameMatching(ui, f => f.includes('again') && f.includes('⌥↑↓ move  e edit'));
   fake.reply({ chunks: [], calls: [{ name: 'python', arguments: '{}' }, bash('pwd')] });
   ui.mockInput.pressEnter();
   frame = await frameMatching(ui, f => f.includes('tool call not run: unknown tool python'));
@@ -565,9 +566,9 @@ test('an answer cut off at max_tokens runs no call; calls that are no bash comma
 
 test('more rows than fit: rows never overlap, the list follows the selection, Template stays visible', async () => {
   await withUsers(...Array.from({ length: 12 }, (_, i) => `note ${i + 3}`));
-  const numbers = (f: string) => [...f.matchAll(/^ {2}[ ●] +(\d+) {2}/gm)].map(m => Number(m[1]));
+  const numbers = (f: string) => [...f.matchAll(/^[ ┃] [ ●] +(\d+) {2}/gm)].map(m => Number(m[1]));
   let frame = ui.captureCharFrame();
-  expect(line(frame, /Kind/)).toMatch(/^ {5}# {2}Kind +Title +Tokens/);
+  expect(line(frame, /Type/)).toMatch(/^ {5}# {2}Type +Content +Tokens/);
   expect(frame).toMatch(/Template +BOS/);
   let shown = numbers(frame);
   expect(shown.at(-1)).toBe(14);
@@ -604,7 +605,7 @@ test('e edits the block in $EDITOR: a new Revision flagged ✎2 until sent, the 
   let frame = await frameMatching(ui, f => f.includes('revision 2'));
   expect(opened).toEqual(['helo']);
   expect(line(frame, /User/)).toMatch(/3\s+User\s+hello\s+\d+\s+[●○]?\s+✎2/);
-  expect(frame).toContain('edited: hello → revision 2 · u = undo');
+  expect(frame).toContain('edited → revision 2 · u = undo');
   expect(events().at(-1)).toEqual({ type: 'Edit', id: 3, revision: 2, content: 'hello' });
   fake.reply({ chunks: ['hi'] });
   ui.mockInput.pressEnter();
@@ -660,7 +661,7 @@ test('an editor that fails leaves the block unchanged', async () => {
     throw new Error('vi exited with 1');
   };
   await press('e');
-  await frameMatching(ui, f => f.includes('editor failed: vi exited with 1 – unchanged'));
+  await frameMatching(ui, f => f.includes('✗ editor failed') && f.includes('┃ vi exited with 1 – unchanged'));
   expect(events().some(e => e.type === 'Edit')).toBe(false);
 });
 
