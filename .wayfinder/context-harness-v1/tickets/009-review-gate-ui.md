@@ -27,7 +27,8 @@ Gewählt: **Variante D – ein einziger Screen**: Gate-Tabelle ist zugleich Chat
 - Darunter: Vorschau des gewählten Blocks (Art, Herkunft, Revision, Inhalt).
 - Unten: Eingabefeld + Statuszeile (Meldungen, Drift nach Senden, Bestätigungen).
 - Streaming: Antwort erscheint live als neue Zeile (Spinner in Token-Spalte), Vorschau folgt; danach automatisch wieder Gate.
-- **Eingabefeld immer fokussiert** (opencode-Stil): Tippen landet immer in der Eingabe. `Enter` mit Text = User-Block nur anlegen, **nicht senden**. Nur `Enter` bei leerer Eingabe sendet den Context ans LLM (auch im Tool-Loop). Leere Eingabezeile zeigt Platzhalter-Hint: "Enter adds a User block · Enter on empty input sends the Context". `Esc` leert Eingabe.
-- Block-Aktionen über Ctrl (zuverlässig in allen Terminals): `↑↓` wählen, `Ctrl+↑`/`Ctrl+↓` verschieben, `Ctrl+E` `$EDITOR`, `Ctrl+D` entfernen, `Ctrl+P` Pin top→bottom→aus, `Ctrl+Space` markieren, `Ctrl+K` Compaction, `Ctrl+Z` undo, `Ctrl+C` beenden.
+- **Zwei Modi, `Tab` schaltet um.** Default = Context-Modus (Block-Liste fokussiert, Eingabezeile zeigt "Tab to write a message"). `Enter` im Context-Modus sendet den Context ans LLM (auch im Tool-Loop).
+- Eingabe-Modus: `Enter` mit Text = User-Block anlegen, **nicht senden**, zurück in Context-Modus ("User block added – Enter sends"). `Tab`/`Esc` = zurück ohne Anlegen. Statuszeile zeigt modusabhängige Tasten.
+- Block-Aktionen im Context-Modus ohne Ctrl: `↑↓` wählen, `Ctrl+↑`/`Ctrl+↓` verschieben (Fallback `⌥↑↓`), `e` `$EDITOR`, `d` entfernen, `p` Pin top→bottom→aus, `Space` markieren, `c` Compaction, `u` undo, `q` beenden.
 - Tool Pair verschieben/pinnen: Hinweis + gleiche Taste nochmal = bestätigen (→ Note).
 - Über Budget: Senden blockiert mit Hinweis (Details: Budget-Überschreitung am Gate).
