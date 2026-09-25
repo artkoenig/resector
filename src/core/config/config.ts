@@ -27,7 +27,6 @@ const ProfileSchema = z.strictObject({
   thinking: z.enum(['off', 'on', 'low', 'medium', 'high']).default('off'),
   compactionProfile: z.string().optional().describe('Model Profile used for Compaction; default: this one'),
   systemPrompt: z.string().optional().describe('System prompt file, relative to this config file'),
-  promptTokPerSec: z.number().positive().optional().describe('Measured prompt processing speed, for cache estimates'),
 });
 
 const ConfigSchema = z.strictObject({

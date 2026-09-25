@@ -86,11 +86,6 @@
           "systemPrompt": {
             "description": "System prompt file, relative to this config file",
             "type": "string"
-          },
-          "promptTokPerSec": {
-            "description": "Measured prompt processing speed, for cache estimates",
-            "type": "number",
-            "exclusiveMinimum": 0
           }
         },
         "required": [

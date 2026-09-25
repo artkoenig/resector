@@ -51,7 +51,7 @@ fold(log) → Context
   → refresh environment Note (new Revision only if changed)
   → render(Context, profile.toolProtocol) → messages (+ tools field for native)
   → tokenize via backend template → per-block tokens + Template overhead
-  → cache diff vs last sent prompt → invalidation point, ≈ seconds (promptTokPerSec)
+  → cache diff vs last sent prompt → invalidation point (rows ●/○)
   → Gate: user edits … Enter
   → budget check (Context < window − drift) → send with max_tokens = window − Context, pinned id_slot
   → stream → append Assistant / Tool Call blocks
@@ -81,7 +81,7 @@ Per-block split via offset mapping / prefix differences; remainder = `Template` 
 
 ### Prefix cache
 
-- Invalidation point = first differing token between the new rendered prompt and the last sent one. Cost ≈ tokens after it / `promptTokPerSec` (measured).
+- Invalidation point = first differing token between the new rendered prompt and the last sent one. Rows before it `●`, from it on `○`; no prefill time estimate.
 - One pinned `id_slot` per session, `--cache-reuse` off. Verified against `timings.cache_n` / `prompt_eval_cached_count`.
 - Compaction requests on the same model/slot leave the session cache cold (shown in status).
 
