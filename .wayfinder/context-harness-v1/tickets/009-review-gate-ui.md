@@ -20,7 +20,7 @@ Branch `prototype/review-gate-ui` (Stand siehe Branch-HEAD), `prototypes/review-
 
 Gewählt: **Variante D – ein einziger Screen**: Gate-Tabelle ist zugleich Chat-Verlauf; kein separater Chat-Screen.
 
-- Kopf (einzige Zeile über der Tabelle): Modell · Backend · Tool Protocol · `GATE` · Tokens gesamt / Fenster (Reserve) · Cache-Kurzinfo „○ kalt ab #N: X ≈ Ys“. **Kein** Budget-Balken, **keine** Summenzeile je Block-Art.
+- Kopf (einzige Zeile über der Tabelle): Modell · Backend · Tool Protocol · `GATE` · Tokens gesamt / Fenster (keine Reserve, siehe [Budget-Überschreitung am Gate](011-budget-overflow.md)) · Cache-Kurzinfo „○ kalt ab #N: X ≈ Ys“. **Kein** Budget-Balken, **keine** Summenzeile je Block-Art.
 - **UI-Sprache Englisch** (alle Labels, Meldungen, Hilfezeilen).
 - Tabelle: `# · Kind · Title · Tokens · Cache ●/○ · Flags (✎n ⤒ ⤓ ⇄)` (nur Änderungen seit letztem Request, siehe [Compaction-Flow](010-compaction-flow.md)), Markierung `●`. Kind ausgeschrieben (System, Tools, User, Assistant, Tool Call, Tool Result, Note), keine Abkürzungen.
 - Title = reines Anzeige-Label, wird nie gesendet. Default: erste nicht-leere Zeile des Inhalts (deterministisch, keine LLM-Titel – kostet Tokens/Zeit); folgt Edits/Streaming. Herkunfts-Titel: System „System prompt“, Tools = Tool-Namen, Tool Call = Aufruf, Tool Result = `→ ` + Aufruf, @file-Note = `@file <Pfad>`, Tool-Pair-Note = `⇄ ` + Aufruf, Compaction-Note = `◇ N blocks compacted`. `r` = umbenennen (leer = zurücksetzen); Rename ist Event im Session Log ohne Context-/Cache-Effekt, per undo rücknehmbar.
@@ -32,4 +32,4 @@ Gewählt: **Variante D – ein einziger Screen**: Gate-Tabelle ist zugleich Chat
 - Eingabe-Modus: `Enter` mit Text = User-Block anlegen, **nicht senden**, zurück in Context-Modus ("User block added – Enter sends"). `Tab`/`Esc` = zurück ohne Anlegen. `⌥⌫` löscht Wort. Statuszeile zeigt modusabhängige Tasten.
 - Block-Aktionen im Context-Modus ohne Ctrl: `↑↓` wählen, `⌥↑`/`⌥↓` verschieben, `e` `$EDITOR`, `r` umbenennen, `d` entfernen, `p` Pin top→bottom→aus, `Space` markieren, `c` Compaction, `u` undo, `q` beenden.
 - Tool Pair verschieben/pinnen: Hinweis + gleiche Taste nochmal = bestätigen (→ Note).
-- Über Budget: Senden blockiert mit Hinweis (Details: Budget-Überschreitung am Gate).
+- Über Fenster: Senden blockiert mit Hinweis (Details: [Budget-Überschreitung am Gate](011-budget-overflow.md)).

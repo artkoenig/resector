@@ -21,7 +21,7 @@ Branch `prototype/compaction-flow` (HEAD 2577ae1), `prototypes/compaction-flow.p
 Gewählt: **Variante A – Vorschlag inline in der Gate-Tabelle**, kein eigener Screen, kein Diff-Modus.
 
 - Auswahl: `Space` markiert (Tool Pair immer ganz) und springt zum nächsten Block → Dauer-`Space` markiert fortlaufend. Ohne Markierung = aktueller Block (+ Pair).
-- `c` → Eingabezeile wird `instruction >`; darüber: „◇ Compact N blocks (X tok) · <Modell> · request Y / Fenster (prompt + blocks + instruction + output)“. Default-Anweisung (Config) nur als **grauer Hint**; leer + `Enter` = Default; `Tab` übernimmt Hint zum Editieren. Keine Presets, kein „letzte Anweisung merken“. Keine Tasten-Hilfezeile im Anweisungsschritt.
+- `c` → Eingabezeile wird `instruction >`; darüber: „◇ Compact N blocks (X tok) · <Modell> · request Y / Fenster (prompt + blocks + instruction; Antwort bekommt den Rest, siehe [Budget-Überschreitung am Gate](011-budget-overflow.md))“. Default-Anweisung (Config) nur als **grauer Hint**; leer + `Enter` = Default; `Tab` übernimmt Hint zum Editieren. Keine Presets, kein „letzte Anweisung merken“. Keine Tasten-Hilfezeile im Anweisungsschritt.
 - Request-Inhalt: **nur ausgewählte Blocks + Anweisung** (nicht ganzer Context). Folge bei gleichem Modell/Slot: Session-Cache danach kalt – Statuszeile zeigt es.
 - Passt der Request nicht ins Fenster: **blockieren** mit Hinweis (Auswahl verkleinern, `d`/`e`). Kein Chunking/Map-Reduce in v1.
 - Ergebnis streamt als Zeile „◇ proposal · attempt k“ an Position der ersten Quelle; Quellen durchgestrichen „◇ proposed“; Vorschau zeigt Vorschlagstext; Statuszeile: Tokens vorher → nachher (−%), Context danach / Fenster, Cache-Folge. Kopf-Tag `COMPACTION`.
