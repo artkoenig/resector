@@ -3,7 +3,7 @@ import type { ScrollBoxRenderable } from '@opentui/core';
 import { useKeyboard, useTerminalDimensions } from '@opentui/solid';
 import { createEffect, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import type { Kind } from '../core/log/events';
-import { COMMANDS, createGate, type Gate, type GateOptions, type Running } from './gate';
+import { COMMANDS, createGate, type Gate, type GateOptions, type Status } from './gate';
 import { cell, flagsOf, formatTokens, right, titleOf } from './format';
 import { DIM as TEMPLATE_COLOR, FREE_COLOR, KIND_COLOR, MARK_COLOR, SELECTED_BG, TONE } from './theme';
 
@@ -133,17 +133,32 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   });
 
   const width = () => size().width;
+  const status = () => (void tick(), statusOf(gate));
+  const keys = () => keysOf(gate, suggestion() ? 'suggest' : mode());
+  // Screen lines a footer text takes, wrapped at the terminal width.
+  const linesOf = (text: string) => Math.max(1, Math.ceil((text.length + 1) / width()));
+  // Block rows that fit: the screen less header, column header, Template, preview, suggestions,
+  // separator, input and footer. Lines never shrink, so rows cannot overlap.
+  const capacity = () =>
+    Math.max(1, size().height - 3 - previewHeight() - suggestions().length - 2 - linesOf(status()?.text ?? '') - linesOf(keys()));
+  // The rows shown: a window around the selection.
+  const visibleRows = () => {
+    const all = rows();
+    const at = all.findIndex(r => r.id === gate.selected() && !r.removed);
+    const from = Math.max(0, Math.min(all.length - capacity(), at - Math.floor(capacity() / 2)));
+    return all.slice(from, from + capacity());
+  };
   const titleWidth = () => Math.max(8, width() - FIXED_COLUMNS);
   const selectedRow = () => rows().find(r => r.id === gate.selected() && !r.removed);
 
   return (
     <box flexDirection="column" width="100%" height="100%">
       <Header gate={gate} width={width()} />
-      <text fg={TEMPLATE_COLOR}>{`     #  ${'Kind'.padEnd(11)}  ${cell('Title', titleWidth())}  Tokens  ${gate.approximate() ? 'Cache≈' : 'Cache '} Flags`}</text>
+      <text fg={TEMPLATE_COLOR} flexShrink={0}>{`     #  ${'Kind'.padEnd(11)}  ${cell('Title', titleWidth())}  Tokens  ${gate.approximate() ? 'Cache≈' : 'Cache '} Flags`}</text>
       <box flexDirection="column" flexGrow={1} overflow="hidden">
-        <For each={rows()}>
+        <For each={visibleRows()}>
           {row => (
-            <text bg={!row.removed && row.id === gate.selected() ? SELECTED_BG : undefined} fg={row.removed ? TEMPLATE_COLOR : undefined}>
+            <text flexShrink={0} bg={!row.removed && row.id === gate.selected() ? SELECTED_BG : undefined} fg={row.removed ? TEMPLATE_COLOR : undefined}>
               <span style={{ fg: MARK_COLOR }}>{`  ${gate.marked().has(row.id) ? '●' : ' '}`}</span>
               <span>{`${right(row.n, 3)}  `}</span>
               <span style={{ fg: row.removed ? TEMPLATE_COLOR : KIND_COLOR[row.kind] }}>{row.kind.padEnd(11)}</span>
@@ -156,11 +171,11 @@ export function App(props: GateOptions & { onQuit: () => void }) {
             </text>
           )}
         </For>
-        <text fg={TEMPLATE_COLOR}>
+        <text fg={TEMPLATE_COLOR} flexShrink={0}>
           {`        ${'Template'.padEnd(11)}  ${cell('BOS · generation prompt', titleWidth())}  ${right(gate.split() ? String(gate.split()!.template) : '…', 6)}`}
         </text>
       </box>
-      <box flexDirection="column" height={previewHeight()}>
+      <box flexDirection="column" height={previewHeight()} flexShrink={0}>
         <Show when={selectedRow()}>
           {(row: () => Row) => (
             <>
@@ -174,19 +189,20 @@ export function App(props: GateOptions & { onQuit: () => void }) {
       </box>
       <For each={suggestions()}>
         {c => (
-          <text bg={c === suggestion() ? SELECTED_BG : undefined} fg={c === suggestion() ? undefined : TEMPLATE_COLOR}>
+          <text flexShrink={0} bg={c === suggestion() ? SELECTED_BG : undefined} fg={c === suggestion() ? undefined : TEMPLATE_COLOR}>
             {`  ${`${c.name} ${c.arg}`.padEnd(22)} ${c.description}`}
           </text>
         )}
       </For>
-      <text fg={FREE_COLOR}>{'─'.repeat(width())}</text>
-      <Show when={mode() !== 'context'} fallback={<text fg={TEMPLATE_COLOR}>{' > Tab to write · Enter to send the Context'}</text>}>
-        <box flexDirection="row">
+      <text fg={FREE_COLOR} flexShrink={0}>{'─'.repeat(width())}</text>
+      <Show when={mode() !== 'context'} fallback={<text fg={TEMPLATE_COLOR} flexShrink={0}>{' > Tab to write · Enter to send the Context'}</text>}>
+        <box flexDirection="row" flexShrink={0}>
           <text fg={KIND_COLOR.User}>{mode() === 'rename' ? ' title > ' : ' > '}</text>
           <input focused value={draft()} onInput={editDraft} flexGrow={1} />
         </box>
       </Show>
-      <Footer gate={gate} mode={suggestion() ? 'suggest' : mode()} tick={tick()} />
+      <text fg={TONE[status()?.tone ?? 'info']} flexShrink={0}>{` ${status()?.text ?? ''}`}</text>
+      <text fg={TEMPLATE_COLOR} flexShrink={0}>{` ${keys()}`}</text>
     </box>
   );
 }
@@ -198,7 +214,7 @@ function Header(props: { gate: Gate; width: number }) {
   const barWidth = () => Math.max(0, props.width - label().length - tokens().length - 3);
   const tone = () => (total() > props.gate.window() ? TONE.error : total() >= 0.9 * props.gate.window() ? TONE.warn : undefined);
   return (
-    <text>
+    <text flexShrink={0}>
       <strong>{label()}</strong>
       <For each={contextBar(props.gate, barWidth())}>{c => <span style={{ fg: c.color }}>{c.char}</span>}</For>
       <span style={{ fg: tone() }}>{`  ${tokens()}`}</span>
@@ -235,29 +251,20 @@ const modifierOf = (key: { option?: boolean; meta: boolean; shift: boolean }) =>
 const LOOK_KEYS = '↑↓ select · PgUp/PgDn scroll · q quit';
 const KEYS = 'Enter send · Tab write · ↑↓ select · ⌥↑↓ move · PgUp/PgDn scroll · r rename · d remove · p pin · Space mark · u undo · q quit';
 
-// Status line of the last action, then the key hints, which stay visible.
-function Footer(props: { gate: Gate; mode: Mode | 'suggest'; tick: number }) {
-  const runningText = (r: Running) =>
-    `running: ${cell(titleOf(r.call), 50).trimEnd()} · ${Math.round((Date.now() - r.started) / 1000)}s / ${props.gate.timeout}s`;
-  const status = () => {
-    void props.tick;
-    const r = props.gate.running();
-    if (r) return { text: runningText(r), tone: 'warn' as const };
-    return props.gate.streaming() ? { text: 'model is responding …', tone: 'warn' as const } : props.gate.status();
-  };
-  const keys = () => {
-    if (props.gate.running()) return `Esc kill · ${LOOK_KEYS}`;
-    if (props.gate.streaming()) return `Esc abort · ${LOOK_KEYS}`;
-    if (props.mode === 'context' && props.gate.selectedBlock()?.pending) return `y run once · n reject · ${KEYS}`;
-    if (props.mode === 'suggest') return '↑↓ choose · Tab complete · Enter run · Esc back';
-    if (props.mode === 'input') return 'Enter adds a User block (not sent) · Tab/Esc back';
-    if (props.mode === 'rename') return 'Enter sets title (display only, never sent; empty = reset) · Tab/Esc cancel';
-    return KEYS;
-  };
-  return (
-    <>
-      <text fg={TONE[status()?.tone ?? 'info']}>{` ${status()?.text ?? ''}`}</text>
-      <text fg={TEMPLATE_COLOR}>{` ${keys()}`}</text>
-    </>
-  );
+// Status line: a running command, the streaming answer, else the last action.
+function statusOf(gate: Gate): Status | null {
+  const r = gate.running();
+  if (r) return { text: `running: ${cell(titleOf(r.call), 50).trimEnd()} · ${Math.round((Date.now() - r.started) / 1000)}s / ${gate.timeout}s`, tone: 'warn' };
+  return gate.streaming() ? { text: 'model is responding …', tone: 'warn' } : gate.status();
+}
+
+// Key hints below the status line; they stay visible.
+function keysOf(gate: Gate, mode: Mode | 'suggest'): string {
+  if (gate.running()) return `Esc kill · ${LOOK_KEYS}`;
+  if (gate.streaming()) return `Esc abort · ${LOOK_KEYS}`;
+  if (mode === 'context' && gate.selectedBlock()?.pending) return `y run once · n reject · ${KEYS}`;
+  if (mode === 'suggest') return '↑↓ choose · Tab complete · Enter run · Esc back';
+  if (mode === 'input') return 'Enter adds a User block (not sent) · Tab/Esc back';
+  if (mode === 'rename') return 'Enter sets title (display only, never sent; empty = reset) · Tab/Esc cancel';
+  return KEYS;
 }

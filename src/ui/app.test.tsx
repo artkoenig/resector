@@ -540,3 +540,21 @@ test('an answer cut off at max_tokens runs no call; calls that are no bash comma
   expect(line(frame, /python/)).toMatch(/Assistant\s+python \{\}/);
   expect(line(frame, /Tool Call/)).toMatch(/Tool Call\s+pwd\s.*\? approve/);
 });
+
+test('more rows than fit: rows never overlap, the list follows the selection, Template stays visible', async () => {
+  await withUsers(...Array.from({ length: 12 }, (_, i) => `note ${i + 3}`));
+  const numbers = (f: string) => [...f.matchAll(/^ {2}[ ●] +(\d+) {2}/gm)].map(m => Number(m[1]));
+  let frame = ui.captureCharFrame();
+  expect(line(frame, /Kind/)).toMatch(/^ {5}# {2}Kind +Title +Tokens/);
+  expect(frame).toMatch(/Template +BOS/);
+  let shown = numbers(frame);
+  expect(shown.at(-1)).toBe(14);
+  expect(shown).toEqual(Array.from({ length: shown.length }, (_, i) => shown[0]! + i));
+  expect(shown.length).toBeLessThan(14);
+  for (let i = 0; i < 13; i++) await press('up');
+  frame = await frameMatching(ui, f => /── #1 System/.test(f));
+  shown = numbers(frame);
+  expect(shown[0]).toBe(1);
+  expect(line(frame, /System prompt/)).toMatch(/1\s+System\s+System prompt\s+12\b/);
+  expect(frame).toMatch(/Template +BOS/);
+});
