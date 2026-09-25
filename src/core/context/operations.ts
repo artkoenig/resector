@@ -16,7 +16,7 @@ const fixed = (block: Block) => ({ error: `${NAME[block.kind]} is fixed` });
 const AWAITS = { error: 'Tool Call awaits approval – y run once · n reject · e edit' };
 // Why an operation may not touch the block, if not.
 const guard = (block: Block) => (isFixed(block) ? fixed(block) : block.pending ? AWAITS : null);
-const UNDOABLE = new Set<SessionEvent['type']>(['Move', 'Pin', 'Unpin', 'Remove', 'Rename', 'Edit', 'PairToNote']);
+const UNDOABLE = new Set<SessionEvent['type']>(['Move', 'Pin', 'Unpin', 'Remove', 'Rename', 'Edit', 'PairToNote', 'Compact']);
 
 const isTool = (block: Block | undefined) => block?.kind === 'Tool Call' || block?.kind === 'Tool Result';
 // Tool Call and Tool Result behave as a unit once the call has run (FR-9).

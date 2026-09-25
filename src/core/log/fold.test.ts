@@ -235,3 +235,38 @@ test('undoing an Edit restores the earlier Revision; flagged only when that was 
   const afterSend = session(1, edit(2, 2, 'x'), sent, { type: 'Undo', eventId: 3 });
   expect(block(afterSend, 2)).toMatchObject({ content: 'u2', revision: 1, revised: true });
 });
+
+const compact = (sources: number[], noteId: number, content = 'short'): SessionEvent => ({ type: 'Compact', sources, instruction: 'keep it', noteId, content });
+
+test('Compact replaces its sources at once by one Note at the first source’s place (FR-16)', () => {
+  const events = session(4, compact([3, 4], 6, 'gist'));
+  expect(ids(events)).toEqual([1, 2, 6, 5]);
+  expect(block(events, 6)).toEqual({
+    id: 6, kind: 'Note', origin: 'compaction', content: 'gist', cutOff: false, compacted: { sources: [3, 4], instruction: 'keep it' },
+    title: null, pin: null, removed: false, moved: false, pinChanged: false, revision: 1, revised: false,
+  });
+  expect(fold(events).nextId).toBe(7);
+});
+
+test('the sources of a Compaction stay gone after the next request', () => {
+  expect(ids(session(3, compact([2, 3], 5), sent))).toEqual([1, 5, 4]);
+});
+
+test('the Note of a Compaction keeps the pin of its first source', () => {
+  expect(block(session(3, { type: 'Pin', id: 3, at: 'top' }, compact([3, 4], 5)), 5).pin).toBe('top');
+});
+
+test('undoing a Compaction brings its sources back and drops the Note', () => {
+  const events = session(3, compact([2, 3], 5));
+  expect(ids([...events, { type: 'Undo', eventId: events.length - 1 }])).toEqual([1, 2, 3, 4]);
+});
+
+test('a Compaction of a Tool Pair hides both its blocks', () => {
+  const events: SessionEvent[] = [
+    ...session(1),
+    { type: 'BlockAdded', id: 3, kind: 'Tool Call', origin: 'model', content: 'ls' },
+    { type: 'BlockAdded', id: 4, kind: 'Tool Result', origin: 'tool', content: 'a', call: 3 },
+    compact([3, 4], 5),
+  ];
+  expect(ids(events)).toEqual([1, 2, 5]);
+});

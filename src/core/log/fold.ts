@@ -11,6 +11,8 @@ export type Block = {
   stopped?: Stopped;
   // Note from a Tool Pair only: the pair's command, for its title.
   source?: string;
+  // Note from a Compaction only: the blocks it replaced and the instruction (FR-16).
+  compacted?: { sources: number[]; instruction: string };
   // Tool Call only: no Tool Result yet, so it awaits approval (FR-23).
   pending?: boolean;
   title: string | null;
@@ -95,6 +97,14 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
     state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'tool', content, source: call!.content, cutOff: false, ...NEW_ENTRY, pin: call!.pin });
     insert(state, afterCalls(state.order.map(id => entry(state, id)), e.call), e.id);
     for (const b of [call!, result!]) Object.assign(b, { removed: true, hidden: true });
+  },
+  // The sources are gone at once; the Note takes the first one's place and pin.
+  Compact: (state, e) => {
+    const [first, ...rest] = e.sources.map(id => entry(state, id));
+    const compacted = { sources: e.sources, instruction: e.instruction };
+    state.entries.set(e.noteId, { id: e.noteId, kind: 'Note', origin: 'compaction', content: e.content, compacted, cutOff: false, ...NEW_ENTRY, pin: first!.pin });
+    insert(state, state.order.indexOf(first!.id), e.noteId);
+    for (const b of [first!, ...rest]) Object.assign(b, { removed: true, hidden: true });
   },
   Rename: (state, e) => void (entry(state, e.id).title = e.title || null),
   RequestSent: state => {

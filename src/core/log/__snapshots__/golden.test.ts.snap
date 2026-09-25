@@ -783,3 +783,121 @@ README.md src
   },
 }
 `;
+
+exports[`fixture compaction.jsonl replays to its Context and request 1`] = `
+{
+  "context": {
+    "blocks": [
+      {
+        "content": "You are a coding agent.",
+        "cutOff": false,
+        "id": 1,
+        "kind": "System",
+        "moved": false,
+        "origin": "config",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "revised": false,
+        "revision": 1,
+        "title": null,
+      },
+      {
+        "content": "[]",
+        "cutOff": false,
+        "id": 2,
+        "kind": "Tools",
+        "moved": false,
+        "origin": "config",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "revised": false,
+        "revision": 1,
+        "title": null,
+      },
+      {
+        "content": "Why does the test fail?",
+        "cutOff": false,
+        "id": 3,
+        "kind": "User",
+        "moved": false,
+        "origin": "user",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "revised": false,
+        "revision": 1,
+        "title": null,
+      },
+      {
+        "compacted": {
+          "instruction": "Keep errors and file paths.",
+          "sources": [
+            4,
+            5,
+            6,
+          ],
+        },
+        "content": "bun test: x.test.ts:3 fails (expected 1, got 2); cause: add() off by one in src/x.ts:12.",
+        "cutOff": false,
+        "id": 7,
+        "kind": "Note",
+        "moved": false,
+        "origin": "compaction",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "revised": false,
+        "revision": 1,
+        "title": null,
+      },
+      {
+        "content": "Fix it.",
+        "cutOff": false,
+        "id": 8,
+        "kind": "User",
+        "moved": false,
+        "origin": "user",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "revised": false,
+        "revision": 1,
+        "title": null,
+      },
+    ],
+    "nextId": 9,
+    "profile": "local",
+    "protocol": "native",
+  },
+  "request": {
+    "messages": [
+      {
+        "content": "You are a coding agent.",
+        "role": "system",
+      },
+      {
+        "content": "Why does the test fail?",
+        "role": "user",
+      },
+      {
+        "content": "bun test: x.test.ts:3 fails (expected 1, got 2); cause: add() off by one in src/x.ts:12.",
+        "role": "user",
+      },
+      {
+        "content": "Fix it.",
+        "role": "user",
+      },
+    ],
+    "tools": [],
+  },
+  "summary": {
+    "blocks": 5,
+    "profile": "local",
+    "renamed": false,
+    "title": "Why does the test fail?",
+    "tokens": 110,
+  },
+}
+`;

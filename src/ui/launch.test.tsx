@@ -154,6 +154,31 @@ test('/reload re-reads the config and reconnects; an invalid config keeps the cu
   expect(frame.replace(/┃/g, '')).toMatch(/config\.jsonc:1:\d+:ValueExpected/);
 });
 
+test('Compaction runs on compactionProfile with the instruction from compaction.md, both as of the last /reload (FR-13, FR-17)', async () => {
+  const other = startFakeLlamaCpp({ nCtx: 1024 });
+  try {
+    const second = `, "compactionProfile": "small" }, "small": { "backend": "llamacpp", "endpoint": "${other.url}"`;
+    const { paths } = await launch({ config: url => profileConfig(url, second) });
+    put(join(dirname(paths.global), 'compaction.md'), 'keep names\n');
+    await frameMatching(ui, f => f.includes('/ 2k'));
+    await command('/reload');
+    await frameMatching(ui, f => f.includes('config reloaded'));
+    await command('long story');
+    await frameMatching(ui, f => /3\s+User\s+long story/.test(f));
+    ui.mockInput.pressKey('c');
+    await frameMatching(ui, f => /◇ Compact 1 block \(\d+ tok\) · small · request \d+ \/ 1k/.test(f));
+    expect(ui.captureCharFrame()).toContain('instruction > keep names');
+    other.reply({ chunks: ['short'] });
+    ui.mockInput.pressEnter();
+    await frameMatching(ui, f => f.includes('session cache untouched'));
+    expect(other.chatRequests).toHaveLength(1);
+    expect((other.chatRequests[0] as { messages: { content: string }[] }).messages[1]!.content).toEndWith('Instruction: keep names');
+    expect(fake.chatRequests).toEqual([]);
+  } finally {
+    other.stop();
+  }
+});
+
 const chat = (profile: string): SessionEvent[] => [
   ...newSession(profile, 'You are terse.'),
   { type: 'BlockAdded', id: 3, kind: 'User', origin: 'user', content: 'hi there' },

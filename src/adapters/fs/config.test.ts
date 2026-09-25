@@ -2,6 +2,7 @@ import { beforeEach, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { DEFAULT_INSTRUCTION } from '../../core/compaction/compaction';
 import { DEFAULT_SYSTEM_PROMPT } from '../../core/config/system-prompt';
 import { configPaths, loadConfig } from './config';
 
@@ -52,4 +53,14 @@ test('the system prompt comes from the profile file, else system.md (project bef
   expect(() => systemPrompt('own')).toThrow(`system prompt of profile "own" not found: ${join(home, '.config/resector/own.md')}`);
   put(join(home, '.config/resector/own.md'), 'own prompt');
   expect(systemPrompt('own')).toBe('own prompt');
+});
+
+test('the default compaction instruction comes from compaction.md (project before global), else the shipped one (FR-13)', () => {
+  const paths = configPaths({ home, cwd, env: {} });
+  put(paths.global, '{}');
+  expect(loadConfig(paths)!.compactionInstruction()).toBe(DEFAULT_INSTRUCTION);
+  put(join(home, '.config/resector/compaction.md'), 'keep errors\n');
+  expect(loadConfig(paths)!.compactionInstruction()).toBe('keep errors');
+  put(join(cwd, '.resector/compaction.md'), 'keep paths');
+  expect(loadConfig(paths)!.compactionInstruction()).toBe('keep paths');
 });
