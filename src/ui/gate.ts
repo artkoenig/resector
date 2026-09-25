@@ -10,14 +10,29 @@ import { errorText, titleOf } from './format';
 
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
 // events: the Session Log so far (new or resumed); reconnect: re-reads the config and opens the session's
-// Model Profile again (/reload, FR-44); notice: initial status line.
-export type GateOptions = { backend: Backend; log: SessionLog; events: SessionEvent[]; reconnect: () => Promise<Backend>; notice?: Status };
+// Model Profile again (/reload, FR-44); openSessions: shows /sessions; notice: initial status line.
+export type GateOptions = {
+  backend: Backend;
+  log: SessionLog;
+  events: SessionEvent[];
+  reconnect: () => Promise<Backend>;
+  openSessions: () => void;
+  notice?: Status;
+};
+
+// Slash commands (FR-6), in suggestion order.
+export const COMMANDS = [
+  { name: '/sessions', arg: '', description: 'list, resume, rename, delete sessions' },
+  { name: '/rename', arg: '<title>', description: 'rename session' },
+  { name: '/reload', arg: '', description: 're-read config' },
+] as const;
+type CommandName = (typeof COMMANDS)[number]['name'];
 // In-flight answer; never persisted until complete or aborted (FR-37).
 export type Streaming = { text: string; abort: AbortController };
 
 const sameMessages = (a: Message[], b: Message[]) => JSON.stringify(a) === JSON.stringify(b);
 
-export function createGate({ log, reconnect, ...options }: GateOptions) {
+export function createGate({ log, reconnect, openSessions, ...options }: GateOptions) {
   const [events, setEvents] = createSignal(options.events);
   const [counted, setCounted] = createSignal<{ messages: Message[]; split: TokenSplit } | null>(null);
   const [streaming, setStreaming] = createSignal<Streaming | null>(null);
@@ -163,11 +178,17 @@ export function createGate({ log, reconnect, ...options }: GateOptions) {
     }
   }
 
-  const commands: Record<string, () => void> = { '/reload': () => void reload() };
-  // Input text: a known command runs, anything else becomes a User block.
+  function renameSession(title: string) {
+    append({ type: 'SessionRenamed', title });
+    setStatus({ text: title ? `session renamed: ${title}` : 'session title reset to the first User message', tone: 'info' });
+  }
+
+  const commands: Record<CommandName, (arg: string) => void> = { '/sessions': openSessions, '/rename': renameSession, '/reload': () => void reload() };
+  // Input text: a known command runs with the rest as argument; an unknown `/word` is an error; anything else becomes a User block.
   function submit(text: string) {
-    const command = commands[text.trim()];
-    if (command) command();
+    const [name = '', ...arg] = text.trim().split(/\s+/);
+    if (name in commands) commands[name as CommandName](arg.join(' '));
+    else if (/^\/\w+$/.test(name)) setStatus({ text: `unknown command ${name} – ${COMMANDS.map(c => c.name).join(' ')}`, tone: 'error' });
     else if (text.trim()) addUser(text);
   }
 

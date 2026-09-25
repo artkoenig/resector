@@ -24,13 +24,14 @@ async function start() {
   const log = createSessionLog(mkdtempSync(join(tmpdir(), 'resector-')), 'ses_test');
   const initial = newSession('default', 'You are an agent.');
   initial.forEach(log.append);
+  const opened: string[] = [];
   ui = await testRender(
-    () => <App backend={backend} log={log} events={initial} reconnect={async () => backend} onQuit={() => {}} />,
+    () => <App backend={backend} log={log} events={initial} reconnect={async () => backend} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
     { width: 80, height: 20 },
   );
   await frameMatching(ui, f => f.includes('16 / 4k'));
   const events = () => readFileSync(log.path, 'utf8').trim().split('\n').map(l => JSON.parse(l));
-  return { events };
+  return { events, opened };
 }
 
 const line = (frame: string, pattern: RegExp) => frame.split('\n').find(l => pattern.test(l));
@@ -290,3 +291,45 @@ test('a rename or an undone change leaves nothing to send', async () => {
   await frameMatching(ui, f => f.includes('nothing to send'));
   expect(fake.chatRequests).toHaveLength(1);
 });
+
+test('typing / suggests the commands, filtered while typing; ↑↓ choose, Enter runs (FR-6)', async () => {
+  const { opened } = await start();
+  ui.mockInput.pressTab();
+  await ui.flush();
+  await ui.mockInput.typeText('/');
+  let frame = await frameMatching(ui, f => f.includes('/reload'));
+  expect(frame).toContain('↑↓ choose · Tab complete · Enter run · Esc back');
+  expect(line(frame, /\/sessions/)).toMatch(/\/sessions\s+list, resume, rename, delete sessions/);
+  expect(line(frame, /\/rename/)).toMatch(/\/rename <title>\s+rename session/);
+  await ui.mockInput.typeText('re');
+  frame = await frameMatching(ui, f => !f.includes('/sessions'));
+  expect(frame).toContain('/rename');
+  await press('down');
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('config reloaded'));
+  await write('/sessions');
+  await until(() => opened.length > 0);
+  await write('/nope');
+  await frameMatching(ui, f => f.includes('unknown command /nope – /sessions /rename /reload'));
+});
+
+test('Tab completes a command; /rename sets the session title, empty resets it (FR-34)', async () => {
+  const { events } = await start();
+  ui.mockInput.pressTab();
+  await ui.flush();
+  await ui.mockInput.typeText('/ren');
+  await frameMatching(ui, f => f.includes('rename session'));
+  ui.mockInput.pressTab();
+  await frameMatching(ui, f => f.includes('> /rename '));
+  await ui.mockInput.typeText('my title');
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('session renamed: my title'));
+  expect(events().at(-1)).toEqual({ type: 'SessionRenamed', title: 'my title' });
+  await write('/rename');
+  await frameMatching(ui, f => f.includes('session title reset to the first User message'));
+  expect(events().at(-1)).toEqual({ type: 'SessionRenamed', title: '' });
+});
+
+async function until(condition: () => boolean) {
+  while (!condition()) await Bun.sleep(10);
+}

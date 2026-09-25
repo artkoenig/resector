@@ -67,7 +67,7 @@ export function Launch(props: LaunchOptions) {
     const profile = fold(events).profile;
     const backend = await connect(loaded.profile(profile));
     setFound(null);
-    setGate({ backend, log: opened.log, events, notice, reconnect: reconnect(profile) });
+    setGate({ backend, log: opened.log, events, notice, reconnect: reconnect(profile), openSessions: () => {} });
   }
 
   async function firstStart() {

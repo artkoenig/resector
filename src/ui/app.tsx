@@ -2,7 +2,7 @@
 import { useKeyboard, useTerminalDimensions } from '@opentui/solid';
 import { createSignal, For, onCleanup, Show } from 'solid-js';
 import type { Kind } from '../core/log/events';
-import { createGate, type Gate, type GateOptions } from './gate';
+import { COMMANDS, createGate, type Gate, type GateOptions } from './gate';
 import { cell, flagsOf, formatTokens, right, titleOf } from './format';
 
 const KIND_COLOR: Record<Kind, string> = { System: '#d787ff', User: '#87d787', Assistant: '#5fd7d7' };
@@ -26,6 +26,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   const [mode, setMode] = createSignal<Mode>('context');
   const [draft, setDraft] = createSignal('');
   const [tick, setTick] = createSignal(0);
+  const [suggested, setSuggested] = createSignal(0);
   const timer = setInterval(() => gate.streaming() && setTick(tick() + 1), 80);
   onCleanup(() => clearInterval(timer));
 
@@ -44,6 +45,30 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     const bottom = done.findIndex(r => gate.context().blocks.find(b => b.id === r.id)!.pin === 'bottom');
     done.splice(bottom < 0 ? done.length : bottom, 0, { ...live, id, n: n(id), title: titleOf(live), tokens: SPINNER[tick() % SPINNER.length]!, flags: '', live: true, removed: false });
     return done;
+  };
+
+  // FR-6: command suggestions while the input is a single `/word`.
+  const suggestions = () => (mode() === 'input' && /^\/\S*$/.test(draft()) ? COMMANDS.filter(c => c.name.startsWith(draft())) : []);
+  const suggestion = () => suggestions()[Math.min(suggested(), suggestions().length - 1)];
+  const type = (text: string) => {
+    setDraft(text);
+    setSuggested(0);
+  };
+  const complete = (c: (typeof COMMANDS)[number]) => type(c.name + (c.arg ? ' ' : ''));
+  // Enter on a suggestion: one taking an argument is completed, any other runs.
+  const choose = () => {
+    const c = suggestion()!;
+    if (c.arg && draft() !== c.name) complete(c);
+    else {
+      gate.submit(c.name);
+      leaveInput();
+    }
+  };
+  const suggestionKeys: Record<string, () => void> = {
+    up: () => setSuggested((suggested() + suggestions().length - 1) % suggestions().length),
+    down: () => setSuggested((suggested() + 1) % suggestions().length),
+    tab: () => complete(suggestion()!),
+    return: choose,
   };
 
   const leaveInput = () => {
@@ -78,7 +103,10 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     q: props.onQuit,
   };
   useKeyboard(key => {
-    if (mode() !== 'context') inputKeys[key.name]?.();
+    if (suggestion() && suggestionKeys[key.name]) {
+      key.preventDefault();
+      suggestionKeys[key.name]!();
+    } else if (mode() !== 'context') inputKeys[key.name]?.();
     else if (gate.streaming()) key.name === 'escape' && gate.abort();
     else {
       const action = contextKeys[(key.option || key.meta ? 'alt+' : '') + key.name];
@@ -126,14 +154,21 @@ export function App(props: GateOptions & { onQuit: () => void }) {
           )}
         </Show>
       </box>
+      <For each={suggestions()}>
+        {c => (
+          <text bg={c === suggestion() ? SELECTED_BG : undefined} fg={c === suggestion() ? undefined : TEMPLATE_COLOR}>
+            {`  ${`${c.name} ${c.arg}`.padEnd(22)} ${c.description}`}
+          </text>
+        )}
+      </For>
       <text fg={FREE_COLOR}>{'─'.repeat(width())}</text>
       <Show when={mode() !== 'context'} fallback={<text fg={TEMPLATE_COLOR}>{' > Tab to write · Enter to send the Context'}</text>}>
         <box flexDirection="row">
           <text fg={KIND_COLOR.User}>{mode() === 'rename' ? ' title > ' : ' > '}</text>
-          <input focused value={draft()} onInput={setDraft} flexGrow={1} />
+          <input focused value={draft()} onInput={type} flexGrow={1} />
         </box>
       </Show>
-      <Footer gate={gate} mode={mode()} />
+      <Footer gate={gate} mode={suggestion() ? 'suggest' : mode()} />
     </box>
   );
 }
@@ -178,10 +213,11 @@ function contextBar(gate: Gate, width: number): { char: string; color: string }[
 const KEYS = 'Enter send · Tab write · ↑↓ select · ⌥↑↓ move · r rename · d remove · p pin · Space mark · u undo · q quit';
 
 // Status line of the last action, then the key hints, which stay visible.
-function Footer(props: { gate: Gate; mode: Mode }) {
+function Footer(props: { gate: Gate; mode: Mode | 'suggest' }) {
   const status = () => (props.gate.streaming() ? { text: 'model is responding …', tone: 'warn' as const } : props.gate.status());
   const keys = () => {
     if (props.gate.streaming()) return 'Esc abort';
+    if (props.mode === 'suggest') return '↑↓ choose · Tab complete · Enter run · Esc back';
     if (props.mode === 'input') return 'Enter adds a User block (not sent) · Tab/Esc back';
     if (props.mode === 'rename') return 'Enter sets title (display only, never sent; empty = reset) · Tab/Esc cancel';
     return KEYS;
