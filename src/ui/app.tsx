@@ -1,6 +1,7 @@
 // The one screen (FR-1): header · block table · preview · input line · status line.
+import type { ScrollBoxRenderable } from '@opentui/core';
 import { useKeyboard, useTerminalDimensions } from '@opentui/solid';
-import { createSignal, For, onCleanup, Show } from 'solid-js';
+import { createEffect, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import type { Kind } from '../core/log/events';
 import { COMMANDS, createGate, type Gate, type GateOptions } from './gate';
 import { cell, flagsOf, formatTokens, right, titleOf } from './format';
@@ -82,6 +83,12 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     setDraft(titleOf(block));
     setMode('rename');
   };
+  // The preview scrolls on its own; a newly selected block starts at its top.
+  let preview: ScrollBoxRenderable | undefined;
+  const previewHeight = () => Math.max(4, Math.floor((size().height - 6) / 3));
+  const scrollPreview = (lines: number) => preview?.scrollBy(lines);
+  createEffect(on(gate.selected, () => preview?.scrollTo(0)));
+
   const inputKeys: Record<string, () => void> = { return: submit, tab: leaveInput, escape: leaveInput };
   const contextKeys: Record<string, () => void> = {
     tab: () => setMode('input'),
@@ -90,6 +97,10 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     down: () => gate.select(1),
     'alt+up': () => gate.move(-1),
     'alt+down': () => gate.move(1),
+    'shift+up': () => scrollPreview(-1),
+    'shift+down': () => scrollPreview(1),
+    pageup: () => scrollPreview(-(previewHeight() - 2)),
+    pagedown: () => scrollPreview(previewHeight() - 2),
     p: gate.pin,
     d: gate.remove,
     u: gate.undo,
@@ -108,7 +119,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     } else if (mode() !== 'context') inputKeys[key.name]?.();
     else if (gate.streaming()) key.name === 'escape' && gate.abort();
     else {
-      const action = contextKeys[(key.option || key.meta ? 'alt+' : '') + key.name];
+      const action = contextKeys[modifierOf(key) + key.name];
       // Handled here only: `r` must not also type into the input it focuses.
       if (action) key.preventDefault();
       action?.();
@@ -143,12 +154,14 @@ export function App(props: GateOptions & { onQuit: () => void }) {
           {`        ${'Template'.padEnd(11)}  ${cell('BOS · generation prompt', titleWidth())}  ${right(gate.split() ? String(gate.split()!.template) : '…', 6)}`}
         </text>
       </box>
-      <box flexDirection="column" height={Math.max(4, Math.floor((size().height - 6) / 3))} overflow="hidden">
+      <box flexDirection="column" height={previewHeight()}>
         <Show when={selectedRow()}>
           {(row: () => Row) => (
             <>
               <text fg={FREE_COLOR} flexShrink={0}>{cell(`── #${row().n} ${row().kind} · ${row().title} `, width()).replace(/  +$/, m => ' ' + '─'.repeat(m.length - 1))}</text>
-              <text fg="#bcbcbc" flexShrink={0}>{row().content}</text>
+              <scrollbox ref={preview} flexGrow={1}>
+                <text fg="#bcbcbc">{row().content}</text>
+              </scrollbox>
             </>
           )}
         </Show>
@@ -209,7 +222,9 @@ function contextBar(gate: Gate, width: number): { char: string; color: string }[
   return cells;
 }
 
-const KEYS = 'Enter send · Tab write · ↑↓ select · ⌥↑↓ move · r rename · d remove · p pin · Space mark · u undo · q quit';
+const modifierOf = (key: { option?: boolean; meta: boolean; shift: boolean }) => (key.option || key.meta ? 'alt+' : key.shift ? 'shift+' : '');
+
+const KEYS = 'Enter send · Tab write · ↑↓ select · ⌥↑↓ move · PgUp/PgDn scroll · r rename · d remove · p pin · Space mark · u undo · q quit';
 
 // Status line of the last action, then the key hints, which stay visible.
 function Footer(props: { gate: Gate; mode: Mode | 'suggest' }) {

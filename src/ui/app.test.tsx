@@ -367,3 +367,22 @@ test('Tab completes a command; /rename sets the session title, empty resets it (
 async function until(condition: () => boolean) {
   while (!condition()) await Bun.sleep(10);
 }
+
+test('the preview scrolls with PgUp/PgDn and ⇧↑↓; a newly selected block starts at its top', async () => {
+  await start();
+  const words = Array.from({ length: 90 }, (_, i) => `w${String(i + 1).padStart(2, '0')}`).join(' ');
+  await write(words);
+  let frame = await frameMatching(ui, f => /── #2 User/.test(f) && !f.includes('… / 4k'));
+  const below = (f: string) => f.split('\n').slice(f.split('\n').findIndex(l => l.includes('──')) + 1);
+  expect(below(frame)[0]).toMatch(/^w01 /);
+  expect(frame).not.toContain('w90');
+  ui.mockInput.pressKey('\u001B[6~');
+  frame = await frameMatching(ui, f => f.includes('w90'));
+  expect(below(frame)[0]).not.toMatch(/^w01 /);
+  ui.mockInput.pressArrow('up', { shift: true });
+  frame = await frameMatching(ui, f => !f.includes('w90'));
+  await press('\u001B[A');
+  await press('\u001B[B');
+  frame = await frameMatching(ui, f => /── #2 User/.test(f) && /^w01 /.test(below(f)[0] ?? ''));
+  expect(frame).not.toContain('w90');
+});
