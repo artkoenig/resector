@@ -67,7 +67,7 @@ test('the Gate shows every Context Block with its exact tokens and the Template 
   const frame = ui.captureCharFrame();
   expect(line(frame, /default/)).toMatch(/^ {2}resector {2}default +52 \/ 4k/);
   expect(frame.split('\n')[1]).toMatch(/^ {2}▀+/);
-  expect(line(frame, /Kind/)).toMatch(/#\s+Kind\s+Title\s+Tokens\s+Cache\s+Flags/);
+  expect(line(frame, /Type/)).toMatch(/#\s+Type\s+Content\s+Tokens\s+Cache\s+Flags/);
   expect(line(frame, /System prompt/)).toMatch(/1\s+System\s+System prompt\s+12\b/);
   expect(line(frame, /Template/)).toMatch(/Template\s.*\s4\b/);
   expect(line(frame, /#1 · /)).toMatch(/^┃ System {2}#1 · 12 tokens/);
@@ -294,7 +294,7 @@ test('the Cache column shows ● for rows before the invalidation point, ○ fro
   await write('more');
   let frame = await frameMatching(ui, f => cache(f).length === 5);
   expect(cache(frame)).toEqual(['1●', '2●', '3●', '4●', '5○']);
-  expect(line(frame, /Kind/)).toMatch(/Tokens\s+Cache\s+Flags/);
+  expect(line(frame, /Type/)).toMatch(/Tokens\s+Cache\s+Flags/);
   await press('up', { meta: true });
   frame = await frameMatching(ui, f => /4\s+User\s+more/.test(f) && cache(f).length === 5);
   expect(cache(frame)).toEqual(['1●', '2●', '3●', '4○', '5○']);
@@ -312,7 +312,7 @@ test('a server reusing fewer tokens than predicted is reported (FR-41)', async (
   const frame = await frameMatching(ui, f => f.includes('server reused'));
   // BOS + System 12 + Tools 36 + User 8 + <|im_start|> assistant \n hello
   expect(frame).toContain('answer complete · ⚠ cache: predicted 61 · server reused 3');
-  expect(line(frame, /Kind/)).toMatch(/Tokens +Cache +Flags/);
+  expect(line(frame, /Type/)).toMatch(/Tokens +Cache +Flags/);
 });
 
 test('the key hints stay visible next to a status', async () => {
@@ -568,7 +568,7 @@ test('more rows than fit: rows never overlap, the list follows the selection, Te
   await withUsers(...Array.from({ length: 12 }, (_, i) => `note ${i + 3}`));
   const numbers = (f: string) => [...f.matchAll(/^[ ┃] [ ●] +(\d+) {2}/gm)].map(m => Number(m[1]));
   let frame = ui.captureCharFrame();
-  expect(line(frame, /Kind/)).toMatch(/^ {5}# {2}Kind +Title +Tokens/);
+  expect(line(frame, /Type/)).toMatch(/^ {5}# {2}Type +Content +Tokens/);
   expect(frame).toMatch(/Template +BOS/);
   let shown = numbers(frame);
   expect(shown.at(-1)).toBe(14);

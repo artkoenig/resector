@@ -178,7 +178,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   return (
     <box flexDirection="column" width="100%" height="100%" backgroundColor={BG} onMouseUp={copySelection}>
       <Header gate={gate} width={width()} />
-      <text fg={MUTED} flexShrink={0}>{`     #  ${'Kind'.padEnd(11)}  ${cell('Title', titleWidth())}  Tokens  Cache  Flags`}</text>
+      <text fg={MUTED} flexShrink={0}>{`     #  ${'Type'.padEnd(11)}  ${cell('Content', titleWidth())}  Tokens  Cache  Flags`}</text>
       <box flexDirection="column" flexGrow={1} overflow="hidden" onMouseScroll={wheel}>
         <For each={visibleRows()}>
           {row => (
