@@ -36,7 +36,7 @@ test('a missing sessions directory lists nothing', () => {
 });
 
 test('a created session is locked by this process and appends its events', () => {
-  const root = dir();
+  const root = join(dir(), 'new');
   const session = openSessionStore(root, { id: () => 'ses_a' }).create();
   newSession('qwen', 'sys').forEach(session.log.append);
   expect(session.id).toBe('ses_a');
@@ -86,4 +86,15 @@ test('delete removes the session file and its lock; append writes to an unlocked
   expect(existsSync(join(root, 'ses_a.jsonl'))).toBe(false);
   expect(existsSync(join(root, 'ses_a.lock'))).toBe(false);
   expect(store.list().map(s => s.id)).toEqual(['ses_b']);
+});
+
+test('a fixture export is the Session Log of the last or a given session', () => {
+  const root = dir();
+  stored(root, 'ses_old', 60, 'old');
+  stored(root, 'ses_new', 1, 'new');
+  const store = openSessionStore(root);
+  expect(store.exportLog(true)).toBe(readFileSync(join(root, 'ses_new.jsonl'), 'utf8'));
+  expect(store.exportLog('ses_old')).toContain('"content":"old"');
+  expect(() => store.exportLog('ses_x')).toThrow('no session ses_x');
+  expect(() => openSessionStore(dir()).exportLog(true)).toThrow('no session in this project');
 });

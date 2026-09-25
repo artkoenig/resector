@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { testRender } from '@opentui/solid';
@@ -8,7 +8,9 @@ import { frameMatching } from '../../test/frames';
 import { startFakeOmlx } from '../../test/fake-omlx';
 import type { LocalServer } from '../adapters/backend/discover';
 import { configPaths } from '../adapters/fs/config';
-import { createSessionLog } from '../adapters/store/session-log';
+import { openSessionStore } from '../adapters/store/sessions';
+import type { SessionEvent } from '../core/log/events';
+import { newSession } from '../core/session/summary';
 import { SCHEMA_URL } from '../core/config/config';
 import { DEFAULT_SYSTEM_PROMPT } from '../core/config/system-prompt';
 import { Launch } from './launch';
@@ -25,29 +27,34 @@ function put(path: string, text: string) {
   writeFileSync(path, text);
 }
 
-type Setup = { config?: (url: string) => string; systemMd?: string; servers?: (url: string) => LocalServer[] };
+type Setup = { config?: (url: string) => string; systemMd?: string; servers?: (url: string) => LocalServer[]; sessions?: Record<string, SessionEvent[]>; locks?: Record<string, number>; resume?: true | string };
 
-async function launch({ config, systemMd, servers }: Setup = {}) {
+async function launch({ config, systemMd, servers, sessions = {}, locks = {}, resume }: Setup = {}) {
   fake = startFakeLlamaCpp({ nCtx: 4096, model: 'qwen3-8b.gguf' });
   const root = mkdtempSync(join(tmpdir(), 'resector-launch-'));
   const paths = configPaths({ home: join(root, 'home'), cwd: join(root, 'project'), env: {} });
   if (config) put(paths.global, config(fake.url));
   if (systemMd) put(join(dirname(paths.global), 'system.md'), systemMd);
   const fatal: string[] = [];
-  const log = createSessionLog(join(root, 'sessions'), 'ses_test');
+  const store = openSessionStore(join(root, 'sessions'), { id: () => 'ses_test' });
+  for (const [id, events] of Object.entries(sessions)) put(join(root, 'sessions', `${id}.jsonl`), events.map(e => JSON.stringify(e) + '\n').join(''));
+  for (const [id, pid] of Object.entries(locks)) put(join(root, 'sessions', `${id}.lock`), String(pid));
+  const quit: string[] = [];
   ui = await testRender(
     () => (
       <Launch
         paths={paths}
         servers={servers?.(fake.url) ?? [{ backend: 'llamacpp', endpoint: fake.url }]}
-        openLog={() => log}
-        onQuit={() => {}}
+        store={store}
+        resume={resume}
+        onQuit={() => quit.push('quit')}
         onFatal={m => fatal.push(m)}
       />
     ),
     { width: 80, height: 16 },
   );
-  return { paths, fatal, log };
+  const log = () => readFileSync(join(root, 'sessions', 'ses_test.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
+  return { paths, fatal, log, store, quit, root };
 }
 
 const profileConfig = (url: string, extra = '') => `{
@@ -70,7 +77,7 @@ test('first start: a found model is offered, written to the global config and op
     profiles: { 'qwen3-8b': { backend: 'llamacpp', endpoint: fake.url, model: 'qwen3-8b.gguf' } },
     defaultProfile: 'qwen3-8b',
   });
-  expect(JSON.parse(readFileSync(log.path, 'utf8').split('\n')[1]!).content).toBe(DEFAULT_SYSTEM_PROMPT);
+  expect(log()[1].content).toBe(DEFAULT_SYSTEM_PROMPT);
 });
 
 test('first start offers models of backends not supported yet, but does not let them be chosen', async () => {
@@ -135,6 +142,52 @@ test('/reload re-reads the config and reconnects; an invalid config keeps the cu
   // The config path is long enough to wrap the status line, so whitespace is ignored.
   const frame = (await frameMatching(ui, f => f.includes('reload failed'))).replace(/\s+/g, '');
   expect(frame).toMatch(/\/3k.*reloadfailed:.*config\.jsonc:1:\d+:ValueExpected/);
+});
+
+const chat = (profile: string): SessionEvent[] => [
+  ...newSession(profile, 'You are terse.'),
+  { type: 'BlockAdded', id: 2, kind: 'User', origin: 'user', content: 'hi there' },
+  { type: 'RequestSent', hash: 'h', tokens: 20 },
+  { type: 'BlockAdded', id: 3, kind: 'Assistant', origin: 'model', content: 'hello' },
+  { type: 'ResponseReceived', usage: null, cached: null },
+];
+
+test('-c replays the last Session Log and lands at the Gate; unchanged, nothing is sent (FR-32, FR-35)', async () => {
+  const { root } = await launch({ config: url => profileConfig(url), sessions: { ses_a: chat('local') }, resume: true });
+  const frame = await frameMatching(ui, f => f.includes('resumed "hi there"'));
+  expect(frame).toMatch(/2\s+User\s+hi there/);
+  expect(frame).toMatch(/3\s+Assistant\s+hello/);
+  expect(readFileSync(join(root, 'sessions', 'ses_a.lock'), 'utf8')).toBe(String(process.pid));
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('nothing to send'));
+  expect(fake.chatRequests).toEqual([]);
+});
+
+test('a resumed session whose Model Profile is gone continues on the default one, logged (FR-35)', async () => {
+  const { store } = await launch({ config: url => profileConfig(url), sessions: { ses_a: chat('gone') }, resume: 'ses_a' });
+  const frame = await frameMatching(ui, f => f.includes('not in config'));
+  expect(frame).toContain('profile "gone" not in config → local');
+  expect(frame).toMatch(/^ local +/m);
+  expect(store.list()[0]!.events.at(-1)).toEqual({ type: 'ProfileFallback', profile: 'local' });
+});
+
+test('a session open in another instance is not resumed (FR-36)', async () => {
+  const other = Bun.spawn(['sleep', '10']);
+  try {
+    const { fatal } = await launch({ config: url => profileConfig(url), sessions: { ses_a: chat('local') }, locks: { ses_a: other.pid }, resume: 'ses_a' });
+    await until(() => fatal.length > 0);
+    expect(fatal).toEqual(['session ses_a is open in another resector instance']);
+  } finally {
+    other.kill();
+  }
+});
+
+test('quitting releases the session lock', async () => {
+  const { quit, root } = await launch({ config: url => profileConfig(url) });
+  await frameMatching(ui, f => f.includes('/ 2k'));
+  ui.mockInput.pressKey('q');
+  await until(() => quit.length > 0);
+  expect(readdirSync(join(root, 'sessions'))).toEqual(['ses_test.jsonl']);
 });
 
 async function command(text: string) {

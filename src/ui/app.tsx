@@ -141,7 +141,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
 function Header(props: { gate: Gate; width: number }) {
   const total = () => props.gate.split()?.total ?? 0;
   const tokens = () => `${props.gate.split() ? formatTokens(total()) : '…'} / ${formatTokens(props.gate.window())}`;
-  const label = () => ` ${props.gate.profile}  `;
+  const label = () => ` ${props.gate.profile()}  `;
   const barWidth = () => Math.max(0, props.width - label().length - tokens().length - 3);
   const tone = () => (total() > props.gate.window() ? TONE.error : total() >= 0.9 * props.gate.window() ? TONE.warn : undefined);
   return (

@@ -8,30 +8,24 @@ import { renderNative, sentBlocks, type Message } from '../core/render/native';
 import type { TokenSplit } from '../core/tokens/split';
 import { errorText, titleOf } from './format';
 
-// reconnect: re-reads the config and opens the session's Model Profile again (/reload, FR-44).
-export type GateOptions = { backend: Backend; log: SessionLog; profile: string; systemPrompt: string; reconnect: () => Promise<Backend> };
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
+// events: the Session Log so far (new or resumed); reconnect: re-reads the config and opens the session's
+// Model Profile again (/reload, FR-44); notice: initial status line.
+export type GateOptions = { backend: Backend; log: SessionLog; events: SessionEvent[]; reconnect: () => Promise<Backend>; notice?: Status };
 // In-flight answer; never persisted until complete or aborted (FR-37).
 export type Streaming = { text: string; abort: AbortController };
 
 const sameMessages = (a: Message[], b: Message[]) => JSON.stringify(a) === JSON.stringify(b);
 
-export function createGate({ log, profile, systemPrompt, reconnect, ...options }: GateOptions) {
-  const initial: SessionEvent[] = [
-    { type: 'SessionCreated', profile, protocol: 'native' },
-    { type: 'BlockAdded', id: 1, kind: 'System', origin: 'config', content: systemPrompt },
-  ];
-  initial.forEach(log.append);
-  const [events, setEvents] = createSignal(initial);
+export function createGate({ log, reconnect, ...options }: GateOptions) {
+  const [events, setEvents] = createSignal(options.events);
   const [counted, setCounted] = createSignal<{ messages: Message[]; split: TokenSplit } | null>(null);
   const [streaming, setStreaming] = createSignal<Streaming | null>(null);
-  const [status, setStatus] = createSignal<Status | null>(null);
+  const [status, setStatus] = createSignal<Status | null>(options.notice ?? null);
   const [selected, setSelected] = createSignal(1);
   // Marked blocks (Space) for Compaction; UI state, not logged.
   const [marked, setMarked] = createSignal<ReadonlySet<number>>(new Set());
   const [backend, setBackend] = createSignal(options.backend);
-  // Messages right after the last answer; a Context changed since then may be sent again as is.
-  const [answered, setAnswered] = createSignal<Message[] | null>(null);
 
   const append = (event: SessionEvent) => {
     log.append(event);
@@ -44,6 +38,11 @@ export function createGate({ log, profile, systemPrompt, reconnect, ...options }
   // Token split of the current messages only; a stale split would misalign rows after a move.
   const split = () => (counted()?.messages === messages() ? counted()!.split : null);
   const nextId = () => context().nextId;
+  // Messages right after the last answer; a Context changed since then may be sent again as is.
+  const answered = createMemo(() => {
+    const last = events().findLastIndex(e => e.type === 'ResponseReceived');
+    return last < 0 ? null : renderNative(fold(events().slice(0, last + 1)));
+  });
   // Selectable rows in order: sent blocks; the streaming answer sits before the bottom pins.
   const rows = createMemo(() => {
     const ids = sent().map(b => b.id);
@@ -148,7 +147,6 @@ export function createGate({ log, profile, systemPrompt, reconnect, ...options }
       const result = await backend().chat(request, { signal: abort.signal, onDelta });
       setStreaming(null);
       finish(result);
-      setAnswered(messages());
     } catch (e) {
       setStreaming(null);
       setStatus({ text: `backend error: ${errorText(e)}`, tone: 'error' });
@@ -184,7 +182,7 @@ export function createGate({ log, profile, systemPrompt, reconnect, ...options }
     selectedBlock,
     marked,
     window: () => backend().window,
-    profile,
+    profile: () => context().profile,
     submit,
     send,
     abort: () => streaming()?.abort.abort(),

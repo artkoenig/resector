@@ -8,6 +8,7 @@ import { startFakeLlamaCpp } from '../../test/fake-llamacpp';
 import { frameMatching } from '../../test/frames';
 import { connectLlamaCpp } from '../adapters/backend/llamacpp';
 import { createSessionLog } from '../adapters/store/session-log';
+import { newSession } from '../core/session/summary';
 import { App } from './app';
 
 let fake: ReturnType<typeof startFakeLlamaCpp>;
@@ -21,8 +22,10 @@ async function start() {
   fake = startFakeLlamaCpp({ nCtx: 4096 });
   const backend = await connectLlamaCpp(fake.url);
   const log = createSessionLog(mkdtempSync(join(tmpdir(), 'resector-')), 'ses_test');
+  const initial = newSession('default', 'You are an agent.');
+  initial.forEach(log.append);
   ui = await testRender(
-    () => <App backend={backend} log={log} profile="default" systemPrompt="You are an agent." reconnect={async () => backend} onQuit={() => {}} />,
+    () => <App backend={backend} log={log} events={initial} reconnect={async () => backend} onQuit={() => {}} />,
     { width: 80, height: 20 },
   );
   await frameMatching(ui, f => f.includes('16 / 4k'));

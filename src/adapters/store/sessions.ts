@@ -1,6 +1,6 @@
 // Session store (FR-32–FR-36): the project's Session Logs in one directory, `<id>.jsonl` plus `<id>.lock`
 // holding the pid of the process that has the session open.
-import { appendFileSync, existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SessionEvent, SessionLog } from '../../core/log/events';
 import { summarize, type SessionSummary } from '../../core/session/summary';
@@ -38,12 +38,24 @@ export function openSessionStore(dir: string, { id = newId } = {}) {
   }
   function lock(id: string): OpenSession {
     refuseLocked(id);
+    mkdirSync(dir, { recursive: true });
     writeFileSync(lockPath(id), String(process.pid));
     const events = existsSync(logPath(id)) ? read(id) : [];
     return { id, events, log: createSessionLog(dir, id), release: () => rmSync(lockPath(id), { force: true }) };
   }
 
-  return {
+  const exists = (id: string) => {
+    if (!existsSync(logPath(id))) throw new Error(`no session ${id}`);
+  };
+  // The session to resume or export: true = the newest one (FR-32).
+  function pick(id: true | string): string {
+    if (id !== true) return id;
+    const newest = store.list()[0];
+    if (!newest) throw new Error('no session in this project');
+    return newest.id;
+  }
+
+  const store = {
     list(): StoredSession[] {
       if (!existsSync(dir)) return [];
       return readdirSync(dir)
@@ -56,9 +68,15 @@ export function openSessionStore(dir: string, { id = newId } = {}) {
         .sort((a, b) => b.updated.getTime() - a.updated.getTime());
     },
     create: () => lock(id()),
-    open(id: string): OpenSession {
-      if (!existsSync(logPath(id))) throw new Error(`no session ${id}`);
+    open(which: true | string): OpenSession {
+      const id = pick(which);
+      exists(id);
       return lock(id);
+    },
+    exportLog(which: true | string): string {
+      const id = pick(which);
+      exists(id);
+      return readFileSync(logPath(id), 'utf8');
     },
     // For a session not open here, e.g. a rename in /sessions.
     append(id: string, event: SessionEvent) {
@@ -71,4 +89,5 @@ export function openSessionStore(dir: string, { id = newId } = {}) {
       rmSync(lockPath(id), { force: true });
     },
   };
+  return store;
 }
