@@ -31,6 +31,7 @@ Umsetzbare **Spec für v1** (PRD + Architektur + Glossar) eines textbasierten Co
 <!-- one line per closed ticket -->
 
 - [opencode-Architektur & TUI-Stack-Optionen](tickets/001-opencode-and-tui-stacks.md): eigener Harness statt Plugin/Fork; Stack-Finalisten Go+Bubble Tea v2 vs. TS+OpenTUI
+- [Exakte Token-Zählung bei lokalen Backends](tickets/002-token-counting.md): Server-Template rendern + Modell-Vocab tokenisieren; llama.cpp exakt, Ollama/LM Studio mit Workarounds; Drift-Anzeige nach jedem Request
 
 ## Not yet specified
 
