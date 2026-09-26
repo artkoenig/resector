@@ -10,7 +10,7 @@ import { TOOL_NAMES } from '../core/toolcall/bash';
 import { isRecommended, shownAnswer } from '../core/toolcall/question';
 import * as dock from './dock';
 import type { DockState } from './dock';
-import { COMMANDS, type Compaction, createGate, filterName, KINDS, type Gate, type GateOptions, type Status } from './gate';
+import { COMMANDS, type Compaction, createGate, type Filter, FILTERS, type Gate, type GateOptions, type Status } from './gate';
 import { around, cell, count, flagsOf, formatTokens, right, thinkingLabel, titleOf } from './format';
 import { Band, ErrorBand, errorBandLines, Footer, footerLines, HeaderBand, type Hint, PROMPT_LINES, PromptBand } from './parts';
 import { ACCENT, BG, BORDER, FAINT, KIND_COLOR, MUTED, PANEL_BG, SELECTED_BG, TEXT, TONE } from './theme';
@@ -89,7 +89,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     const kind = /^\/filter (\S*)$/.exec(draft());
     if (kind) {
       const off = gate.filter() ? [{ name: 'off', description: 'show all blocks' }] : [];
-      return [...off, ...KINDS.map(k => ({ name: filterName(k), description: k }))]
+      return [...off, ...FILTERS.map(f => ({ name: f.name, description: f.kinds.join(' + ') }))]
         .filter(f => f.name.startsWith(kind[1]!.toLowerCase()))
         .map(f => ({ label: f.name, description: f.description, draft: `/filter ${f.name}`, run: `/filter ${f.name}` }));
     }
@@ -330,7 +330,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   return (
     <box flexDirection="column" width="100%" height="100%" backgroundColor={BG} onMouseUp={copySelection}>
       <Header gate={gate} width={width()} />
-      <Show when={gate.filter()}>{(kind: () => Kind) => <FilterLine gate={gate} kind={kind()} />}</Show>
+      <Show when={gate.filter()}>{(filter: () => Filter) => <FilterLine gate={gate} filter={filter()} />}</Show>
       <text fg={MUTED} flexShrink={0}>{`     #  ${'Type'.padEnd(11)}  ${cell('Content', titleWidth())}  Tokens  Cache  Flags`}</text>
       <box flexDirection="column" flexGrow={1} overflow="hidden" onMouseScroll={wheel}>
         <For each={visibleRows()}>
@@ -352,7 +352,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
           }}
         </For>
         <Show when={gate.filter() && !rows().length}>
-          <text fg={MUTED} flexShrink={0}>{`        no ${filterName(gate.filter()!)} blocks`}</text>
+          <text fg={MUTED} flexShrink={0}>{`        no ${gate.filter()!.name} blocks`}</text>
         </Show>
         <text fg={MUTED} flexShrink={0}>
           {`        ${'Template'.padEnd(11)}  ${cell('BOS · generation prompt', titleWidth())}  ${right(gate.split() ? String(gate.split()!.template) : '…', 6)}`}
@@ -643,17 +643,17 @@ function Header(props: { gate: Gate; width: number }) {
 }
 
 // Kind Filter: the Kind shown, its blocks and tokens of the ones sent (removed ones are not).
-function FilterLine(props: { gate: Gate; kind: Kind }) {
+function FilterLine(props: { gate: Gate; filter: Filter }) {
   const sent = () => props.gate.sent();
   const split = () => props.gate.split();
-  const shown = () => sent().flatMap((b, i) => (b.kind === props.kind ? [i] : []));
+  const shown = () => sent().flatMap((b, i) => (props.filter.kinds.includes(b.kind) ? [i] : []));
   const tokens = () => {
     const s = split();
     return s ? `${formatTokens(shown().reduce((sum, i) => sum + s.blocks[i]!, 0))}/${formatTokens(s.total)}` : '…';
   };
   return (
     <text flexShrink={0}>
-      <span style={{ fg: ACCENT }}>{`  filter: ${filterName(props.kind)}`}</span>
+      <span style={{ fg: ACCENT }}>{`  filter: ${props.filter.name}`}</span>
       <span style={{ fg: MUTED }}>{` · ${shown().length}/${sent().length} blocks · ${tokens()} tokens`}</span>
     </text>
   );

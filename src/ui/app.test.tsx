@@ -1562,19 +1562,19 @@ test('after /filter the Kinds are suggested in glossary order; off first, only w
   };
   const suggested = (f: string) => [...f.matchAll(/^ {2}([a-z-]+) +(?:[A-Z]|show all blocks)/gm)].map(m => m[1]);
   await typing('/filter ');
-  let frame = await frameMatching(ui, f => f.includes('tool-result'));
-  expect(suggested(frame)).toEqual(['system', 'tools', 'user', 'thinking', 'assistant', 'tool-call', 'tool-result', 'note']);
+  let frame = await frameMatching(ui, f => f.includes('tool-calls'));
+  expect(suggested(frame)).toEqual(['user', 'thinking', 'assistant', 'tool-calls', 'note']);
   await ui.mockInput.typeText('us');
-  frame = await frameMatching(ui, f => !f.includes('tool-result'));
+  frame = await frameMatching(ui, f => !f.includes('tool-calls'));
   expect(suggested(frame)).toEqual(['user']);
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('filter: user'));
   await typing('/filter t');
-  frame = await frameMatching(ui, f => f.includes('tool-call'));
-  expect(suggested(frame)).toEqual(['tools', 'thinking', 'tool-call', 'tool-result']);
+  frame = await frameMatching(ui, f => f.includes('tool-calls'));
+  expect(suggested(frame)).toEqual(['thinking', 'tool-calls']);
   ui.mockInput.pressBackspace();
   frame = await frameMatching(ui, f => f.includes('  off'));
-  expect(suggested(frame)).toEqual(['off', 'system', 'tools', 'user', 'thinking', 'assistant', 'tool-call', 'tool-result', 'note']);
+  expect(suggested(frame)).toEqual(['off', 'user', 'thinking', 'assistant', 'tool-calls', 'note']);
 });
 
 test('/filter off shows every block again; Esc does not', async () => {
@@ -1596,11 +1596,11 @@ test('/filter with an unknown Kind is an error listing the values; the filter st
   await write('/filter foo');
   const frame = await frameMatching(ui, f => f.includes('unknown filter foo'));
   expect(frame).toContain('✗ unknown filter foo');
-  expect(frame).toContain('off system tools user thinking assistant tool-call tool-result note');
+  expect(frame).toContain('off user thinking assistant tool-calls note');
   expect(frame).toContain('filter: user');
 });
 
-test('a filter moves the selection to the next matching block, else the previous; ↑↓ stay among the shown ones', async () => {
+test('a filter moves the selection to the next matching block; ↑↓ stay among the shown ones', async () => {
   await withUsers('one', 'two');
   await press('up');
   await press('up');
@@ -1612,10 +1612,16 @@ test('a filter moves the selection to the next matching block, else the previous
   await press('down');
   frame = await frameMatching(ui, f => previewed(f) === 'two');
   expect(line(frame, /two/)).toMatch(/^┃ +4\s+User/);
-  await write('/filter system');
-  frame = await frameMatching(ui, f => f.includes('filter: system'));
-  expect(line(frame, /System prompt/)).toMatch(/^┃ +1\s+System/);
-  expect(previewed(frame)).toBe('You are an agent.');
+});
+
+test('/filter tool-calls shows Tool Calls with their Tool Results; none follows the selection, so the previous is selected', async () => {
+  await ran('echo hi');
+  await write('/filter tool-calls');
+  const frame = await frameMatching(ui, f => f.includes('filter: tool-calls'));
+  expect(frame).toContain('filter: tool-calls · 2/6 blocks');
+  expect(line(frame, /Tool Call/)).toMatch(/^ {2} +4\s+Tool Call\s+echo hi/);
+  expect(line(frame, /Tool Result/)).toMatch(/^┃ +5\s+Tool Result\s+→ echo hi/);
+  expect(frame).not.toMatch(/\d\s+(System|Tools|User|Assistant)\s/);
 });
 
 test('with no matching block the table says so and keeps the Template row; d acts on nothing hidden', async () => {
@@ -1662,8 +1668,8 @@ test('changing the filter clears the marks; the same Kind again keeps them', asy
   expect(frame).not.toMatch(/^[ ┃] ●/m);
   await press(' ');
   await frameMatching(ui, f => /●\s+4\s+User/.test(f));
-  await write('/filter tools');
-  frame = await frameMatching(ui, f => f.includes('filter: tools'));
+  await write('/filter thinking');
+  frame = await frameMatching(ui, f => f.includes('filter: thinking'));
   await write('/filter off');
   frame = await frameMatching(ui, f => !f.includes('filter:'));
   expect(frame).not.toMatch(/^[ ┃] ●/m);

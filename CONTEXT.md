@@ -55,7 +55,7 @@ _Avoid_: reasoning, chain of thought
 Marker that keeps a Context Block at the top (after System and Tools Block) or the very end of the Context, countering lost-in-the-middle. Pinned blocks keep their order among themselves.
 
 **Kind Filter**:
-View restriction at the Review Gate to Context Blocks of one Kind. Changes nothing about the Context and is not recorded in the Session Log.
+View restriction at the Review Gate to Context Blocks of one Kind: User, Thinking, Assistant, Note, or Tool Calls with their Tool Results (never one without the other). Changes nothing about the Context and is not recorded in the Session Log.
 _Avoid_: search, hide
 
 **Model Profile**:

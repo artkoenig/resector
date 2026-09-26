@@ -56,9 +56,15 @@ export const COMMANDS = [
   { name: '/tools', arg: '<tool>', description: 'switch a tool on or off' },
   { name: '/filter', arg: '<kind>', description: 'show only blocks of one Kind' },
 ] as const;
-// The Kinds a Kind Filter takes, in glossary order, by their /filter name: kebab-case.
-export const KINDS: readonly Kind[] = ['System', 'Tools', 'User', 'Thinking', 'Assistant', 'Tool Call', 'Tool Result', 'Note'];
-export const filterName = (kind: Kind) => kind.toLowerCase().replace(' ', '-');
+// What a Kind Filter takes (FR-51), in glossary order: the Kinds each shows; a Tool Call never without its Tool Result.
+export type Filter = { name: string; kinds: readonly Kind[] };
+export const FILTERS: readonly Filter[] = [
+  { name: 'user', kinds: ['User'] },
+  { name: 'thinking', kinds: ['Thinking'] },
+  { name: 'assistant', kinds: ['Assistant'] },
+  { name: 'tool-calls', kinds: ['Tool Call', 'Tool Result'] },
+  { name: 'note', kinds: ['Note'] },
+];
 type CommandName = (typeof COMMANDS)[number]['name'];
 // In-flight answer, its reasoning apart; never persisted until complete or aborted (FR-37).
 export type Streaming = { thinking: string; text: string; abort: AbortController };
@@ -108,7 +114,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   // Marked blocks (Space) for Compaction; UI state, not logged.
   const [marked, setMarked] = createSignal<ReadonlySet<number>>(new Set());
   // Kind Filter: the one Kind the block table shows; UI state, not logged.
-  const [filter, setFilter] = createSignal<Kind | null>(null);
+  const [filter, setFilter] = createSignal<Filter | null>(null);
   const [backend, setBackend] = createSignal(options.backend);
   // Moving or pinning a Tool Pair asks first: the operation and block awaiting the same key again (FR-9).
   const [confirming, setConfirming] = createSignal<string | null>(null);
@@ -171,7 +177,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     return ids;
   });
   // Whether the Kind Filter lets a row through; a Compaction's proposal always passes.
-  const passes = (id: number, kind: Kind) => !filter() || kind === filter() || (!!compacting() && compacting()!.phase !== 'instruction' && id === live()[0]?.id);
+  const passes = (id: number, kind: Kind) => !filter() || filter()!.kinds.includes(kind) || (!!compacting() && compacting()!.phase !== 'instruction' && id === live()[0]?.id);
   // The rows shown, in order.
   const shown = createMemo(() => {
     const kinds = new Map<number, Kind>([...sent(), ...live()].map(b => [b.id, b.kind]));
@@ -697,10 +703,10 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
 
   // /filter <kind> shows only blocks of that Kind, /filter off all again. A change clears the marks: none stay hidden.
   function filterBy(name: string) {
-    const kind = name.toLowerCase() === 'off' ? null : KINDS.find(k => filterName(k) === name.toLowerCase());
-    if (kind === undefined) return setStatus({ text: `unknown filter ${name}: off ${KINDS.map(filterName).join(' ')}`, tone: 'error' });
-    if (kind !== filter()) setMarked(new Set<number>());
-    setFilter(kind);
+    const chosen = name.toLowerCase() === 'off' ? null : FILTERS.find(f => f.name === name.toLowerCase());
+    if (chosen === undefined) return setStatus({ text: `unknown filter ${name}: off ${FILTERS.map(f => f.name).join(' ')}`, tone: 'error' });
+    if (chosen !== filter()) setMarked(new Set<number>());
+    setFilter(chosen);
   }
 
   const commands: Record<CommandName, (arg: string) => void> = {
