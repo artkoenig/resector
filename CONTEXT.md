@@ -36,6 +36,10 @@ _Avoid_: breakpoint, approval
 Decision whether a Tool Call the model requested may run, taken before execution by Permission Rules (`allow`, `ask`, `deny`) or by the user at the Review Gate. Distinct from the Review Gate itself, which sits before the request.
 _Avoid_: permission prompt
 
+**Question**:
+Tool Call in which the model asks the user one or more questions, each with at least two options, at least one of them the Recommended Option, and always allowing a free-text answer. A Question without a valid Recommended Option is rejected back to the model and never reaches the user. The user answers, skips single questions or declines as a whole; the answer becomes its Tool Result, written by the user instead of a tool. Never needs Tool Approval, but Permission Rules can switch it off.
+_Avoid_: prompt, ask, approval
+
 **Compaction**:
 User-controlled rewrite of selected Context Blocks by the LLM, following a user instruction, into one Note at the position of the first source. The model sees only the selected blocks and the instruction. The user reviews the proposal and accepts, discards or refines it (refine starts again from the sources). On accept the sources count as removed; undo brings them back.
 _Avoid_: summarization, auto-compact
