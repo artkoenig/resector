@@ -313,7 +313,7 @@ function PromptMeta(props: { mode: Mode }) {
   return (
     <Show when={props.mode !== 'context'}>
       <span style={{ fg: props.mode === 'rename' ? ACCENT : KIND_COLOR.User }}>{props.mode === 'rename' ? 'title' : 'User'}</span>
-      <span style={{ fg: MUTED }}>{props.mode === 'rename' ? '  display only, never sent · empty resets' : '  adds a block, not sent'}</span>
+      <span style={{ fg: MUTED }}>{props.mode === 'rename' ? '  display only, never sent · empty resets' : '  adds a block and sends the Context'}</span>
     </Show>
   );
 }
@@ -426,7 +426,7 @@ const MODE_KEYS: Partial<Record<KeyMode, Hint[]>> = {
   review: [['enter', 'accept'], ['x', 'discard'], ['i', 'instruction'], ['e', 'edit'], ...LOOK_KEYS],
   instruction: [['enter', 'compact'], ['tab', 'default'], ['esc', 'back']],
   suggest: [['↑↓', 'choose'], ['tab', 'complete'], ['enter', 'run'], ['esc', 'back']],
-  input: [['enter', 'add'], ['tab/esc', 'back']],
+  input: [['enter', 'send'], ['tab/esc', 'back']],
   rename: [['enter', 'set title'], ['tab/esc', 'cancel']],
 };
 function modeKeys(gate: Gate, mode: KeyMode): Hint[] {
