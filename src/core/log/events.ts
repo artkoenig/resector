@@ -7,7 +7,7 @@ export type Origin = 'config' | 'user' | 'model' | 'tool' | 'compaction' | 'file
 export type Stopped = 'killed' | 'timeout';
 export type ToolProtocol = 'native';
 // The tools the harness runs (FR-21).
-export type Tool = 'bash' | 'search';
+export type Tool = 'bash' | 'search' | 'question';
 // Reasoning (FR-49): 'off', 'on', or an effort level the model's chat template accepts (e.g. 'low', 'xhigh').
 export type Thinking = string;
 
@@ -22,8 +22,8 @@ export type SessionEvent =
   | { type: 'ProfileFallback'; profile: string }
   // Session title; empty = reset to the first User message (FR-34).
   | { type: 'SessionRenamed'; title: string }
-  // Tool Call: content = the bash command or the search query, `tool` = its tool (absent: bash);
-  // Tool Result: `call` = its Tool Call, content = the output.
+  // Tool Call: content = the bash command, the search query or the question's arguments (JSON), `tool` = its tool (absent: bash);
+  // Tool Result: `call` = its Tool Call, content = the output (origin user: the answer to a Question).
   // file: the file a Note was read from; pin: added pinned (environment Note, project instructions).
   | { type: 'BlockAdded'; id: number; kind: Kind; origin: Origin; content: string; tool?: Tool; cutOff?: true; call?: number; stopped?: Stopped; file?: string; pin?: Pin }
   // `@<path>[:a-b]` (FR-27): a reference row, read only on send …

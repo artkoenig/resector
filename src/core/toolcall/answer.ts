@@ -31,5 +31,9 @@ export function answerBlocks(result: ChatResult, first: number, tools: string[])
   const text = textBlocks(result.thinking, content, cutOff, runnable.length > 0, first);
   const toolCalls = runnable.map(({ tool, content }, i): BlockAdded =>
     ({ type: 'BlockAdded', id: first + text.length + i, kind: 'Tool Call', origin: 'model', content, ...(tool !== 'bash' && { tool }) }));
-  return { events: [...text, ...toolCalls], notRun: cutOff ? null : (calls.flatMap(errorOf)[0] ?? null) };
+  // A rejected Question is answered with the error right away (never shown to the user), after all calls (architecture §3).
+  const rejections = runnable.flatMap(({ rejected }, i) => (rejected === undefined ? [] : [{ call: toolCalls[i]!.id, rejected }]));
+  const results = rejections.map(({ call, rejected }, i): BlockAdded =>
+    ({ type: 'BlockAdded', id: first + text.length + toolCalls.length + i, kind: 'Tool Result', origin: 'tool', content: `error: ${rejected}`, call }));
+  return { events: [...text, ...toolCalls, ...results], notRun: cutOff ? null : (calls.flatMap(errorOf)[0] ?? null) };
 }

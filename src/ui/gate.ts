@@ -15,6 +15,7 @@ import { DEFAULT_MODES } from '../core/render/template';
 import { budget, lastDrift, type Budget } from '../core/tokens/budget';
 import { answerBlocks } from '../core/toolcall/answer';
 import { toolsIn, type Runner } from '../core/toolcall/bash';
+import { answerText, questionsOf, type Question } from '../core/toolcall/question';
 import { count, errorText, formatTokens, thinkingLabel, titleOf } from './format';
 
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
@@ -59,6 +60,8 @@ type CommandName = (typeof COMMANDS)[number]['name'];
 export type Streaming = { thinking: string; text: string; abort: AbortController };
 // Approved Tool Call running; its output so far is shown, the result is logged when it ends. timeout: its tool's.
 export type Running = { call: Block; output: string; started: number; timeout: number; abort: AbortController };
+// A Question awaiting the user's answer in the dock: its Tool Call and questions.
+export type Asked = { call: Block; questions: Question[] };
 // The row of an answer or result not in the Context yet, shown before the block `before` (null: at the end).
 // A proposal has its own title, heading and, once counted, tokens.
 export type Live = { id: number; kind: Kind; content: string; before: number | null; title?: string; heading?: string; tokens?: number };
@@ -86,6 +89,7 @@ export type Compaction = Compactor & {
 const UNDONE: Partial<Record<SessionEvent['type'], string>> = { PairToNote: 'Tool Pair → Note' };
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const APPROVE = 'y run once · a allow for session · n reject · e edit';
+const QUESTION_HINT = 'the model asks – answer in the dock';
 // The prediction checked against the server (FR-41); a server reusing more than predicted is harmless.
 const cacheMiss = ({ predicted, cached }: ChatResult) =>
   predicted !== null && cached !== null && cached < predicted ? `cache: predicted ${predicted} · server reused ${cached}` : null;
@@ -316,7 +320,8 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     held = !!notRun;
     append({ type: 'ResponseReceived', usage: result.usage, cached: result.cached });
     const miss = cacheMiss(result);
-    if (ops.nextCall(context())) return advance([notRun && notRunText(notRun), miss && `⚠ ${miss}`].filter((n): n is string => !!n));
+    // Calls to decide, or only a rejected Question already answered: the loop goes on.
+    if (events.some(e => e.kind === 'Tool Call')) return advance([notRun && notRunText(notRun), miss && `⚠ ${miss}`].filter((n): n is string => !!n));
     const status = answerStatus(result, notRun);
     setStatus(miss ? { text: `${status.text} · ⚠ ${miss}`, tone: 'warn' } : status);
   }
@@ -334,6 +339,11 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   // first to ask for is selected. Then the results are sent, or held at the Gate. notes: what happened so far.
   function advance(notes: string[] = []) {
     for (let call = ops.nextCall(context()); call; call = ops.nextCall(context())) {
+      // A Question never needs Tool Approval: the dock opens (asked) and waits for the answer.
+      if (call.tool === 'question') {
+        setSelected(call.id);
+        return setStatus({ text: [...notes, `? ${QUESTION_HINT}`].join(' · '), tone: 'warn' });
+      }
       const { action } = verdictOf(call);
       if (action === 'allow') return void run(call, notes);
       if (action === 'ask') {
@@ -371,10 +381,24 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     }
   }
 
+  // The Question the dock asks now: the next pending call, while nothing streams or runs.
+  const asked = createMemo((): Asked | null => {
+    const call = ops.nextCall(context());
+    return call?.tool === 'question' && !streaming() && !running() ? { call, questions: questionsOf(call.content) } : null;
+  });
+  // The user's answers, one per question: the Tool Result, written by the user; then the loop goes on.
+  function answer(answers: string[]) {
+    const question = asked();
+    if (!question) return;
+    setSelected(nextId());
+    append({ type: 'BlockAdded', id: nextId(), kind: 'Tool Result', origin: 'user', content: answerText(question.questions, answers), call: question.call.id });
+    advance();
+  }
+
   // The selected Tool Call, if it may be decided on now.
   function decidable(): Block | null {
     const block = selectedBlock();
-    const error = block ? ops.approvable(context(), block) : 'not awaiting approval';
+    const error = block?.tool === 'question' && block.pending ? QUESTION_HINT : block ? ops.approvable(context(), block) : 'not awaiting approval';
     if (error) setStatus({ text: error, tone: 'info' });
     return error ? null : block!;
   }
@@ -409,8 +433,10 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   // and nothing changed since.
   function unsendable(): Status | null {
     const pending = ops.nextCall(context());
-    if (pending) setSelected(pending.id);
-    if (pending) return { text: `Tool Calls await approval – ${APPROVE} on the ? approve row`, tone: 'warn' };
+    if (pending) {
+      setSelected(pending.id);
+      return { text: pending.tool === 'question' ? QUESTION_HINT : `Tool Calls await approval – ${APPROVE} on the ? approve row`, tone: 'warn' };
+    }
     const changed = lastAnswer() !== null && !same(lastAnswer(), request());
     // The last unpinned block: a User message, a Tool Result or a Note (e.g. an @path reference) asks for an answer.
     const last = sent().filter(b => !b.pin).at(-1)?.kind;
@@ -708,7 +734,9 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     allowForSession,
     reject,
     // Why the rules ask for a pending call, per sub-command (FR-22); null for any other block.
-    verdict: (block: Block): Verdict | null => (block.pending ? verdictOf(block) : null),
+    verdict: (block: Block): Verdict | null => (block.pending && block.tool !== 'question' ? verdictOf(block) : null),
+    asked,
+    answer,
     select: (delta: number) => selectAt(rows().indexOf(selected()) + delta),
     move,
     pin,

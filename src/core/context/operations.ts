@@ -67,9 +67,10 @@ export type Editor = (text: string) => Promise<string>;
 // The content a block is added with.
 const FIRST_REVISION = 1;
 
-// Why the block cannot be edited, or null: all kinds but the Tools Block and executed Tool Calls (FR-8).
+// Why the block cannot be edited, or null: all kinds but the Tools Block, executed Tool Calls and Questions (FR-8).
 export function editable(block: Block): string | null {
   if (block.kind === 'Tools') return 'Tools Block is not editable';
+  if (block.tool === 'question' && block.pending) return 'a Question is answered in the dock, not edited';
   return block.kind === 'Tool Call' && !block.pending ? 'executed Tool Calls are immutable' : null;
 }
 

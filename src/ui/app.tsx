@@ -7,6 +7,7 @@ import type { Kind } from '../core/log/events';
 import type { Block } from '../core/log/fold';
 import { fileCompletions } from '../core/notes/files';
 import { TOOL_NAMES } from '../core/toolcall/bash';
+import { isRecommended, orderedOptions, type Question } from '../core/toolcall/question';
 import { COMMANDS, type Compaction, createGate, type Gate, type GateOptions, type Status } from './gate';
 import { around, cell, count, flagsOf, formatTokens, right, thinkingLabel, titleOf } from './format';
 import { Band, ErrorBand, errorBandLines, Footer, footerLines, HeaderBand, type Hint, PROMPT_LINES, PromptBand } from './parts';
@@ -128,6 +129,64 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   createEffect(on(gate.selected, () => preview?.scrollTo(0)));
 
   const inputKeys: Record<string, () => void> = { return: submit, tab: leaveInput, escape: leaveInput };
+
+  // Question dock (#33): replaces the input line while the model's Question is next. The questions are answered
+  // one after another; `choice` is the row chosen in the current one, the last row the own answer (typed while `typingOwn`).
+  const [step, setStep] = createSignal(0);
+  const [choice, setChoice] = createSignal(0);
+  const [answers, setAnswers] = createSignal<string[]>([]);
+  const [typingOwn, setTypingOwn] = createSignal(false);
+  createEffect(
+    on(
+      () => gate.asked()?.call.id,
+      id => {
+        setStep(0);
+        setChoice(0);
+        setAnswers([]);
+        setTypingOwn(false);
+        if (id !== undefined) leaveInput();
+      },
+    ),
+  );
+  const question = (): Question | undefined => gate.asked()?.questions[step()];
+  const choices = () => orderedOptions(question()!);
+  // The dock takes the keys; a Compaction under way keeps them.
+  const dockOpen = () => !!question() && !phase();
+  // An answer for the current question; after the last one, all are the Tool Result and the Context is sent.
+  function record(text: string) {
+    const next = [...answers(), text];
+    setTypingOwn(false);
+    editDraft('');
+    if (next.length === gate.asked()!.questions.length) return gate.answer(next);
+    setAnswers(next);
+    setStep(step() + 1);
+    setChoice(0);
+  }
+  function pick(i: number) {
+    if (i === choices().length) return setTypingOwn(true);
+    if (i < choices().length) record(choices()[i]!.label);
+  }
+  const moveChoice = (delta: number) => setChoice((choice() + delta + choices().length + 1) % (choices().length + 1));
+  const dockKeys: Record<string, () => void> = {
+    up: () => moveChoice(-1),
+    k: () => moveChoice(-1),
+    down: () => moveChoice(1),
+    j: () => moveChoice(1),
+    return: () => pick(choice()),
+    'shift+up': () => scrollPreview(-1),
+    'shift+down': () => scrollPreview(1),
+    q: props.onQuit,
+    ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => [String(n), () => pick(n - 1)])),
+  };
+  const ownKeys: Record<string, () => void> = {
+    return: () => draft().trim() && record(draft().trim()),
+    escape: () => {
+      setTypingOwn(false);
+      editDraft('');
+    },
+  };
+  // Lines of the dock above the prompt band: the question, its options, the own answer.
+  const dockLines = () => (question() ? choices().length + 2 : 0);
   // Compaction (FR-13, FR-15): writing the instruction, then the Gate locked on the proposal.
   // A memo: `on(phase)` must fire on a phase change only, not on every update of the Compaction.
   const phase = createMemo(() => gate.compacting()?.phase);
@@ -196,9 +255,10 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     const onSuggestion = suggestion() ? suggestionKeys[key] : undefined;
     if (onSuggestion) return onSuggestion;
     if (phase() === 'instruction') return instructionKeys[key];
-    if (mode() !== 'context') return inputKeys[key];
-    return phase() === 'review' ? reviewKeys[name] : contextAction(name);
+    if (dockOpen()) return typingOwn() ? ownKeys[key] : dockKeys[name];
+    return mode() !== 'context' ? inputKeys[key] : gateAction(name);
   }
+  const gateAction = (name: string) => (phase() === 'review' ? reviewKeys[name] : contextAction(name));
   useKeyboard(key => {
     const action = actionOf(key.name, modifierOf(key) + key.name);
     // Handled here only: `/`, `@`, `i` must not also type into the input they focus, Tab not reach it.
@@ -217,12 +277,13 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   // An error has its own band; the footer then shows only the hints.
   const error = () => (status()?.tone === 'error' ? status()!.text : null);
   const footerStatus = () => (error() === null ? status() : null);
-  const keys = () => keysOf(gate, suggestion() ? (suggestion()!.run === null ? 'complete' : 'suggest') : (phase() ?? mode()), error() !== null);
+  const keyMode = (): KeyMode => (dockOpen() ? (typingOwn() ? 'answer' : 'question') : (phase() ?? mode()));
+  const keys = () => keysOf(gate, suggestion() ? (suggestion()!.run === null ? 'complete' : 'suggest') : keyMode(), error() !== null);
   const errorLines = () => (error() === null ? 0 : errorBandLines(error()!, width()) + 1);
   // Block rows that fit: the screen less header band, column header, Template, preview band, error band, suggestions,
   // prompt band and footer. Preview and error band have a blank line above, the prompt band too. Lines never shrink, so rows cannot overlap.
   const capacity = () =>
-    Math.max(1, size().height - 2 - 2 - (previewHeight() + 1) - errorLines() - 1 - suggestions().length - PROMPT_LINES - footerLines(footerStatus()?.text ?? '', keys(), width()));
+    Math.max(1, size().height - 2 - 2 - (previewHeight() + 1) - errorLines() - 1 - suggestions().length - dockLines() - PROMPT_LINES - footerLines(footerStatus()?.text ?? '', keys(), width()));
   // The rows shown: a window around the selection.
   const visibleRows = () => around(rows(), rows().findIndex(r => r.id === gate.selected() && !r.removed), capacity());
   // The wheel over the block table moves the selection, like ↑↓ (also while busy).
@@ -317,17 +378,23 @@ export function App(props: GateOptions & { onQuit: () => void }) {
           </text>
         )}
       </For>
+      <Show when={question()}>
+        {(q: () => Question) => <Dock question={q()} choice={choice()} step={step()} total={gate.asked()!.questions.length} width={width()} />}
+      </Show>
       <PromptBand
         meta={
-          <Show when={gate.compacting()} fallback={<PromptMeta mode={mode()} />}>
+          <Show when={gate.compacting()} fallback={<PromptMeta mode={mode()} question={!!question()} />}>
             {(c: () => Compaction) => <CompactionMeta gate={gate} compaction={c()} />}
           </Show>
         }
       >
-        <Show when={mode() !== 'context' || phase() === 'instruction'} fallback={<text fg={idle().fg}>{idle().text}</text>}>
+        <Show when={mode() !== 'context' || phase() === 'instruction' || typingOwn()} fallback={<text fg={question() ? TONE.warn : idle().fg}>{question() ? 'pick an answer above – or own answer to type one' : idle().text}</text>}>
           <box flexDirection="row" flexGrow={1}>
             <Show when={phase() === 'instruction'}>
               <text fg={ACCENT} flexShrink={0}>{'instruction > '}</text>
+            </Show>
+            <Show when={typingOwn()}>
+              <text fg={ACCENT} flexShrink={0}>{'answer > '}</text>
             </Show>
             <input
               focused
@@ -384,12 +451,42 @@ function ReferenceHint(props: { block: Block | undefined }) {
   );
 }
 
-// Third line of the prompt band: what Enter does with the draft.
-function PromptMeta(props: { mode: Mode }) {
+// The model's Question (#33): the question, then its options, the Recommended Option first and marked, then the own answer.
+function Dock(props: { question: Question; choice: number; step: number; total: number; width: number }) {
+  const options = () => orderedOptions(props.question);
+  const labelWidth = () => Math.max(...options().map(o => o.label.length));
+  const progress = () => (props.total > 1 ? ` (${props.step + 1}/${props.total})` : '');
+  const marker = (i: number) => `  ${i === props.choice ? '›' : ' '} ${i + 1} `;
   return (
-    <Show when={props.mode !== 'context'}>
-      <span style={{ fg: KIND_COLOR.User }}>User</span>
-      <span style={{ fg: MUTED }}>  adds a block and sends the Context · @path[:a-b] adds a file</span>
+    <>
+      <text flexShrink={0}>
+        <span style={{ fg: ACCENT }}>{`  ${props.question.header}${progress()} · `}</span>
+        <span style={{ fg: TEXT }}>{cell(props.question.question, Math.max(8, props.width - props.question.header.length - progress().length - 5)).trimEnd()}</span>
+      </text>
+      <For each={options()}>
+        {(o, i) => (
+          <text flexShrink={0} bg={i() === props.choice ? SELECTED_BG : undefined}>
+            <span style={{ fg: i() === props.choice ? ACCENT : TEXT }}>{`${marker(i())}${o.label.padEnd(labelWidth())} `}</span>
+            <span style={{ fg: TONE.ok }}>{isRecommended(props.question, o) ? 'recommended ' : ''}</span>
+            <span style={{ fg: MUTED }}>{o.description}</span>
+          </text>
+        )}
+      </For>
+      <text flexShrink={0} bg={props.choice === options().length ? SELECTED_BG : undefined} fg={props.choice === options().length ? ACCENT : MUTED}>
+        {`${marker(options().length)}own answer`}
+      </text>
+    </>
+  );
+}
+
+// Third line of the prompt band: what Enter does with the draft; with a Question, what answering does.
+function PromptMeta(props: { mode: Mode; question: boolean }) {
+  return (
+    <Show when={props.mode !== 'context' || props.question}>
+      <Show when={props.question} fallback={<><span style={{ fg: KIND_COLOR.User }}>User</span><span style={{ fg: MUTED }}>  adds a block and sends the Context · @path[:a-b] adds a file</span></>}>
+        <span style={{ fg: KIND_COLOR['Tool Result'] }}>Tool Result</span>
+        <span style={{ fg: MUTED }}>  the answer, written by you – the Context is sent right away</span>
+      </Show>
     </Show>
   );
 }
@@ -520,7 +617,7 @@ function statusOf(gate: Gate, spin: string): Status | null {
 }
 
 // Key hints right of the status; they stay visible. An error band adds how to dismiss it.
-type KeyMode = Mode | 'suggest' | 'complete' | Compaction['phase'];
+type KeyMode = Mode | 'suggest' | 'complete' | 'question' | 'answer' | Compaction['phase'];
 function keysOf(gate: Gate, mode: KeyMode, error: boolean): Hint[] {
   const keys = modeKeys(gate, mode);
   return error && mode === 'context' ? [...keys.slice(0, -1), ['esc', 'dismiss'], keys.at(-1)!] : keys;
@@ -533,6 +630,8 @@ const MODE_KEYS: Partial<Record<KeyMode, Hint[]>> = {
   suggest: [['↑↓', 'choose'], ['tab', 'complete'], ['enter', 'run'], ['esc', 'back']],
   complete: [['↑↓', 'choose'], ['tab/enter', 'complete'], ['esc', 'back']],
   input: [['enter', 'send'], ['tab/esc', 'back']],
+  question: [['↑↓ jk', 'choose'], ['enter 1–9', 'pick'], ['q', 'quit']],
+  answer: [['enter', 'answer'], ['esc', 'back']],
 };
 function modeKeys(gate: Gate, mode: KeyMode): Hint[] {
   const own = MODE_KEYS[mode];

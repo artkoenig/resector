@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import { callArguments, parseCall, resultText, toggleTool, TOOLS, toolNames } from './bash';
+import { QUESTION_DEFINITION } from './question';
 
 const SEARCH = {
   name: 'search',
@@ -7,31 +8,33 @@ const SEARCH = {
   parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
 };
 
-test('a new Tools Block offers bash with one command parameter (FR-12, FR-21)', () => {
-  expect(JSON.parse(TOOLS)).toEqual([
-    {
-      name: 'bash',
-      description: expect.stringContaining('project root'),
-      parameters: { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] },
-    },
-  ]);
-  expect(toolNames(TOOLS)).toBe('bash');
+const BASH = {
+  name: 'bash',
+  description: expect.stringContaining('project root'),
+  parameters: { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] },
+};
+
+test('a new Tools Block offers bash with one command parameter and question (FR-12, FR-21)', () => {
+  expect(JSON.parse(TOOLS)).toEqual([BASH, QUESTION_DEFINITION]);
+  expect(QUESTION_DEFINITION.description).toContain('always a recommendation');
+  expect(QUESTION_DEFINITION.description).toContain('never add an "Other" option');
+  expect(toolNames(TOOLS)).toBe('bash, question');
   expect(toolNames('[{"name":"a"},{"name":"b"}]')).toBe('a, b');
   expect(toolNames('[]')).toBe('no tools');
 });
 
 test('/tools switches a tool off and on again; an unknown one is refused', () => {
-  const off = toggleTool(TOOLS, 'bash');
-  expect(off).toEqual({ content: '[]' });
-  expect(toggleTool('[]', 'bash')).toEqual({ content: TOOLS });
-  expect(toggleTool(TOOLS, 'python')).toEqual({ error: 'unknown tool python – bash search' });
-  expect(toggleTool(TOOLS, 'toString')).toEqual({ error: 'unknown tool toString – bash search' });
+  const off = toggleTool(TOOLS, 'bash') as { content: string };
+  expect(toolNames(off.content)).toBe('question');
+  expect(toggleTool(off.content, 'bash')).toEqual({ content: TOOLS });
+  expect(toggleTool(TOOLS, 'python')).toEqual({ error: 'unknown tool python – bash search question' });
+  expect(toggleTool(TOOLS, 'toString')).toEqual({ error: 'unknown tool toString – bash search question' });
 });
 
 test('/tools search switches search on after bash, with one query parameter; off again, bash stays', () => {
   const on = toggleTool(TOOLS, 'search') as { content: string };
-  expect(JSON.parse(on.content)).toEqual([JSON.parse(TOOLS)[0], SEARCH]);
-  expect(toolNames(on.content)).toBe('bash, search');
+  expect(JSON.parse(on.content)).toEqual([BASH, SEARCH, QUESTION_DEFINITION]);
+  expect(toolNames(on.content)).toBe('bash, search, question');
   expect(toggleTool('[]', 'search')).toEqual({ content: JSON.stringify([JSON.parse(on.content)[1]], null, 2) });
   expect(toggleTool(on.content, 'search')).toEqual({ content: TOOLS });
 });
@@ -46,9 +49,20 @@ test('a bash call yields its command, a search call its query', () => {
   expect(parseCall({ name: 'search', arguments: '{"query":"bun"}' }, ['bash'])).toEqual({ error: 'tool search is off (/tools)' });
 });
 
+const QUESTION = { questions: [{ question: 'Which?', header: 'Pick', options: [{ label: 'A', description: 'a' }, { label: 'B', description: 'b' }], recommended: 'A' }] };
+
+test('a question call yields its arguments as content; an invalid one is rejected back to the model', () => {
+  const args = JSON.stringify(QUESTION);
+  expect(parseCall({ name: 'question', arguments: args }, ['question'])).toEqual({ tool: 'question', content: args });
+  const invalid = JSON.stringify({ questions: [{ ...QUESTION.questions[0], recommended: 'C' }] });
+  expect(parseCall({ name: 'question', arguments: invalid }, ['question'])).toEqual({ tool: 'question', content: invalid, rejected: 'question 1: recommended "C" is not an option label' });
+  expect(parseCall({ name: 'question', arguments: args }, ['bash'])).toEqual({ error: 'tool question is off (/tools)' });
+});
+
 test('a call is sent back with the arguments it came with', () => {
   expect(callArguments('bash', 'ls -la')).toBe('{"command":"ls -la"}');
   expect(callArguments('search', 'bun')).toBe('{"query":"bun"}');
+  expect(callArguments('question', JSON.stringify(QUESTION))).toBe(JSON.stringify(QUESTION));
 });
 
 test('other tools, broken JSON or a missing command are not runnable', () => {

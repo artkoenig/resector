@@ -1,13 +1,13 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
-import { TOOLS } from '../toolcall/bash';
+import { BASH_TOOLS } from '../../../test/requests';
 import { renderNative, renderPrefixes } from './native';
 
 const created: SessionEvent = { type: 'SessionCreated', profile: 'default', protocol: 'native' };
 const add = (id: number, kind: Extract<SessionEvent, { type: 'BlockAdded' }>['kind'], content: string, call?: number): SessionEvent =>
   ({ type: 'BlockAdded', id, kind, origin: 'user', content, ...(call !== undefined && { call }) });
-const BASH = { type: 'function' as const, function: JSON.parse(TOOLS)[0] };
+const BASH = { type: 'function' as const, function: JSON.parse(BASH_TOOLS)[0] };
 
 test('each block becomes one chat message with its role', () => {
   const context = fold([
@@ -46,7 +46,7 @@ test('removed blocks are not sent; a bottom pin is sent as a user-role Note at t
 const loop = [
   created,
   add(1, 'System', 'sys'),
-  add(2, 'Tools', TOOLS),
+  add(2, 'Tools', BASH_TOOLS),
   add(3, 'User', 'look'),
   add(4, 'Assistant', 'checking'),
   add(5, 'Tool Call', 'ls'),

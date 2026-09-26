@@ -14,7 +14,7 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 
 - One developer, one machine, local OpenAI-compatible backends: llama.cpp server, Ollama, LM Studio, oMLX.
 - Platforms: macOS and Linux (arm64, x64). No Windows.
-- **Out of scope v1:** automatic placement rules / auto-compaction, MCP, LSP, web tools other than `search`, cloud-provider optimisation, bash sandboxing, forking sessions, file snapshots/restore, auto-update, tools other than `bash` and `search`.
+- **Out of scope v1:** automatic placement rules / auto-compaction, MCP, LSP, web tools other than `search`, cloud-provider optimisation, bash sandboxing, forking sessions, file snapshots/restore, auto-update, tools other than `bash`, `search` and `question`.
 
 ## 4. Functional requirements
 
@@ -65,7 +65,7 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 
 ### 4.5 Tool execution & Tool Approval
 
-- **FR-21** Tools: `bash` and `search`. A new session's Tools Block offers `bash` only; `/tools search` switches search on. `search {query}` runs `ddgr --json -n 5` (DuckDuckGo), is always allowed (no permission rule), timeout 30 s; its Tool Call's title is `search <query>`. `bash`: timeout 120 s (configurable); stdin `/dev/null`; `Esc` kills a running command → partial output + `⚠ killed`; timeout → `⚠ timeout`.
+- **FR-21** Tools: `bash`, `search` and `question`. A new session's Tools Block offers `bash` and `question`; `/tools search` switches search on. `question` (a Question, see `CONTEXT.md`) never needs Tool Approval: the questions, each with at least 2 options and a Recommended Option, open a dock in place of the input line (Recommended Option first, marked, preselected; ↑↓/j/k, Enter or 1–9 pick, last row = own answer); the answers become its Tool Result (`<question>: <answer>` per line) and the Context is sent. A Question without a valid Recommended Option is answered with the error at once, never shown. `search {query}` runs `ddgr --json -n 5` (DuckDuckGo), is always allowed (no permission rule), timeout 30 s; its Tool Call's title is `search <query>`. `bash`: timeout 120 s (configurable); stdin `/dev/null`; `Esc` kills a running command → partial output + `⚠ killed`; timeout → `⚠ timeout`.
 - **FR-22** Permission rules `{pattern: allow|ask|deny}`, last match wins, default `ask`. Built-in `allow`: `ls`, `cat`, `head`, `tail`, `wc`, `grep`, `rg`, `find`, `sed -n`, `git status|diff|log|show`. Compound commands (`&&`, `;`, `|`, `$(…)`) are split with tree-sitter-bash; every sub-command must be allowed; unparseable → `ask`. Arguments pointing outside the project (absolute paths, `..`) → `ask`.
 - **FR-23** Allowed call runs immediately. `ask` → the Tool Call row shows `? approve` and sending is blocked. On the selected pending row: `y` run once, `a` allow for session (prefix + ` *`, shown in the preview before pressing, saved at once), `n` reject → result `rejected by user`, `e` edit command → new Revision, re-evaluated. `deny` → result `denied by rule`. Once all calls of an answer are decided: if every one ran (allowed, `y`, `a`) and none was stopped, the results are sent automatically; otherwise (rejected, denied, killed, timeout, not run) the Gate shows the results and `Enter` sends.
 - **FR-24** Several calls in one answer are approved one by one in order; results keep call order.

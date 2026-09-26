@@ -6,6 +6,8 @@ import { TextAttributes } from '@opentui/core';
 import { testRender } from '@opentui/solid';
 import { startFakeLlamaCpp } from '../../test/fake-llamacpp';
 import { frameMatching } from '../../test/frames';
+import { BASH_TOOLS, withTools } from '../../test/requests';
+import { TOOLS } from '../core/toolcall/bash';
 import { connectLlamaCpp } from '../adapters/backend/llamacpp';
 import { createRunner } from '../adapters/bash/runner';
 import { createSplit } from '../adapters/bash/split';
@@ -13,7 +15,6 @@ import { createSessionLog } from '../adapters/store/session-log';
 import { permissionRules, type Permissions, type Split } from '../core/approval/approval';
 import { listProjectFiles, projectFiles } from '../adapters/fs/project';
 import { newSession, type SessionNotes } from '../core/session/session';
-import { TOOLS } from '../core/toolcall/bash';
 import { App } from './app';
 import { formatTokens } from './format';
 import { TONE } from './theme';
@@ -42,11 +43,11 @@ let copied: string[];
 let environment: string;
 let openedFiles: string[];
 
-// `users`: User blocks already in the Session Log, not yet sent; `global`, `project`: permission rules of the config.
+// `tools`: the Tools Block (default bash only, so token counts stay put). `users`: User blocks already in the Session Log, not yet sent; `global`, `project`: permission rules of the config.
 // `calls`: pending Tool Calls after them, as at a resume. `template`: the chat template the server reports.
 // `window`: the server's context size; `exact`: false counts like an inexact tokenizer (Ollama, LM Studio).
-type Start = { template?: string; window?: number; exact?: boolean; notes?: SessionNotes; timeout?: number; compactor?: GateOptions['compactor']; users?: string[]; calls?: string[]; global?: Permissions; project?: Permissions };
-async function start({ template, window = 4096, exact = true, notes, timeout = 120, compactor, users = [], calls = [], global, project: own }: Start = {}) {
+type Start = { tools?: string; template?: string; window?: number; exact?: boolean; notes?: SessionNotes; timeout?: number; compactor?: GateOptions['compactor']; users?: string[]; calls?: string[]; global?: Permissions; project?: Permissions };
+async function start({ tools = BASH_TOOLS, template, window = 4096, exact = true, notes, timeout = 120, compactor, users = [], calls = [], global, project: own }: Start = {}) {
   editor = async text => text;
   copied = [];
   environment = notes?.environment ?? '';
@@ -59,7 +60,7 @@ async function start({ template, window = 4096, exact = true, notes, timeout = 1
   const searcher = { timeout: 30, run: async (query: string) => ({ output: `results for ${query}\n`, exit: 0, stopped: null }) };
   const first = newSession('default', '', notes).length;
   const initial = [
-    ...newSession('default', 'You are an agent.', notes),
+    ...withTools(newSession('default', 'You are an agent.', notes), tools),
     ...users.map((content, i) => ({ type: 'BlockAdded' as const, id: i + first, kind: 'User' as const, origin: 'user' as const, content })),
     ...calls.map((content, i) => ({ type: 'BlockAdded' as const, id: users.length + i + first, kind: 'Tool Call' as const, origin: 'model' as const, content })),
   ];
@@ -72,7 +73,7 @@ async function start({ template, window = 4096, exact = true, notes, timeout = 1
     { width: 80, height: 20 },
   );
   const size = ` / ${formatTokens(window)}`;
-  await frameMatching(ui, f => f.includes(users.length || notes ? size : `52${size}`) && !f.includes(`…${size}`));
+  await frameMatching(ui, f => f.includes(users.length || notes || tools !== BASH_TOOLS ? size : `52${size}`) && !f.includes(`…${size}`));
   const events = () => readFileSync(log.path, 'utf8').trim().split('\n').map(l => JSON.parse(l));
   return { events, opened };
 }
@@ -107,7 +108,7 @@ test('the Gate shows every Context Block with its exact tokens and the Template 
   expect(events()).toEqual([
     { type: 'SessionCreated', profile: 'default', protocol: 'native' },
     { type: 'BlockAdded', id: 1, kind: 'System', origin: 'config', content: 'You are an agent.' },
-    { type: 'BlockAdded', id: 2, kind: 'Tools', origin: 'config', content: TOOLS },
+    { type: 'BlockAdded', id: 2, kind: 'Tools', origin: 'config', content: BASH_TOOLS },
   ]);
 });
 
@@ -1321,4 +1322,75 @@ test('a file reference alone is sent with Enter, the file as the last user messa
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('answer complete'));
   expect(messages(0).at(-1)).toEqual({ role: 'user', content: '[alone.txt]\ncontent' });
+});
+
+// Question (#33) --------------------------------------------------------------------------------------------
+const RUNTIME = { question: 'Which runtime should we use?', header: 'Runtime', options: [{ label: 'Node', description: 'common' }, { label: 'Bun', description: 'fast' }], recommended: 'Bun' };
+const questionCall = (...questions: object[]) => ({ name: 'question', arguments: JSON.stringify({ questions }) });
+// The model answers `go` with a Question; the dock opens.
+async function questioned(...questions: object[]) {
+  const started = await start({ tools: TOOLS });
+  fake.reply({ chunks: [], calls: [questionCall(...questions)] });
+  await write('go');
+  await frameMatching(ui, f => f.includes('own answer'));
+  return started;
+}
+// The Tool Result the model got for the Question.
+const answerSent = () => (fake.chatRequests[1] as Sent).messages.at(-1);
+
+test('a Question opens the dock: the Recommended Option on top, marked and preselected; Enter answers and sends (#33)', async () => {
+  const { events } = await questioned(RUNTIME);
+  const frame = ui.captureCharFrame();
+  expect((fake.chatRequests[0] as Sent).tools!.map(t => t.function.name)).toEqual(['bash', 'question']);
+  expect(line(frame, /Tool Call/)).toMatch(/4\s+Tool Call\s+question Which runtime shou….*\? answer/);
+  expect(frame).not.toContain('? approve');
+  expect(frame).toContain('Which runtime should we use?');
+  expect(line(frame, /1 Bun/)).toMatch(/› 1 Bun .*recommended.*fast/);
+  expect(line(frame, /2 Node/)).toMatch(/^ +2 Node .*common/);
+  expect(line(frame, /own answer/)).toMatch(/^ +3 own answer/);
+  fake.reply({ chunks: ['great'] });
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(ui.captureCharFrame()).not.toContain('own answer');
+  expect(events().filter(e => e.kind === 'Tool Result')).toEqual([
+    { type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'user', content: 'Which runtime should we use?: Bun', call: 4 },
+  ]);
+  expect(answerSent()).toEqual({ role: 'tool', tool_call_id: 'call_0', content: 'Which runtime should we use?: Bun' });
+});
+
+test('1–9 pick an option at once; j/k move; own answer takes free text (#33)', async () => {
+  await questioned(RUNTIME);
+  fake.reply({ chunks: ['ok'] });
+  await press('2');
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(answerSent()).toMatchObject({ content: 'Which runtime should we use?: Node' });
+  ui.renderer.destroy();
+  fake.stop();
+
+  await questioned(RUNTIME);
+  await press('j');
+  await press('j');
+  await press('k');
+  await press('j');
+  await frameMatching(ui, f => /› 3 own answer/.test(f));
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('answer >'));
+  await ui.mockInput.typeText('Deno 2');
+  fake.reply({ chunks: ['ok'] });
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(answerSent()).toMatchObject({ content: 'Which runtime should we use?: Deno 2' });
+});
+
+test('a Question without a valid Recommended Option goes back to the model as error; the user never sees it (#33)', async () => {
+  const { events } = await start({ tools: TOOLS });
+  fake.reply({ chunks: [], calls: [questionCall({ ...RUNTIME, recommended: 'Deno' })] });
+  fake.reply({ chunks: ['sorry'] });
+  await write('go');
+  const frame = await frameMatching(ui, f => f.includes('answer complete'));
+  expect(frame).not.toContain('own answer');
+  expect(answerSent()).toEqual({ role: 'tool', tool_call_id: 'call_0', content: 'error: question 1: recommended "Deno" is not an option label' });
+  expect(events().filter(e => e.kind === 'Tool Result')).toEqual([
+    { type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'error: question 1: recommended "Deno" is not an option label', call: 4 },
+  ]);
 });

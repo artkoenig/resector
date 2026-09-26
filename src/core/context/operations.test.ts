@@ -100,7 +100,7 @@ test('/tools switches a tool in the Tools Block as its next Revision; unknown to
   const events = session(on);
   const [context] = at(events, 5);
   expect(toggleTool(events, context, 'search')).toEqual({ event: { type: 'Edit', id: 5, revision: 2, content: expect.stringContaining('"search"') } });
-  expect(toggleTool(events, context, 'python')).toEqual({ error: 'unknown tool python – bash search' });
+  expect(toggleTool(events, context, 'python')).toEqual({ error: 'unknown tool python – bash search question' });
   expect(toggleTool(session(), fold(session()), 'search')).toEqual({ error: 'no Tools Block' });
 });
 
@@ -180,6 +180,8 @@ test('editable: all kinds but the Tools Block and executed Tool Calls (FR-8)', (
   expect(editOf(events, 8, 'ls -a')).toEqual({ event: { type: 'Edit', id: 8, revision: 2, content: 'ls -a' } });
   expect(editOf(events, 7, 'short')).toEqual({ event: { type: 'Edit', id: 7, revision: 2, content: 'short' } });
   expect(editOf(events, 1, 'new sys')).toEqual({ event: { type: 'Edit', id: 1, revision: 2, content: 'new sys' } });
+  const question: SessionEvent = { type: 'BlockAdded', id: 9, kind: 'Tool Call', origin: 'model', content: '{"questions":[]}', tool: 'question' };
+  expect(editOf(session(question), 9, '{}')).toEqual({ error: 'a Question is answered in the dock, not edited' });
 });
 
 test('a Tool Pair is an executed Tool Call or a Tool Result (FR-9)', () => {

@@ -68,3 +68,15 @@ test('cut off while thinking: the Thinking block is cut off, no Assistant block 
     { type: 'BlockAdded', id: 4, kind: 'Assistant', origin: 'model', content: 'Ans', cutOff: true },
   ]);
 });
+
+test('a Question without a valid Recommended Option is answered with the error at once: the user never sees it', () => {
+  const invalid = JSON.stringify({ questions: [{ question: 'Which?', header: 'Pick', options: [{ label: 'A', description: 'a' }, { label: 'B', description: 'b' }] }] });
+  expect(answerBlocks(result({ calls: [{ name: 'question', arguments: invalid }, bash('ls')] }), 3, ['bash', 'question'])).toEqual({
+    events: [
+      { type: 'BlockAdded', id: 3, kind: 'Tool Call', origin: 'model', content: invalid, tool: 'question' },
+      { type: 'BlockAdded', id: 4, kind: 'Tool Call', origin: 'model', content: 'ls' },
+      { type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'error: question 1: recommended is missing – give the label of the Recommended Option', call: 3 },
+    ],
+    notRun: null,
+  });
+});

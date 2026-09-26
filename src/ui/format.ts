@@ -2,6 +2,7 @@
 import type { Thinking } from '../core/log/events';
 import { callText, type Block } from '../core/log/fold';
 import { toolNames } from '../core/toolcall/bash';
+import { questionTitle } from '../core/toolcall/question';
 
 export const formatTokens = (t: number): string =>
   t >= 1024 && t % 1024 === 0 ? `${t / 1024}k` : t >= 1000 ? `${(t / 1000).toFixed(1)}k` : String(t);
@@ -23,11 +24,14 @@ export function titleOf(block: Titled, blocks: readonly Called[] = []): string {
   // Only whitespace (e.g. the text before a model's tool calls): nothing to read, the template may drop it.
   return originTitle(block, blocks) ?? (firstLine(block.content) || '(empty)');
 }
+// A call as its title reads: a Question by its question texts.
+const callTitle = (call: Pick<Block, 'content'> & Partial<Pick<Block, 'tool'>>) =>
+  firstLine(call.tool === 'question' ? `question ${questionTitle(call.content)}` : callText(call));
 // A Tool Result by its call; a Tool Call of another tool than bash by tool name and query.
 function toolTitle(block: Titled, blocks: readonly Called[]): string | null {
-  if (block.kind !== 'Tool Result') return block.tool ? firstLine(callText(block)) : null;
+  if (block.kind !== 'Tool Result') return block.tool ? callTitle(block) : null;
   const call = blocks.find(b => b.id === block.call);
-  return `→ ${firstLine(call ? callText(call) : '')}`;
+  return `→ ${call ? callTitle(call) : ''}`;
 }
 function originTitle(block: Titled, blocks: readonly Called[]): string | null {
   const tool = toolTitle(block, blocks);
@@ -42,6 +46,13 @@ function originTitle(block: Titled, blocks: readonly Called[]): string | null {
 const changesOf = (block: Block): string =>
   (block.revised ? `✎${block.revision}` : '') + ((block.pinChanged && { top: '⤒', bottom: '⤓' }[block.pin!]) || '') + (block.moved ? '⇄' : '');
 
+// A pending call: decided now (a Question is answered), or queued (FR-24).
+const pendingFlag = (block: Block, next?: number): string => {
+  if (!block.pending) return '';
+  if (block.id !== next) return ' · queued';
+  return block.tool === 'question' ? ' ? answer' : ' ? approve';
+};
+
 // Changes since the last request, then persistent status flags.
 // next: the Tool Call to decide on now; later pending calls are queued (FR-24); dropped: a Thinking
 // block the chat template drops (FR-48).
@@ -49,7 +60,7 @@ export const flagsOf = (block: Block, next?: number, dropped = false): string =>
   [
     changesOf(block),
     block.cutOff ? ' ⚠ cut off' : '',
-    block.pending ? (block.id === next ? ' ? approve' : ' · queued') : '',
+    pendingFlag(block, next),
     block.stopped ? ` ⚠ ${block.stopped}` : '',
     block.unread ? (block.missing ? ' ⚠ not found' : ' @ read at send') : '',
     dropped ? ' ✂ template' : '',
