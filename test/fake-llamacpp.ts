@@ -1,9 +1,12 @@
 // Scriptable fake of the llama.cpp server endpoints Resector uses (architecture §7 "Fake backend").
-// Template: ChatML, tools and tool calls as Qwen renders them. Tokenizer: every special marker, whitespace
+// Template: ChatML, tools, tool calls and thinking as Qwen3 renders them: reasoning only after the last
+// user message, before it the template drops it. Tokenizer: every special marker, whitespace
 // run and word is one token; BOS = 1 token.
 import { commonPrefix } from '../src/core/cache/cache';
 
 export type Reply = {
+  // Reasoning streamed as reasoning_content before the chunks.
+  thinking?: string[];
   chunks: string[];
   // Tool calls streamed after the chunks; finish then defaults to tool_calls.
   calls?: { name: string; arguments: string }[];
@@ -19,11 +22,14 @@ export type Reply = {
 
 export type FakeOptions = { jinja?: boolean; nCtx?: number; model?: string; slots?: number };
 
-export type ChatMessage = { role: string; content: string; tool_calls?: { function: { name: string; arguments: string } }[] };
+export type ChatMessage = { role: string; content: string; reasoning_content?: string; tool_calls?: { function: { name: string; arguments: string } }[] };
 export type ChatTool = { type?: string; function: { name: string; [key: string]: unknown } };
 
-const content = (m: ChatMessage) =>
-  m.content + (m.tool_calls ?? []).map(c => `\n<tool_call>\n${JSON.stringify({ name: c.function.name, arguments: JSON.parse(c.function.arguments) })}\n</tool_call>`).join('');
+// kept: the reasoning is rendered (after the last user message).
+const content = (m: ChatMessage, kept = false) =>
+  (kept && m.reasoning_content !== undefined ? `<think>\n${m.reasoning_content}\n</think>\n\n` : '') +
+  m.content +
+  (m.tool_calls ?? []).map(c => `\n<tool_call>\n${JSON.stringify({ name: c.function.name, arguments: JSON.parse(c.function.arguments) })}\n</tool_call>`).join('');
 // Tool definitions go at the end of the system message (one is added if there is none).
 function withTools(messages: ChatMessage[], tools: ChatTool[] = []): ChatMessage[] {
   if (!tools.length) return messages;
@@ -36,11 +42,15 @@ function withTools(messages: ChatMessage[], tools: ChatTool[] = []): ChatMessage
 export const answer = (reply: Reply): ChatMessage => ({
   role: 'assistant',
   content: reply.chunks.join(''),
+  ...(reply.thinking && { reasoning_content: reply.thinking.join('') }),
   ...(reply.calls && { tool_calls: reply.calls.map(c => ({ function: c })) }),
 });
 
+const lastUser = (messages: ChatMessage[]) => messages.findLastIndex(m => m.role === 'user');
+
 export function chatml(messages: ChatMessage[], addGenerationPrompt: boolean, tools?: ChatTool[]): string {
-  const turns = withTools(messages, tools).map(m => `<|im_start|>${m.role}\n${content(m)}<|im_end|>\n`).join('');
+  const all = withTools(messages, tools);
+  const turns = all.map((m, i) => `<|im_start|>${m.role}\n${content(m, i > lastUser(all))}<|im_end|>\n`).join('');
   return turns + (addGenerationPrompt ? '<|im_start|>assistant\n' : '');
 }
 
@@ -48,7 +58,7 @@ export function chatml(messages: ChatMessage[], addGenerationPrompt: boolean, to
 function applyTemplate(messages: ChatMessage[], addGenerationPrompt: boolean, tools?: ChatTool[]): string {
   const last = messages.at(-1);
   if (last?.role !== 'assistant') return chatml(messages, addGenerationPrompt, tools);
-  return chatml(messages.slice(0, -1), true, tools) + content(last);
+  return chatml(messages.slice(0, -1), true, tools) + content(last, true);
 }
 
 // Same piece, same id: prompts can be compared token by token.
@@ -87,7 +97,7 @@ export function startFakeLlamaCpp({ jinja = true, nCtx = 4096, model = 'qwen3-8b
         if (!reply) return error('no scripted reply');
         const prompt = tokenize(applyTemplate(body.messages, true, body.tools), true);
         const final = { choices: [], usage: reply.usage ?? null, timings: { cache_n: reply.cacheN ?? reuse(prompt) } };
-        slot = [...prompt, ...tokenize(content(answer(reply)), false)];
+        slot = [...prompt, ...tokenize(content(answer(reply), true), false)];
         return new Response(stream(reply, req.signal, final), { headers: { 'content-type': 'text/event-stream' } });
       }
       return new Response('not found', { status: 404 });
@@ -108,6 +118,7 @@ export function stream(reply: Reply, signal: AbortSignal, final: unknown): Reada
   const data = (o: unknown) => enc.encode(`data: ${JSON.stringify(o)}\n\n`);
   return new ReadableStream({
     async start(ctrl) {
+      for (const reasoning_content of reply.thinking ?? []) ctrl.enqueue(data({ choices: [{ index: 0, delta: { reasoning_content } }] }));
       for (const content of reply.chunks) ctrl.enqueue(data({ choices: [{ index: 0, delta: { content } }] }));
       // Like llama.cpp: id and name first, then the arguments in two pieces.
       reply.calls?.forEach(({ name, arguments: args }, index) => {

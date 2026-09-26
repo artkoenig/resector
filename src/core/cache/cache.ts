@@ -8,13 +8,17 @@ export function commonPrefix<T>(a: readonly T[], b: readonly T[], same: (x: T, y
   return i;
 }
 
-// Per row (tokens in Context order): warm when all its tokens lie within the `cached` prompt tokens.
+// Per row (tokens in Context order): warm when all its tokens lie within the `cached` prompt tokens. A
+// row of 0 tokens (a Thinking block the chat template drops, FR-48) is warm when the row after it is:
+// the prompt differs from where it was.
 export function warmRows(blocks: number[], cached: number): boolean[] {
   let end = 0;
   let warm = true;
-  return blocks.map(tokens => {
+  const rows = blocks.map(tokens => {
     end += tokens;
     warm &&= end <= cached;
     return warm;
   });
+  for (let i = rows.length - 2; i >= 0; i--) if (blocks[i] === 0) rows[i] = rows[i + 1]!;
+  return rows;
 }

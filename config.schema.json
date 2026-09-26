@@ -70,6 +70,7 @@
           },
           "thinking": {
             "default": "off",
+            "description": "Reasoning: off/on (enable_thinking) or an effort level (reasoning_effort), as the model supports",
             "type": "string",
             "enum": [
               "off",

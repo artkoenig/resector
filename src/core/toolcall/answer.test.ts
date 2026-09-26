@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import type { ChatResult } from '../backend';
 import { answerBlocks } from './answer';
 
-const result = (over: Partial<ChatResult>): ChatResult => ({ content: '', calls: [], finish: 'stop', usage: null, cached: null, predicted: null, ...over });
+const result = (over: Partial<ChatResult>): ChatResult => ({ thinking: '', content: '', calls: [], finish: 'stop', usage: null, cached: null, predicted: null, ...over });
 const bash = (command: string) => ({ name: 'bash', arguments: JSON.stringify({ command }) });
 
 test('text and each bash call become separate blocks, in order', () => {
@@ -37,4 +37,25 @@ test('a call that is no bash command stays in the text, not run, and says why', 
     ],
     notRun: 'unknown tool python',
   });
+});
+
+test('reasoning becomes a Thinking block before the Assistant block of the same answer (FR-46)', () => {
+  expect(answerBlocks(result({ thinking: 'Plan: ls.', content: 'Looking.', calls: [bash('ls')], finish: 'tool_calls' }), 5).events).toEqual([
+    { type: 'BlockAdded', id: 5, kind: 'Thinking', origin: 'model', content: 'Plan: ls.' },
+    { type: 'BlockAdded', id: 6, kind: 'Assistant', origin: 'model', content: 'Looking.' },
+    { type: 'BlockAdded', id: 7, kind: 'Tool Call', origin: 'model', content: 'ls' },
+  ]);
+  expect(answerBlocks(result({ thinking: 'Plan: ls.', calls: [bash('ls')] }), 5).events.map(e => e.kind)).toEqual(['Thinking', 'Tool Call']);
+});
+
+test('cut off while thinking: the Thinking block is cut off, no Assistant block (FR-19)', () => {
+  for (const finish of ['length', 'aborted'] as const)
+    expect(answerBlocks(result({ thinking: 'Hmm, the', finish }), 3)).toEqual({
+      events: [{ type: 'BlockAdded', id: 3, kind: 'Thinking', origin: 'model', content: 'Hmm, the', cutOff: true }],
+      notRun: null,
+    });
+  expect(answerBlocks(result({ thinking: 'Done.', content: 'Ans', finish: 'length' }), 3).events).toEqual([
+    { type: 'BlockAdded', id: 3, kind: 'Thinking', origin: 'model', content: 'Done.' },
+    { type: 'BlockAdded', id: 4, kind: 'Assistant', origin: 'model', content: 'Ans', cutOff: true },
+  ]);
 });

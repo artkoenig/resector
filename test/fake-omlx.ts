@@ -14,15 +14,21 @@ type Block = { type: 'text'; text: string } | { type: 'tool_use'; id: string; na
 type AnthropicTool = { name: string; description: string; input_schema: unknown };
 type AnthropicCount = { model: string; system?: string; messages: { role: string; content: string | Block[] }[]; tools?: AnthropicTool[] };
 
+// Like Qwen3 templates: reasoning inline at the start of an assistant turn is taken apart.
+function reasoned(message: ChatMessage): ChatMessage {
+  const inline = /^<think>\n([\s\S]*)\n<\/think>\n\n/.exec(message.content);
+  return inline ? { ...message, content: message.content.slice(inline[0].length), reasoning_content: inline[1]! } : message;
+}
+
 // Back to chat messages for the ChatML template: tool_use → tool_calls, each tool_result → a tool turn.
 function chatMessages({ system, messages }: AnthropicCount): ChatMessage[] {
   const turns = messages.flatMap(({ role, content }): ChatMessage[] => {
-    if (typeof content === 'string') return [{ role, content }];
+    if (typeof content === 'string') return [reasoned({ role, content })];
     const results = content.flatMap(b => (b.type === 'tool_result' ? [{ role: 'tool', content: b.content }] : []));
     if (results.length) return results;
     const text = content.flatMap(b => (b.type === 'text' ? [b.text] : [])).join('');
     const calls = content.flatMap(b => (b.type === 'tool_use' ? [{ function: { name: b.name, arguments: JSON.stringify(b.input) } }] : []));
-    return [{ role, content: text, tool_calls: calls }];
+    return [reasoned({ role, content: text, tool_calls: calls })];
   });
   return [...(system === undefined ? [] : [{ role: 'system', content: system }]), ...turns];
 }

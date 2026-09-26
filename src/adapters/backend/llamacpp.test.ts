@@ -48,6 +48,7 @@ test('an answer streams in deltas and ends with finish reason, usage and cached 
   });
   expect(deltas).toEqual(['Hel', 'lo']);
   expect(result).toEqual({
+    thinking: '',
     content: 'Hello',
     calls: [],
     finish: 'stop',
@@ -66,7 +67,7 @@ test('aborting keeps the partial answer', async () => {
     signal: abort.signal,
     onDelta: () => abort.abort(),
   });
-  expect(result).toEqual({ content: 'Hal', calls: [], finish: 'aborted', usage: null, cached: null, predicted: 0 });
+  expect(result).toEqual({ thinking: '', content: 'Hal', calls: [], finish: 'aborted', usage: null, cached: null, predicted: 0 });
 });
 
 test('a backend error surfaces with its message', async () => {
@@ -108,7 +109,7 @@ test('aborting before the answer starts yields an empty aborted answer', async (
   fake = startFakeLlamaCpp();
   const abort = new AbortController();
   abort.abort();
-  expect(await chatOnce(abort.signal)).toEqual({ content: '', calls: [], finish: 'aborted', usage: null, cached: null, predicted: 0 });
+  expect(await chatOnce(abort.signal)).toEqual({ thinking: '', content: '', calls: [], finish: 'aborted', usage: null, cached: null, predicted: 0 });
 });
 
 test('a server that disappears before chatting is reported as unreachable', async () => {
@@ -221,4 +222,76 @@ test('an answer with tool calls counts as cached with its calls', async () => {
   const counted = await backend.count(toolLoop());
   // System, Tools, User, Assistant and both Tool Calls are warm; the Tool Results are new.
   expect(counted.cached.tokens).toBe(counted.blocks.slice(0, 6).reduce((a, b) => a + b, 0));
+});
+
+test('reasoning streams apart from the answer, as reasoning_content or inline <think> (FR-46, FR-50)', async () => {
+  fake = startFakeLlamaCpp();
+  const backend = await connectLlamaCpp(fake.url);
+  fake.reply({ thinking: ['Let me ', 'think.'], chunks: ['Hel', 'lo'] });
+  fake.reply({ chunks: ['<thi', 'nk>\nLet me ', 'think.\n</think>\n\nHel', 'lo'] });
+  for (const _ of [1, 2]) {
+    const deltas: string[] = [];
+    const thoughts: string[] = [];
+    const result = await backend.chat(request([USER]), { signal: new AbortController().signal, onDelta: d => deltas.push(d), onThinking: t => thoughts.push(t) });
+    expect(result).toMatchObject({ thinking: 'Let me think.', content: 'Hello' });
+    expect(thoughts.join('')).toBe('Let me think.');
+    expect(deltas.join('')).toBe('Hello');
+  }
+});
+
+test('the profile thinking goes into every request: on/off through the chat template, else the effort (FR-49)', async () => {
+  fake = startFakeLlamaCpp();
+  for (const thinking of ['off', 'on', 'high'] as const) {
+    fake.reply({ chunks: ['ok'] });
+    await send(await connectLlamaCpp(fake.url, { thinking }), [USER]);
+  }
+  expect(fake.chatRequests.map(r => (r as Record<string, unknown>).chat_template_kwargs ?? (r as Record<string, unknown>).reasoning_effort)).toEqual([
+    { enable_thinking: false },
+    { enable_thinking: true },
+    'high',
+  ]);
+});
+
+const THOUGHT = { role: 'assistant', content: '', reasoning_content: 'plan it' } as const;
+
+test('reasoning the chat template drops before the last user message counts 0 tokens (FR-48)', async () => {
+  fake = startFakeLlamaCpp();
+  const messages: Message[] = [SYSTEM, USER, { ...THOUGHT, content: 'hello' }, { role: 'user', content: 'more' }];
+  const requests = prefixes(messages);
+  // The Assistant block joins the Thinking block's message.
+  requests.splice(2, 0, request([SYSTEM, USER, THOUGHT]));
+  const split = await (await connectLlamaCpp(fake.url)).count(requests);
+  expect(split.blocks).toEqual([12, 8, 0, 6, 6]);
+  expect(split.total).toBe(tokenize(chatml(messages, true), true).length);
+  expect(split.blocks.reduce((a, b) => a + b, 0) + split.template).toBe(split.total);
+});
+
+test('reasoning after the last user message is sent to the model and owned by its Thinking block', async () => {
+  fake = startFakeLlamaCpp();
+  const call = { id: 'call_0', type: 'function', function: { name: 'bash', arguments: '{"command":"ls"}' } } as const;
+  const messages: Message[] = [SYSTEM, USER, { ...THOUGHT, tool_calls: [call] }, { role: 'tool', tool_call_id: 'call_0', content: 'a' }];
+  const requests = prefixes(messages);
+  requests.splice(2, 0, request([SYSTEM, USER, THOUGHT]));
+  const split = await (await connectLlamaCpp(fake.url)).count(requests);
+  // role markers and <think>\nplan it\n</think>\n\n
+  expect(split.blocks[2]).toBe(5 + tokenize('<think>\nplan it\n</think>\n\n', false).length);
+  expect(split.total).toBe(tokenize(chatml(messages, true), true).length);
+  expect(split.blocks.reduce((a, b) => a + b, 0) + split.template).toBe(split.total);
+});
+
+test('after an answer with reasoning the cache holds it: a tool loop reuses it, a User message makes it cold from the Thinking block on', async () => {
+  fake = startFakeLlamaCpp();
+  const backend = await connectLlamaCpp(fake.url);
+  const call = { id: 'call_0', type: 'function', function: { name: 'bash', arguments: '{"command":"ls"}' } } as const;
+  fake.reply({ thinking: ['plan it'], chunks: [], calls: [call.function] });
+  await send(backend, [SYSTEM, USER]);
+  const answered = [SYSTEM, USER, { ...THOUGHT, tool_calls: [call] }];
+  const requests = [...prefixes([SYSTEM, USER]), request([SYSTEM, USER, THOUGHT]), request(answered)];
+  const loop = await backend.count([...requests, request([...answered, { role: 'tool', tool_call_id: 'call_0', content: 'a' }])]);
+  expect(loop.cached.tokens).toBe(loop.blocks.slice(0, 4).reduce((a, b) => a + b, 0));
+  const asked = await backend.count([...requests, request([...answered, { role: 'user', content: 'more' }])]);
+  // The Thinking block (0 tokens now) and its Tool Call: the role markers they share are all that is reused.
+  expect(asked.blocks[2]).toBe(0);
+  expect(asked.cached.tokens).toBeGreaterThanOrEqual(12 + 8);
+  expect(asked.cached.tokens).toBeLessThan(12 + 8 + asked.blocks[3]!);
 });

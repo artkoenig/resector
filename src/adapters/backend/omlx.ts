@@ -2,15 +2,18 @@
 // /v1/messages/count_tokens, which applies the model's chat template with the generation prompt.
 import type { Backend, CacheHit } from '../../core/backend';
 import { commonPrefix } from '../../core/cache/cache';
+import { thinkingParams, type Thinking } from '../../core/config/config';
 import { EMPTY_REQUEST as EMPTY, type Message, type Request } from '../../core/render/native';
+import { reasoningOf } from '../../core/tokens/reasoning';
 import { splitTokens } from '../../core/tokens/split';
 import { answerMessage, httpClient, streamChat } from './openai';
 
 const TRAILER: Message = { role: 'user', content: '' };
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-// An assistant message that `whole` continues with further tool calls of the same answer.
+// An assistant message that `whole` continues with its text or further tool calls of the same answer.
 const begins = (part: Message, whole: Message | undefined) =>
-  part.role === 'assistant' && whole?.role === 'assistant' && part.content === whole.content &&
+  part.role === 'assistant' && whole?.role === 'assistant' && part.reasoning_content === whole.reasoning_content &&
+  (part.content === whole.content || (!part.content && !part.tool_calls)) &&
   (part.tool_calls ?? []).every((c, i) => same(c, whole.tool_calls?.[i]));
 // Whether `history` renders like `prefix` up to its end: same messages (the last one may go on), same
 // tools once it has any.
@@ -19,7 +22,8 @@ const within = (history: Request, prefix: Request) =>
   prefix.messages.every((m, i) => same(m, history.messages[i]) || (i === prefix.messages.length - 1 && begins(m, history.messages[i])));
 
 // count_tokens takes the Anthropic Messages format: System → `system`, tool calls → tool_use blocks,
-// tool messages → tool_result blocks of one user message, tools with `input_schema`.
+// tool messages → tool_result blocks of one user message, tools with `input_schema`. Reasoning goes
+// inline as <think>, which chat templates take apart like reasoning_content.
 type AnthropicMessage = { role: string; content: unknown };
 
 // Appends one chat message in the Anthropic format; consecutive tool results share one user message.
@@ -29,10 +33,14 @@ function addAnthropic(converted: AnthropicMessage[], m: Message) {
     const previous = converted.at(-1);
     if (previous?.role === 'user' && Array.isArray(previous.content)) previous.content.push(result);
     else converted.push({ role: 'user', content: [result] });
-  } else if (m.role === 'assistant' && m.tool_calls) {
-    const uses = m.tool_calls.map(c => ({ type: 'tool_use', id: c.id, name: c.function.name, input: JSON.parse(c.function.arguments) }));
-    converted.push({ role: 'assistant', content: [...(m.content ? [{ type: 'text', text: m.content }] : []), ...uses] });
-  } else converted.push({ role: m.role, content: m.content });
+  } else converted.push(m.role === 'assistant' ? assistantAnthropic(m) : { role: m.role, content: m.content });
+}
+
+function assistantAnthropic(m: Extract<Message, { role: 'assistant' }>): AnthropicMessage {
+  const text = (m.reasoning_content === undefined ? '' : `<think>\n${m.reasoning_content}\n</think>\n\n`) + m.content;
+  if (!m.tool_calls) return { role: 'assistant', content: text };
+  const uses = m.tool_calls.map(c => ({ type: 'tool_use', id: c.id, name: c.function.name, input: JSON.parse(c.function.arguments) }));
+  return { role: 'assistant', content: [...(text ? [{ type: 'text', text }] : []), ...uses] };
 }
 
 function anthropic({ messages, tools }: Request) {
@@ -50,9 +58,9 @@ function anthropic({ messages, tools }: Request) {
 type ModelList = { data: { id: string; max_model_len?: number | null }[] };
 
 // Model Profile values that shape requests; the window defaults to the model's max_model_len.
-export type OmlxOptions = { window?: number; model?: string; sampling?: Record<string, number> };
+export type OmlxOptions = { window?: number; model?: string; sampling?: Record<string, number>; thinking?: Thinking };
 
-export async function connectOmlx(endpoint: string, { window, model, sampling }: OmlxOptions): Promise<Backend> {
+export async function connectOmlx(endpoint: string, { window, model, sampling, thinking }: OmlxOptions): Promise<Backend> {
   if (model === undefined) throw new Error('oMLX Model Profile needs a model');
   const { request, post } = httpClient('oMLX', endpoint);
 
@@ -107,15 +115,17 @@ export async function connectOmlx(endpoint: string, { window, model, sampling }:
       const prefix = (r: Request) => tokens({ ...r, messages: [...r.messages, TRAILER] });
       const [empty, ...prefixes] = await Promise.all([EMPTY, ...requests].map(prefix));
       // Without user message the smallest renderable request is the one with the empty user turn.
+      const sendable = whole.messages.some(m => m.role === 'user') && whole.messages.at(-1)?.role !== 'assistant';
       const total = whole.messages.some(m => m.role === 'user') ? await tokens(whole) : (prefixes.at(-1) ?? empty!);
-      const split = splitTokens({ empty: empty!, prefixes, total });
+      const reasoning = await reasoningOf(requests, prefixes, total, { prefix, request: sendable ? tokens : null });
+      const split = splitTokens({ empty: empty!, prefixes, total, reasoning });
       last = { key: JSON.stringify(whole), cached: await predict(requests, split.blocks) };
       return { ...split, cached: last.cached };
     },
 
     async chat(chat, options) {
       const predicted = last?.key === JSON.stringify(chat) && last.cached.exact ? last.cached.tokens : null;
-      const result = await streamChat({ name: 'oMLX', request }, { model, ...sampling }, chat, options);
+      const result = await streamChat({ name: 'oMLX', request }, { model, ...sampling, ...thinkingParams(thinking) }, chat, options);
       lastRequest = chat;
       lastExchange = { ...chat, messages: [...chat.messages, answerMessage(result)] };
       return { ...result, predicted };

@@ -86,7 +86,7 @@ test('an answer streams in deltas and ends with finish reason, usage and cached 
   const messages = [{ role: 'user', content: 'hi' }] as const;
   const result = await backend.chat(request([...messages]), { signal: new AbortController().signal, onDelta: d => deltas.push(d) });
   expect(deltas).toEqual(['Hel', 'lo']);
-  expect(result).toEqual({ content: 'Hello', calls: [], finish: 'stop', usage: { prompt_tokens: 20, completion_tokens: 2 }, cached: 7, predicted: null });
+  expect(result).toEqual({ thinking: '', content: 'Hello', calls: [], finish: 'stop', usage: { prompt_tokens: 20, completion_tokens: 2 }, cached: 7, predicted: null });
   expect(fake.chatRequests).toEqual([
     { model: MODEL, temperature: 0.2, top_k: 20, messages, stream: true, stream_options: { include_usage: true } },
   ]);
@@ -103,7 +103,7 @@ test('aborting keeps the partial answer', async () => {
   fake.reply({ chunks: ['Hal'], hang: true });
   const abort = new AbortController();
   const result = await backend.chat(request([{ role: 'user', content: 'hi' }]), { signal: abort.signal, onDelta: () => abort.abort() });
-  expect(result).toEqual({ content: 'Hal', calls: [], finish: 'aborted', usage: null, cached: null, predicted: null });
+  expect(result).toEqual({ thinking: '', content: 'Hal', calls: [], finish: 'aborted', usage: null, cached: null, predicted: null });
 });
 
 test('stream errors surface: missing reply, error event, dropped connection', async () => {
@@ -215,4 +215,25 @@ test('without the probe, blocks the last answer already rendered count as cached
   const counted = await backend.count(loop);
   // System, Tools, User, Assistant and both Tool Calls; the Tool Results are new.
   expect(counted.cached).toEqual({ tokens: counted.blocks.slice(0, 6).reduce((a, b) => a + b, 0), exact: false });
+});
+
+test('the profile thinking goes into every request (FR-49)', async () => {
+  const backend = await open({ thinking: 'on' });
+  fake.reply({ chunks: ['ok'] });
+  await chatOnce(backend);
+  expect(fake.chatRequests[0]).toMatchObject({ chat_template_kwargs: { enable_thinking: true } });
+});
+
+test('reasoning is counted inline; before the last user message the chat template drops it (FR-48)', async () => {
+  const thought = { role: 'assistant', content: '', reasoning_content: 'plan it' } as const;
+  const kept: Message[] = [{ role: 'user', content: 'hi there' }, { ...thought, tool_calls: [{ id: 'call_0', type: 'function', function: { name: 'bash', arguments: '{"command":"ls"}' } }] }, { role: 'tool', tool_call_id: 'call_0', content: 'a' }];
+  const dropped: Message[] = [{ role: 'user', content: 'hi there' }, { ...thought, content: 'hello' }, { role: 'user', content: 'more' }];
+  const backend = await open();
+  for (const [messages, thinking] of [[kept, 5 + tokenize('<think>\nplan it\n</think>\n\n', false).length], [dropped, 0]] as const) {
+    const requests = prefixes([...messages]);
+    requests.splice(1, 0, request([messages[0]!, thought]));
+    const split = await backend.count(requests);
+    expect(split.blocks[1]).toBe(thinking);
+    expect(split.blocks.reduce((a, b) => a + b, 0) + split.template).toBe(split.total);
+  }
 });

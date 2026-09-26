@@ -9,13 +9,15 @@ import { Band, ErrorBand, errorBandLines, Footer, footerLines, HeaderBand, type 
 import { ACCENT, BG, BORDER, FAINT, KIND_COLOR, MUTED, PANEL_BG, SELECTED_BG, TEXT, TONE } from './theme';
 
 const SPINNER = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
-// Fixed columns around the title: marker, #, Kind, Tokens, Cache, Flags.
+// Fixed columns around the title: marker, #, Kind, Tokens, Cache, Flags; flags beyond their column are cut, never wrapped.
 const FIXED_COLUMNS = 52;
+const FLAGS_WIDTH = 14;
 const CACHE_COLOR: Record<string, string> = { '●': TONE.ok, '○': FAINT, '': FAINT };
 
 type Mode = 'context' | 'input' | 'rename';
 // A row per visible block; removed ones are struck through, unnumbered and not selectable until sent.
-type Row = { id: number; heading?: string; n: string; kind: Kind; title: string; content: string; tokens: string; cache: string; flags: string; live: boolean; removed: boolean };
+// dropped: a Thinking block the chat template drops (FR-48), dimmed.
+type Row = { id: number; heading?: string; n: string; kind: Kind; title: string; content: string; tokens: string; cache: string; flags: string; live: boolean; removed: boolean; dropped?: boolean };
 
 export function App(props: GateOptions & { onQuit: () => void }) {
   const gate = createGate(props);
@@ -31,7 +33,8 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   const rows = (): Row[] => {
     const split = gate.split();
     const n = (id: number) => String(gate.rows().indexOf(id) + 1);
-    const tokens = (id: number) => (split ? formatTokens(split.blocks[gate.sent().findIndex(b => b.id === id)]!) : '…');
+    const tokensOf = (id: number) => split?.blocks[gate.sent().findIndex(b => b.id === id)];
+    const tokens = (id: number) => (split ? formatTokens(tokensOf(id)!) : '…');
     const cache = (id: number) => ({ true: '●', false: '○', null: '' })[`${gate.warm(id)}`]!;
     const blocks = gate.context().blocks;
     // Sources of a proposal are shown as such until it is accepted or discarded (FR-15).
@@ -39,17 +42,20 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     // The running call is decided: no ? approve.
     const running = gate.running()?.call.id;
     const next = gate.nextCall()?.id;
-    const done = blocks.map(b => ({
-      id: b.id, kind: b.kind, title: titleOf(b, blocks), content: b.content, live: false, removed: b.removed,
-      ...(b.removed ? { n: '', tokens: '', cache: '', flags: 'removed' } : { n: n(b.id), tokens: tokens(b.id), cache: cache(b.id), flags: b.id === running ? '' : flagsOf(b, next) }),
-      ...(proposed.has(b.id) && { flags: '◇ proposed', removed: true }),
-    }));
-    const live = gate.live();
-    if (!live) return done;
-    const at = live.before === null ? -1 : done.findIndex(r => r.id === live.before);
-    const counted = live.tokens === undefined ? SPINNER[tick() % SPINNER.length]! : formatTokens(live.tokens);
-    const row = { ...live, n: n(live.id), title: titleOf({ ...live, call: running }, blocks), tokens: counted, cache: '', flags: '', live: true, removed: false };
-    done.splice(at < 0 ? done.length : at, 0, row);
+    const done: Row[] = blocks.map(b => {
+      const dropped = !b.removed && b.kind === 'Thinking' && b.content !== '' && tokensOf(b.id) === 0;
+      return {
+        id: b.id, kind: b.kind, title: titleOf(b, blocks), content: b.content, live: false, removed: b.removed, dropped,
+        ...(b.removed ? { n: '', tokens: '', cache: '', flags: 'removed' } : { n: n(b.id), tokens: tokens(b.id), cache: cache(b.id), flags: b.id === running ? '' : flagsOf(b, next, dropped) }),
+        ...(proposed.has(b.id) && { flags: '◇ proposed', removed: true }),
+      };
+    });
+    for (const live of gate.live()) {
+      const at = live.before === null ? -1 : done.findIndex(r => r.id === live.before);
+      const counted = live.tokens === undefined ? SPINNER[tick() % SPINNER.length]! : formatTokens(live.tokens);
+      const row = { ...live, n: n(live.id), title: titleOf({ ...live, call: running }, blocks), tokens: counted, cache: '', flags: '', live: true, removed: false };
+      done.splice(at < 0 ? done.length : at, 0, row);
+    }
     return done;
   };
 
@@ -230,7 +236,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
               <span>{'  '}</span>
               <span style={{ fg: rowFg(row).tokens }}>{right(row.tokens, 6)}</span>
               <span style={{ fg: CACHE_COLOR[row.cache] }}>{`    ${row.cache.padEnd(1)}    `}</span>
-              <span style={{ fg: rowFg(row).flags }}>{row.flags}</span>
+              <span style={{ fg: rowFg(row).flags }}>{cell(row.flags, FLAGS_WIDTH).trimEnd()}</span>
             </text>
           )}
         </For>
@@ -251,7 +257,10 @@ export function App(props: GateOptions & { onQuit: () => void }) {
                   <span style={{ fg: MUTED }}>{`  #${row().n}${row().heading ? ` · ${row().heading}` : row().live ? '' : ` · ${row().tokens} tokens`}`}</span>
                 </text>
                 <scrollbox ref={preview} flexGrow={1}>
-                  <text fg={TEXT}>{row().content}</text>
+                  <Show when={row().dropped}>
+                    <text fg={TONE.warn}>✂ dropped by the chat template – sent, but 0 tokens reach the model</text>
+                  </Show>
+                  <text fg={row().kind === 'Thinking' ? MUTED : TEXT}>{row().content}</text>
                 </scrollbox>
               </Band>
             </>
@@ -400,10 +409,10 @@ const modifierOf = (key: { option?: boolean; meta: boolean; shift: boolean }) =>
 const LOOK_KEYS: Hint[] = [['q', 'quit']];
 const KEYS: Hint[] = [['⌥↑↓', 'move'], ['e', 'edit'], ['r', 'rename'], ['d', 'remove'], ['p', 'pin'], ['space', 'mark'], ['c', 'compact'], ['u', 'undo'], ['q', 'quit']];
 
-// Colours of a row: a removed one is muted throughout.
+// Colours of a row: a removed one is muted throughout, one the chat template drops all but its flags.
 const rowFg = (row: Row) =>
-  row.removed
-    ? { text: MUTED, kind: MUTED, tokens: MUTED, flags: MUTED }
+  row.removed || row.dropped
+    ? { text: MUTED, kind: MUTED, tokens: MUTED, flags: row.dropped ? TONE.warn : MUTED }
     : { text: TEXT, kind: KIND_COLOR[row.kind], tokens: row.live ? TONE.warn : MUTED, flags: TONE.warn };
 
 // Status line: a running command, the streaming answer (both with the row's spinner), else the last action.
@@ -411,7 +420,9 @@ function statusOf(gate: Gate, spin: string): Status | null {
   const r = gate.running();
   if (r) return { text: `${spin} running: ${cell(titleOf(r.call), 50).trimEnd()} · ${Math.round((Date.now() - r.started) / 1000)}s / ${gate.timeout}s`, tone: 'warn' };
   if (gate.compacting()?.phase === 'running') return { text: `${spin} compacting with ${gate.compacting()!.profile}`, tone: 'warn' };
-  return gate.streaming() ? { text: `${spin} model is responding`, tone: 'warn' } : gate.status();
+  const s = gate.streaming();
+  if (!s) return gate.status();
+  return { text: `${spin} model is ${s.thinking && !s.text ? 'thinking' : 'responding'}`, tone: 'warn' };
 }
 
 // Key hints right of the status; they stay visible. An error band adds how to dismiss it.

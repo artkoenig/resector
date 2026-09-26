@@ -3,7 +3,7 @@ import type { Block, Context } from '../log/fold';
 export type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
 export type Message =
   | { role: 'system' | 'user'; content: string }
-  | { role: 'assistant'; content: string; tool_calls?: ToolCall[] }
+  | { role: 'assistant'; content: string; reasoning_content?: string; tool_calls?: ToolCall[] }
   | { role: 'tool'; tool_call_id: string; content: string };
 export type ToolDefinition = { type: 'function'; function: { name: string; description: string; parameters: unknown } };
 // A chat request as the backend receives it: messages plus the tools field.
@@ -24,9 +24,16 @@ function addCall({ messages }: Request, ids: Map<number, string>, b: Block) {
   const earlier = joined?.tool_calls ?? [];
   const call: ToolCall = { id: callId(earlier.length), type: 'function', function: { name: 'bash', arguments: JSON.stringify({ command: b.content }) } };
   ids.set(b.id, call.id);
-  const message = { role: 'assistant' as const, content: joined?.content ?? '', tool_calls: [...earlier, call] };
+  const message = { ...joined, role: 'assistant' as const, content: joined?.content ?? '', tool_calls: [...earlier, call] };
   if (joined) messages[messages.length - 1] = message;
   else messages.push(message);
+}
+
+// Assistant text joins the message of the Thinking block right before it: one answer, one message.
+function addText({ messages }: Request, _: Map<number, string>, b: Block) {
+  const last = messages.at(-1);
+  if (last?.role === 'assistant' && last.reasoning_content !== undefined && !last.content && !last.tool_calls) messages[messages.length - 1] = { ...last, content: b.content };
+  else messages.push({ role: 'assistant', content: b.content });
 }
 
 type Add = (request: Request, ids: Map<number, string>, b: Block) => void;
@@ -35,7 +42,9 @@ const ADD: Record<Block['kind'], Add> = {
   System: (r, _, b) => void r.messages.push({ role: 'system', content: b.content }),
   User: user,
   Note: user,
-  Assistant: (r, _, b) => void r.messages.push({ role: 'assistant', content: b.content }),
+  // Sent with every request; the chat template decides whether it reaches the model (FR-47, FR-48).
+  Thinking: (r, _, b) => void r.messages.push({ role: 'assistant', content: '', reasoning_content: b.content }),
+  Assistant: addText,
   Tools: (r, _, b) => void (r.tools = (JSON.parse(b.content) as ToolDefinition['function'][]).map(f => ({ type: 'function', function: f }))),
   'Tool Call': addCall,
   'Tool Result': (r, ids, b) => void r.messages.push({ role: 'tool', tool_call_id: ids.get(b.call!)!, content: b.content }),
@@ -58,7 +67,7 @@ export function renderPrefixes(context: Context): Request[] {
   });
 }
 
-// native Tool Protocol (architecture §4 "Rendering"): Tools Block → tools field; Assistant text and its
-// Tool Calls → one assistant message with tool_calls; each Tool Result → a tool message; a Note and a
+// native Tool Protocol (architecture §4 "Rendering"): Tools Block → tools field; Thinking, Assistant text
+// and its Tool Calls → one assistant message with reasoning_content and tool_calls; each Tool Result → a tool message; a Note and a
 // bottom pin are user-role messages (FR-9, FR-10).
 export const renderNative = (context: Context): Request => renderPrefixes(context).at(-1) ?? EMPTY_REQUEST;

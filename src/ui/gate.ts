@@ -39,8 +39,8 @@ export const COMMANDS = [
   { name: '/reload', arg: '', description: 're-read config' },
 ] as const;
 type CommandName = (typeof COMMANDS)[number]['name'];
-// In-flight answer; never persisted until complete or aborted (FR-37).
-export type Streaming = { text: string; abort: AbortController };
+// In-flight answer, its reasoning apart; never persisted until complete or aborted (FR-37).
+export type Streaming = { thinking: string; text: string; abort: AbortController };
 // Approved Tool Call running; its output so far is shown, the result is logged when it ends.
 export type Running = { call: Block; output: string; started: number; abort: AbortController };
 // The row of an answer or result not in the Context yet, shown before the block `before` (null: at the end).
@@ -109,23 +109,30 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
     const last = events().findLastIndex(e => e.type === 'ResponseReceived');
     return last < 0 ? null : renderNative(fold(events().slice(0, last + 1)));
   });
-  // The streaming answer sits before the bottom pins; a running call's result where it will be added.
-  const live = createMemo((): Live | null => {
+  // The streaming answer (its reasoning first) sits before the bottom pins; a running call's result where it will be added.
+  const live = createMemo((): Live[] => {
     const c = compacting();
-    if (c && c.phase !== 'instruction') return proposalRow(c);
+    if (c && c.phase !== 'instruction') return [proposalRow(c)];
     const s = streaming();
-    if (s) return { id: nextId(), kind: 'Assistant', content: s.text, before: sent().find(b => b.pin === 'bottom')?.id ?? null };
+    if (s) return streamingRows(s);
     const r = running();
     const blocks = context().blocks;
-    return r && { id: nextId(), kind: 'Tool Result', content: r.output, before: blocks[afterCalls(blocks, r.call.id)]?.id ?? null };
+    return r ? [{ id: nextId(), kind: 'Tool Result', content: r.output, before: blocks[afterCalls(blocks, r.call.id)]?.id ?? null }] : [];
   });
-  // Selectable rows in order: sent blocks and the live row.
+  // The ids the answer's blocks get: a Thinking block first (FR-46).
+  function streamingRows({ thinking, text }: Streaming): Live[] {
+    const before = sent().find(b => b.pin === 'bottom')?.id ?? null;
+    const reasoning: Live[] = thinking ? [{ id: nextId(), kind: 'Thinking', content: thinking, before }] : [];
+    const answer: Live[] = text || !thinking ? [{ id: nextId() + reasoning.length, kind: 'Assistant', content: text, before }] : [];
+    return [...reasoning, ...answer];
+  }
+  // Selectable rows in order: sent blocks and the live rows.
   const rows = createMemo(() => {
     const ids = sent().map(b => b.id);
-    const l = live();
-    if (!l) return ids;
-    const at = l.before === null ? -1 : ids.indexOf(l.before);
-    ids.splice(at < 0 ? ids.length : at, 0, l.id);
+    for (const l of live()) {
+      const at = l.before === null ? -1 : ids.indexOf(l.before);
+      ids.splice(at < 0 ? ids.length : at, 0, l.id);
+    }
     return ids;
   });
   const selectedBlock = (): Block | undefined => sent().find(b => b.id === selected());
@@ -230,8 +237,9 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
 
   // The status line after an answer: how it ended, else the call to decide on next.
   function answerStatus(result: ChatResult, notRun: string | null, next: Block | undefined): Status {
-    if (result.finish === 'aborted') return { text: '⚠ aborted – partial answer kept (cut off)', tone: 'warn' };
-    if (result.finish === 'length') return { text: '⚠ cut off at max_tokens', tone: 'warn' };
+    const during = result.content || result.calls.length || !result.thinking ? '' : ' while thinking';
+    if (result.finish === 'aborted') return { text: `⚠ aborted${during} – partial answer kept (cut off)`, tone: 'warn' };
+    if (result.finish === 'length') return { text: `⚠ cut off at max_tokens${during}`, tone: 'warn' };
     if (notRun) return { text: `⚠ tool call not run: ${notRun}`, tone: 'warn' };
     return next ? askFor() : { text: 'answer complete', tone: 'ok' };
   }
@@ -313,7 +321,7 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
     const requested = prefixes();
     const payload = requested.at(-1)!;
     const abort = new AbortController();
-    setStreaming({ text: '', abort });
+    setStreaming({ thinking: '', text: '', abort });
     setStatus(null);
     try {
       const { total } = await backend().count(requested);
@@ -325,8 +333,14 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
       append({ type: 'RequestSent', hash: Bun.hash(JSON.stringify(payload)).toString(16), tokens: total });
       setMarked(new Set<number>());
       setSelected(nextId());
-      const onDelta = (d: string) => setStreaming({ text: streaming()!.text + d, abort });
-      const result = await backend().chat(payload, { signal: abort.signal, onDelta });
+      const onThinking = (d: string) => setStreaming({ ...streaming()!, thinking: streaming()!.thinking + d });
+      // The answer follows its reasoning: the selection moves on with it.
+      const onDelta = (d: string) => {
+        const { thinking, text } = streaming()!;
+        if (thinking && !text && selected() === nextId()) setSelected(nextId() + 1);
+        setStreaming({ ...streaming()!, text: text + d });
+      };
+      const result = await backend().chat(payload, { signal: abort.signal, onDelta, onThinking });
       setStreaming(null);
       finish(result);
     } catch (e) {

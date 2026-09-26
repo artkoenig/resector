@@ -1,7 +1,9 @@
 // llama.cpp server backend: exact token counts via /apply-template + /tokenize (requires --jinja).
 import type { Backend } from '../../core/backend';
 import { commonPrefix } from '../../core/cache/cache';
+import { thinkingParams, type Thinking } from '../../core/config/config';
 import { EMPTY_REQUEST as EMPTY, type Message, type Request } from '../../core/render/native';
+import { reasoningOf } from '../../core/tokens/reasoning';
 import { splitTokens } from '../../core/tokens/split';
 import { answerMessage, chatFields, httpClient, streamChat } from './openai';
 
@@ -13,12 +15,14 @@ const TRAILER: Message = { role: 'user', content: '' };
 
 // Model Profile values that shape requests; the window defaults to the server's per-slot context.
 // session: pins one slot per session, so its prefix cache is not evicted by other sessions.
-export type LlamaCppOptions = { window?: number; model?: string; sampling?: Record<string, number>; session?: string };
+export type LlamaCppOptions = { window?: number; model?: string; sampling?: Record<string, number>; thinking?: Thinking; session?: string };
 
 type Props = { default_generation_settings: { n_ctx: number }; total_slots: number };
 
-export async function connectLlamaCpp(endpoint: string, { window, model, sampling, session }: LlamaCppOptions = {}): Promise<Backend> {
+export async function connectLlamaCpp(endpoint: string, { window, model, sampling, thinking, session }: LlamaCppOptions = {}): Promise<Backend> {
   const { request, post } = httpClient('llama.cpp', endpoint);
+  // The chat template renders with the thinking the requests are sent with.
+  const think = thinkingParams(thinking);
 
   const props = (await (await request('/props')).json()) as Props;
   await post('/apply-template', { messages: [{ role: 'user', content: 'probe' }], tools: PROBE_TOOLS }).catch(e => {
@@ -30,7 +34,7 @@ export async function connectLlamaCpp(endpoint: string, { window, model, samplin
     (await post<{ tokens: number[] }>('/tokenize', { content, add_special })).tokens;
   const tokens = async (content: string): Promise<number> => (await ids(content)).length;
   const template = async (request: Request, add_generation_prompt: boolean): Promise<string> =>
-    (await post<{ prompt: string }>('/apply-template', { ...chatFields(request), add_generation_prompt })).prompt;
+    (await post<{ prompt: string }>('/apply-template', { ...chatFields(request), ...think, add_generation_prompt })).prompt;
   const trailed = (request: Request): Request => ({ ...request, messages: [...request.messages, TRAILER] });
   const prefix = async (request: Request) => tokens(await template(trailed(request), false));
   // A Context ending in an Assistant block is not sendable; its Template row is BOS + generation prompt.
@@ -44,6 +48,21 @@ export async function connectLlamaCpp(endpoint: string, { window, model, samplin
   const closed = async (request: Request) => {
     const [all, empty, bos] = await Promise.all([template(trailed(request), false).then(t => ids(t)), prefix(EMPTY), tokens('')]);
     return all.slice(0, all.length - (empty - bos));
+  };
+  // Token ids of a request as sent; one ending in an answer is not sendable, as the next request renders it.
+  const rendered = async (request: Request) =>
+    request.messages.at(-1)?.role === 'assistant' ? closed(request) : ids(await template(request, true));
+  // A trailing answer renders as prefill: generation prompt and the answer, reasoning included.
+  const prefill = async (request: Request) => ids(await template(request, false));
+  // What the slot holds after an answer (`exchange` ends with it), as a following tool loop renders it:
+  // reasoning included, which the counted prefix may drop; plus its end of turn where it can be told apart.
+  const held = async (exchange: Request): Promise<number[]> => {
+    const answer = exchange.messages.at(-1) as Extract<Message, { role: 'assistant' }>;
+    if (answer.reasoning_content === undefined) return closed(exchange);
+    const { reasoning_content: _, ...plain } = answer;
+    const [turn, kept, bare] = await Promise.all([closed(exchange), prefill(exchange), prefill({ ...exchange, messages: [...exchange.messages.slice(0, -1), plain] })]);
+    const end = commonPrefix(bare, turn) === bare.length ? turn.slice(bare.length) : [];
+    return [...kept, ...end];
   };
 
   // The session slot's prefix cache (architecture §4), empty (cold) per connection: `slotTokens` as the
@@ -59,21 +78,24 @@ export async function connectLlamaCpp(endpoint: string, { window, model, samplin
     async count(requests) {
       const request = requests.at(-1) ?? EMPTY;
       const prefixes = await Promise.all(requests.map(prefix));
-      const [empty, bos, rendered] = await Promise.all([prefix(EMPTY), tokens(''), closed(request)]);
+      const [empty, bos, sent] = await Promise.all([prefix(EMPTY), tokens(''), rendered(request)]);
       const total = await requestSize(request, (prefixes.at(-1) ?? empty) - empty);
+      const sendable = request.messages.at(-1)?.role !== 'assistant';
+      const reasoning = await reasoningOf(requests, prefixes, total, { prefix, request: sendable ? r => requestSize(r, 0) : null });
       // Cached tokens of the rows: BOS precedes the first row.
-      const cached = Math.max(0, commonPrefix(shownTokens, rendered) - bos);
-      return { ...splitTokens({ empty, prefixes, total }), cached: { tokens: cached, exact: true } };
+      const cached = Math.max(0, commonPrefix(shownTokens, sent) - bos);
+      return { ...splitTokens({ empty, prefixes, total, reasoning }), cached: { tokens: cached, exact: true } };
     },
 
     // llama.cpp always evaluates at least the last prompt token; --cache-reuse is off per request.
     async chat(chat, options) {
       const sent = await ids(await template(chat, true));
       const predicted = Math.min(commonPrefix(slotTokens, sent), sent.length - 1);
-      const result = await streamChat({ name: 'llama.cpp', request }, { model, ...slot, ...sampling, n_cache_reuse: 0 }, chat, options);
+      const result = await streamChat({ name: 'llama.cpp', request }, { model, ...slot, ...sampling, ...think, n_cache_reuse: 0 }, chat, options);
+      const exchange = { ...chat, messages: [...chat.messages, answerMessage(result)] };
       // Generated tool call syntax is template-specific and not in the slot prediction: it only errs low.
-      slotTokens = [...sent, ...(await ids(result.content, false))];
-      shownTokens = await closed({ ...chat, messages: [...chat.messages, answerMessage(result)] });
+      slotTokens = result.thinking ? await prefill(exchange) : [...sent, ...(await ids(result.content, false))];
+      shownTokens = await held(exchange);
       return { ...result, predicted };
     },
   };

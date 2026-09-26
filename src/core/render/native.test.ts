@@ -112,3 +112,36 @@ test('a Note from a Tool Pair is a user message, never tool syntax; the other ca
     { role: 'user', content: '[Tool bash: ls]\na b' },
   ]);
 });
+
+test('a Thinking block is the reasoning_content of its answer: text and Tool Calls join its message (FR-47)', () => {
+  const context = fold([
+    created,
+    add(1, 'User', 'hi'),
+    add(2, 'Thinking', 'plan'),
+    add(3, 'Assistant', 'Looking.'),
+    add(4, 'Tool Call', 'ls'),
+    add(5, 'Tool Result', 'a', 4),
+    add(6, 'Thinking', 'next'),
+    add(7, 'Tool Call', 'pwd'),
+    add(8, 'Tool Result', '/p', 7),
+    add(9, 'Thinking', 'cut'),
+  ]);
+  const call = (command: string) => ({ id: 'call_0', type: 'function' as const, function: { name: 'bash', arguments: JSON.stringify({ command }) } });
+  expect(renderNative(context).messages).toEqual([
+    { role: 'user', content: 'hi' },
+    { role: 'assistant', content: 'Looking.', reasoning_content: 'plan', tool_calls: [call('ls')] },
+    { role: 'tool', tool_call_id: 'call_0', content: 'a' },
+    { role: 'assistant', content: '', reasoning_content: 'next', tool_calls: [call('pwd')] },
+    { role: 'tool', tool_call_id: 'call_0', content: '/p' },
+    { role: 'assistant', content: '', reasoning_content: 'cut' },
+  ]);
+});
+
+test('an Assistant block after anything but its Thinking block starts its own message', () => {
+  const context = fold([created, add(1, 'Thinking', 'plan'), add(2, 'User', 'moved here'), add(3, 'Assistant', 'text')]);
+  expect(renderNative(context).messages).toEqual([
+    { role: 'assistant', content: '', reasoning_content: 'plan' },
+    { role: 'user', content: 'moved here' },
+    { role: 'assistant', content: 'text' },
+  ]);
+});
