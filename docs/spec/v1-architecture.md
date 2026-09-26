@@ -21,16 +21,16 @@ src/
     tokens/                Tokenizer interface, per-block split, drift
     cache/                 prefix diff → invalidation point → rows ●/○
     compaction/            compaction request + proposal state machine
-    notes/                 @file references and snapshots, environment Note text and refresh
+    notes/                 @path references and snapshots, environment Note text and refresh
     approval/              permission rules, evaluation of split commands, session rules
     toolcall/              parse tool calls (native + text-xml), malformed detection, split thinking
     config/                JSONC load, merge, schema, permission tightening
   adapters/                I/O at the edge
     backend/               llamacpp | ollama | lmstudio | omlx (chat, tokenize, props)
     bash/                  process runner (timeout, kill, stdin /dev/null), command splitting (tree-sitter-bash)
-    editor/                $EDITOR on a temporary file, or on a project file (`e` on an @file reference); suspends the TUI
+    editor/                $EDITOR on a temporary file, or on a project file (`e` on an @path reference); suspends the TUI
     clipboard/             copy on select: OSC 52 + pbcopy / wl-copy / xclip
-    fs/                    @file read, environment probe, AGENTS.md
+    fs/                    @path read, environment probe, AGENTS.md
     store/                 session files, lock files, session index
   ui/                      OpenTUI + Solid views: Gate, preview, input, /sessions
   main.ts                  CLI (`resector`, `-c [id]`, `--version`, `--export-fixture`)
@@ -41,7 +41,7 @@ Core has no I/O; adapters are injected. UI depends on Core, never the reverse.
 ## 3. Session Log & Context
 
 - File: `~/.local/share/resector/sessions/<project-hash>/<id>.jsonl`, one event per line, plus `<id>.lock`.
-- Events: `SessionCreated{profile, protocol}`, `BlockAdded{id, kind, origin: config|user|model|tool|file|environment|compaction, content, cutOff?, call?, stopped?: killed|timeout, file?, pin?}` (`call`: a Tool Result's Tool Call; `file`: the file a Note was read from, as referenced: `path[:a-b]`; `pin`: added pinned, e.g. environment Note and project instructions at session creation), `FileReferenced{id, file}` (an `@file` row, unread), `FileRead{id, content}` (its snapshot on send), `Edit{id, revision, content, harness?}` (`harness`: the environment Note refreshed, not undoable), `Move{id, after}`, `Pin{id, top|bottom}`, `Unpin`, `Remove` (a Tool Pair as a whole), `PairToNote{id, call}` (moving/pinning a Tool Pair: Note `id` replaces it after the calls and results of its answer), `Compact{sources, instruction, noteId, content}`, `Rename{id, title}` (block, display only), `SessionRenamed{title}`, `ProfileFallback{profile}`, `AllowRuleAdded{pattern}`, `RequestSent{hash, tokens}`, `ResponseReceived{usage, cached}`, `Undo{eventId}`.
+- Events: `SessionCreated{profile, protocol}`, `BlockAdded{id, kind, origin: config|user|model|tool|file|environment|compaction, content, cutOff?, call?, stopped?: killed|timeout, file?, pin?}` (`call`: a Tool Result's Tool Call; `file`: the file a Note was read from, as referenced: `path[:a-b]`; `pin`: added pinned, e.g. environment Note and project instructions at session creation), `FileReferenced{id, file}` (an `@path` row, unread), `FileRead{id, content}` (its snapshot on send), `Edit{id, revision, content, harness?}` (`harness`: the environment Note refreshed, not undoable), `Move{id, after}`, `Pin{id, top|bottom}`, `Unpin`, `Remove` (a Tool Pair as a whole), `PairToNote{id, call}` (moving/pinning a Tool Pair: Note `id` replaces it after the calls and results of its answer), `Compact{sources, instruction, noteId, content}`, `Rename{id, title}` (block display title; no longer created, still read from older logs), `SessionRenamed{title}`, `ProfileFallback{profile}`, `AllowRuleAdded{pattern}`, `RequestSent{hash, tokens}`, `ResponseReceived{usage, cached}`, `Undo{eventId}`.
 - **Context = fold(events)**. Undo is a counter-event; nothing is deleted within a session. Deleting a session removes its file.
 - Block storage is protocol-neutral: Tool Call = its bash command (the only tool), Tool Result = text (output, then `[exit N]`, `[killed]` or `[timeout after N s]`), Tools Block = tool definitions as JSON. Thinking, Assistant text and each Tool Call are separate blocks; the renderer merges them into one message. Tool Results follow all Tool Calls of their answer, in call order. A Tool Call without Tool Result awaits approval.
 - Every block but the Tools Block accepts `Edit`; of the Tool Calls only one *pending approval* (FR-8).
@@ -51,7 +51,7 @@ Core has no I/O; adapters are injected. UI depends on Core, never the reverse.
 
 ```
 fold(log) → Context
-  → resolve pending @file refs (read, snapshot as Note; missing → abort)
+  → resolve pending @path refs (read, snapshot as Note; missing → abort)
   → refresh environment Note (new Revision only if changed)
   → render(Context, profile.toolProtocol) → messages (+ tools field for native)
   → tokenize via backend template → per-block tokens + Template overhead

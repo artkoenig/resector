@@ -1,4 +1,4 @@
-// File Notes (FR-27, FR-29): `@file <path>[:a-b]` references in the input, and the snapshot a reference becomes on send.
+// File Notes (FR-27, FR-29): `@<path>[:a-b]` references in the input, and the snapshot a reference becomes on send.
 import type { SessionEvent } from '../log/events';
 import type { Context } from '../log/fold';
 
@@ -6,20 +6,20 @@ import type { Context } from '../log/fold';
 export type ReadFile = (path: string) => string | null;
 export type Reference = { path: string; from: number | null; to: number | null };
 
-const REFERENCE = /(?<=^|\s)@file\s+(\S+)/g;
+const REFERENCE = /(?<=^|\s)@(\S+)/g;
 
 // The references in the input text, in order, and the text without them.
 export function references(input: string): { files: string[]; text: string } {
-  // Punctuation after the path belongs to the sentence: `see @file a.ts, then …`.
+  // Punctuation after the path belongs to the sentence: `see @a.ts, then …`.
   const files = [...input.matchAll(REFERENCE)].map(m => m[1]!.replace(/[.,;:!?)]+$/, ''));
   const text = input.replace(REFERENCE, '').replace(/[ \t]{2,}/g, ' ').trim();
   return { files, text };
 }
 
-// The @file reference being typed at the end of the input: where its path starts and the project files matching
+// The @path reference being typed at the end of the input: where its path starts and the project files matching
 // it, best first – the file name starting with it, then the path, then containing it anywhere (FR-27).
 export function fileCompletions(input: string, files: readonly string[], limit = 8): { at: number; paths: string[] } | null {
-  const typed = /(?<=^|\s)@file\s+(\S*)$/.exec(input);
+  const typed = /(?<=^|\s)@(\S*)$/.exec(input);
   if (!typed) return null;
   const partial = typed[1]!.toLowerCase();
   const rank = (path: string) => {

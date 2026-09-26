@@ -1,4 +1,4 @@
-// The project on disk: @file reads (FR-27), the environment probe (FR-28), project instructions (FR-29).
+// The project on disk: @path reads (FR-27), the environment probe (FR-28), project instructions (FR-29).
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -16,7 +16,7 @@ export const projectFiles = (root: string): ReadFile => path => {
   }
 };
 
-// The project's files for @file completion (FR-27), relative to the root: in a git repository the tracked and
+// The project's files for @path completion (FR-27), relative to the root: in a git repository the tracked and
 // untracked ones not ignored, else a walk skipping dot directories and node_modules. At most `limit`.
 export function listProjectFiles(root: string, limit = 20000): string[] {
   const git = spawnSync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });

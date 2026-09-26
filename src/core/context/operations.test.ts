@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
-import { approvable, deny, edit, isFixed, inPair, move, nextCall, pin, reject, remove, rename, toNote, toolResult, undo } from './operations';
+import { approvable, deny, edit, isFixed, inPair, move, nextCall, pin, reject, remove, toNote, toolResult, undo } from './operations';
 
 const session = (...then: SessionEvent[]): SessionEvent[] => [
   { type: 'SessionCreated', profile: 'default', protocol: 'native' },
@@ -57,11 +57,6 @@ test('pin cycles top → bottom → off', () => {
 test('remove any block but System', () => {
   expect(remove(at(session(), 3)[1])).toEqual({ event: { type: 'Remove', id: 3 } });
   expect(remove(at(session(), 1)[1])).toEqual({ error: 'System prompt cannot be removed' });
-});
-
-test('rename trims the title; empty resets', () => {
-  expect(rename(at(session(), 2)[1], '  greeting ')).toEqual({ event: { type: 'Rename', id: 2, title: 'greeting' } });
-  expect(rename(at(session(), 2)[1], '  ')).toEqual({ event: { type: 'Rename', id: 2, title: '' } });
 });
 
 test('undo names the latest Context operation not yet undone', () => {

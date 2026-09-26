@@ -13,7 +13,7 @@ export type Block = {
   source?: string;
   // Note from a Compaction only: the blocks it replaced and the instruction (FR-16).
   compacted?: { sources: number[]; instruction: string };
-  // Note from a file only: the file (FR-27, FR-29); unread: an @file reference not read yet.
+  // Note from a file only: the file (FR-27, FR-29); unread: an @path reference not read yet.
   file?: string;
   unread?: true;
   // An unread reference whose file cannot be read now (set at the Gate, never logged).

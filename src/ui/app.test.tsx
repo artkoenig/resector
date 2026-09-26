@@ -36,7 +36,7 @@ beforeAll(async () => {
 let editor: (text: string) => Promise<string>;
 // What copy on select put into the clipboard.
 let copied: string[];
-// The environment Note's text as the harness probes it now; the files opened in $EDITOR (`e` on an @file reference).
+// The environment Note's text as the harness probes it now; the files opened in $EDITOR (`e` on an @path reference).
 let environment: string;
 let openedFiles: string[];
 
@@ -322,23 +322,15 @@ test('Space marks and unmarks the selected block; the selection stays', async ()
   expect(line(frame, /two/)).toMatch(/^[ ┃] {2} +4\s+User/);
 });
 
-test('r renames the block for display only; empty resets', async () => {
+test('@ in the Context starts a file reference in the input line, r does nothing', async () => {
+  writeFileSync(join(project, 'at-key.txt'), 'x\n');
   const { events } = await withUsers('hello there');
   await press('r');
-  await frameMatching(ui, f => f.includes('┃ hello there') && f.includes('display only'));
-  for (let i = 0; i < 'hello there'.length; i++) ui.mockInput.pressBackspace();
-  await ui.mockInput.typeText('greeting');
-  ui.mockInput.pressEnter();
-  let frame = await frameMatching(ui, f => f.includes('renamed (display only'));
-  expect(line(frame, /greeting/)).toMatch(/3\s+User\s+greeting\s+8\b/);
-  expect(line(frame, /default/)).toMatch(/60 \/ 4k/);
-  expect(events().at(-1)).toEqual({ type: 'Rename', id: 3, title: 'greeting' });
-  await press('r');
-  await frameMatching(ui, f => f.includes('┃ greeting') && f.includes('display only'));
-  for (let i = 0; i < 'greeting'.length; i++) ui.mockInput.pressBackspace();
-  ui.mockInput.pressEnter();
-  frame = await frameMatching(ui, f => f.includes('title reset'));
-  expect(line(frame, /hello there/)).toMatch(/3\s+User\s+hello there/);
+  expect(ui.captureCharFrame()).toContain('Tab to write');
+  await ui.mockInput.typeText('@at-k');
+  const frame = await frameMatching(ui, f => f.includes('┃ @at-k') && f.includes('at-key.txt'));
+  expect(frame).toContain('tab/enter complete');
+  expect(events().some(e => e.type === 'Rename')).toBe(false);
 });
 
 test('the header Context bar highlights the selected block', async () => {
@@ -411,16 +403,11 @@ test('a Context changed since the last request can be sent without a new User bl
   expect((fake.chatRequests[1] as { messages: { content: string }[] }).messages.map(m => m.content)).toEqual(['You are an agent.', 'b', 'x']);
 });
 
-test('a rename or an undone change leaves nothing to send', async () => {
+test('an undone change leaves nothing to send', async () => {
   await withUsers('a');
   fake.reply({ chunks: ['x'] });
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('answer complete'));
-  await press('r');
-  await frameMatching(ui, f => f.includes('┃ x') && f.includes('display only'));
-  await ui.mockInput.typeText('!');
-  ui.mockInput.pressEnter();
-  await frameMatching(ui, f => f.includes('renamed (display only'));
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('nothing to send'));
   await press('up');
@@ -1031,13 +1018,13 @@ test('a request too big for the compaction window is blocked; Compaction runs on
 // Files, environment and project instructions (FR-27–FR-29) ---------------------------------------------------------
 const messages = (i: number) => (fake.chatRequests[i] as { messages: { role: string; content: string }[] }).messages;
 
-test('@file adds a reference row, not sent; e opens the file; on send it becomes a snapshot Note (FR-27)', async () => {
+test('@adds a reference row, not sent; e opens the file; on send it becomes a snapshot Note (FR-27)', async () => {
   writeFileSync(join(project, 'notes.txt'), 'one\ntwo\nthree\n');
   const { events } = await start();
-  await write('@file notes.txt:2-3');
-  let frame = await frameMatching(ui, f => f.includes('1 file reference added') && f.includes('@file reference – read at send'));
-  expect(line(frame, /@file notes/)).toMatch(/3\s+Note\s+@file notes\.txt:2-3\s+.*@ read at send/);
-  expect(frame).toContain('@file reference – read at send');
+  await write('@notes.txt:2-3');
+  let frame = await frameMatching(ui, f => f.includes('1 file reference added') && f.includes('@path reference – read at send'));
+  expect(line(frame, /@notes/)).toMatch(/3\s+Note\s+@notes\.txt:2-3\s+.*@ read at send/);
+  expect(frame).toContain('@path reference – read at send');
   expect(frame).toContain('[notes.txt:2-3]');
   expect(fake.chatRequests).toEqual([]);
   expect(events().at(-1)).toEqual({ type: 'FileReferenced', id: 3, file: 'notes.txt:2-3' });
@@ -1048,7 +1035,7 @@ test('@file adds a reference row, not sent; e opens the file; on send it becomes
   fake.reply({ chunks: ['ok'] });
   await write('explain');
   frame = await frameMatching(ui, f => f.includes('answer complete'));
-  expect(line(frame, /@file notes/)).not.toContain('@ read at send');
+  expect(line(frame, /@notes/)).not.toContain('@ read at send');
   expect(events().slice(4, 6)).toEqual([
     { type: 'BlockAdded', id: 4, kind: 'User', origin: 'user', content: 'explain' },
     { type: 'FileRead', id: 3, content: '[notes.txt:2-3]\n2: TWO\n3: three' },
@@ -1059,19 +1046,19 @@ test('@file adds a reference row, not sent; e opens the file; on send it becomes
   ]);
 });
 
-test('an @file path is completed from the project files: ↑↓ choose, Tab or Enter complete (FR-27)', async () => {
+test('an @path is completed from the project files: ↑↓ choose, Tab or Enter complete (FR-27)', async () => {
   mkdirSync(join(project, 'docs'), { recursive: true });
   writeFileSync(join(project, 'docs/complete-me.md'), 'x\n');
   writeFileSync(join(project, 'complete-too.txt'), 'y\n');
   const { events } = await start();
   ui.mockInput.pressTab();
   await ui.flush();
-  await ui.mockInput.typeText('@file compl');
+  await ui.mockInput.typeText('@compl');
   let frame = await frameMatching(ui, f => f.includes('docs/complete-me.md') && f.includes('complete-too.txt'));
   expect(frame).toContain('↑↓ choose  tab/enter complete  esc back');
   await press('down');
   ui.mockInput.pressEnter();
-  frame = await frameMatching(ui, f => f.includes('┃ @file docs/complete-me.md ') && !f.includes('complete-too.txt'));
+  frame = await frameMatching(ui, f => f.includes('┃ @docs/complete-me.md ') && !f.includes('complete-too.txt'));
   expect(events().some(e => e.type === 'FileReferenced')).toBe(false);
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('1 file reference added'));
@@ -1080,9 +1067,9 @@ test('an @file path is completed from the project files: ↑↓ choose, Tab or E
 
 test('a referenced file missing at send aborts sending (FR-27)', async () => {
   const { events } = await start();
-  await write('@file gone.txt what is in it?');
+  await write('@gone.txt what is in it?');
   const frame = await frameMatching(ui, f => f.includes('✗ file not found') && f.includes('gone.txt – sending aborted'));
-  expect(line(frame, /@file gone/)).toMatch(/3\s+Note\s+@file gone\.txt\s+.*⚠ not found/);
+  expect(line(frame, /@gone/)).toMatch(/3\s+Note\s+@gone\.txt\s+.*⚠ not found/);
   expect(fake.chatRequests).toEqual([]);
   expect(events().map(e => e.type)).not.toContain('RequestSent');
 });
@@ -1106,13 +1093,13 @@ test('the environment Note is pinned top; a changed environment is a new Revisio
 test('the project instructions are a pinned-top Note after the environment (FR-29)', async () => {
   await start({ notes: { environment: 'cwd: /p', instructions: { file: 'AGENTS.md', content: '# Rules' } } });
   const frame = ui.captureCharFrame();
-  expect(line(frame, /AGENTS/)).toMatch(/4\s+Note\s+@file AGENTS\.md\s+\d+/);
+  expect(line(frame, /AGENTS/)).toMatch(/4\s+Note\s+@AGENTS\.md\s+\d+/);
 });
 
 test('a file reference alone is sent with Enter, the file as the last user message (FR-27)', async () => {
   writeFileSync(join(project, 'alone.txt'), 'content');
   await start();
-  await write('@file alone.txt');
+  await write('@alone.txt');
   await frameMatching(ui, f => f.includes('1 file reference added'));
   fake.reply({ chunks: ['ok'] });
   ui.mockInput.pressEnter();

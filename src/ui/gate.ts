@@ -37,7 +37,7 @@ export type GateOptions = {
   compactor?: () => Promise<Compactor | null>;
 };
 export type Compactor = { profile: string; backend: Backend };
-// The project on disk: files for @file references and their completion (FR-27), the environment Note's text now
+// The project on disk: files for @path references and their completion (FR-27), the environment Note's text now
 // (FR-28), and $EDITOR on a file of the project (`e` on a reference).
 export type Project = { read: ReadFile; list: () => string[]; environment: () => string; open: (path: string) => Promise<void> };
 // Tool Approval (FR-22, FR-25): the splitter, the project root arguments must stay in, and the config's rules as read
@@ -108,7 +108,7 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     log.append(event);
     setEvents([...events(), event]);
   };
-  // Unread @file references show the file as it would be read now; only sending reads them (FR-27).
+  // Unread @path references show the file as it would be read now; only sending reads them (FR-27).
   const context = createMemo(() => {
     reread();
     return peekReferences(fold(events()), project.read);
@@ -243,8 +243,6 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     keepSelection();
     setStatus({ text: `undone: ${UNDONE[type] ?? type.toLowerCase()} (counter-event in Session Log)`, tone: 'info' });
   }
-  const rename = (title: string) =>
-    operate(b => ops.rename(b, title), () => (title.trim() ? 'renamed (display only – Context and cache unchanged)' : 'title reset'));
   const edited = (b: Block) => `edited → revision ${b.revision} · u = undo`;
   // e: the selected block in $EDITOR; a changed save becomes a new Revision (FR-8). Checked first: a
   // block that cannot be edited is not opened.
@@ -261,9 +259,9 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
       setStatus({ text: `editor failed: ${errorText(e)} – unchanged`, tone: 'error' });
     }
   }
-  // On an unread @file reference, e opens the file itself (FR-27).
+  // On an unread @path reference, e opens the file itself (FR-27).
   const edit = () => (selectedBlock()?.unread ? openReference(selectedBlock()!) : editBlock());
-  // The file of an unread @file reference in $EDITOR; it is read on send.
+  // The file of an unread @path reference in $EDITOR; it is read on send.
   async function openReference(block: Block) {
     const { path } = parseReference(block.file!);
     try {
@@ -396,7 +394,7 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     if (pending) setSelected(pending.id);
     if (pending) return { text: `Tool Calls await approval – ${APPROVE} on the ? approve row`, tone: 'warn' };
     const changed = lastAnswer() !== null && !same(lastAnswer(), request());
-    // The last unpinned block: a User message, a Tool Result or a Note (e.g. an @file reference) asks for an answer.
+    // The last unpinned block: a User message, a Tool Result or a Note (e.g. an @path reference) asks for an answer.
     const last = sent().filter(b => !b.pin).at(-1)?.kind;
     return changed || last === 'User' || last === 'Tool Result' || last === 'Note' ? null : { text: 'nothing to send – Tab to write', tone: 'info' };
   }
@@ -595,7 +593,7 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     else if (/^\/\w+$/.test(name)) setStatus({ text: `unknown command ${name} – ${COMMANDS.map(c => c.name).join(' ')}`, tone: 'error' });
     else if (text.trim()) addInput(text);
   }
-  // `@file` references become rows of their own before the text; only a text is sent right away (FR-27).
+  // `@path` references become rows of their own before the text; only a text is sent right away (FR-27).
   function addInput(input: string) {
     const { files, text } = references(input);
     for (const file of files) {
@@ -657,7 +655,6 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     pin,
     remove,
     undo,
-    rename,
     edit: () => void edit(),
     copy: (text: string) => void copy(text),
     toggleMark,

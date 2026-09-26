@@ -17,7 +17,7 @@ const FIXED_COLUMNS = 52;
 const FLAGS_WIDTH = 14;
 const CACHE_COLOR: Record<string, string> = { '●': TONE.ok, '○': FAINT, '': FAINT };
 
-type Mode = 'context' | 'input' | 'rename';
+type Mode = 'context' | 'input';
 // A row per visible block; removed ones are struck through, unnumbered and not selectable until sent.
 // dropped: a Thinking block the chat template drops (FR-48), dimmed.
 // A line above the input: Tab puts `draft` into it; Enter runs `run`, or (null) completes as Tab does.
@@ -64,10 +64,10 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     return done;
   };
 
-  // The project's files, listed when the input opens: @file completion (FR-27).
+  // The project's files, listed when the input opens: @path completion (FR-27).
   const [files, setFiles] = createSignal<string[]>([]);
   createEffect(on(mode, m => m === 'input' && setFiles(props.project.list())));
-  // Suggestions above the input: commands while it is a single `/word` (FR-6), project files while an @file path
+  // Suggestions above the input: commands while it is a single `/word` (FR-6), project files while an @path
   // is typed at its end (FR-27). Tab completes; Enter runs a command taking no argument, else completes too.
   const suggestions = createMemo((): Suggestion[] => {
     if (mode() !== 'input') return [];
@@ -103,15 +103,13 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     setMode('context');
   };
   const submit = () => {
-    if (mode() === 'rename') gate.rename(draft());
-    else gate.submit(draft());
+    gate.submit(draft());
     leaveInput();
   };
-  const startRename = () => {
-    const block = gate.selectedBlock();
-    if (!block) return;
-    setDraft(titleOf(block));
-    setMode('rename');
+  // `/` and `@` in the Context start a command or a file reference in the input line.
+  const startInput = (text: string) => () => {
+    editDraft(text);
+    setMode('input');
   };
   // The preview scrolls on its own; a newly selected block starts at its top.
   let preview: ScrollBoxRenderable | undefined;
@@ -151,10 +149,9 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   };
   const contextKeys: Record<string, () => void> = {
     tab: () => setMode('input'),
-    '/': () => {
-      editDraft('/');
-      setMode('input');
-    },
+    '/': startInput('/'),
+    '@': startInput('@'),
+    'shift+@': startInput('@'),
     return: () => void gate.send(),
     up: () => gate.select(-1),
     down: () => gate.select(1),
@@ -170,7 +167,6 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     p: gate.pin,
     d: gate.remove,
     u: gate.undo,
-    r: startRename,
     e: gate.edit,
     space: gate.toggleMark,
     c: gate.startCompaction,
@@ -196,7 +192,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   }
   useKeyboard(key => {
     const action = actionOf(key.name, modifierOf(key) + key.name);
-    // Handled here only: `r`, `i` must not also type into the input they focus, Tab not reach it.
+    // Handled here only: `/`, `@`, `i` must not also type into the input they focus, Tab not reach it.
     if (action) key.preventDefault();
     action?.();
   });
@@ -362,11 +358,11 @@ function Checks(props: { verdict: Verdict }) {
   );
 }
 
-// An unread @file reference in the preview: when it is read, or why it cannot be (FR-27).
+// An unread @path reference in the preview: when it is read, or why it cannot be (FR-27).
 function ReferenceHint(props: { block: Block | undefined }) {
   return (
     <Show when={props.block?.unread}>
-      <text fg={props.block!.missing ? TONE.warn : MUTED}>{props.block!.missing ?? '@file reference – read at send, a snapshot from then on · e opens the file'}</text>
+      <text fg={props.block!.missing ? TONE.warn : MUTED}>{props.block!.missing ?? '@path reference – read at send, a snapshot from then on · e opens the file'}</text>
     </Show>
   );
 }
@@ -375,8 +371,8 @@ function ReferenceHint(props: { block: Block | undefined }) {
 function PromptMeta(props: { mode: Mode }) {
   return (
     <Show when={props.mode !== 'context'}>
-      <span style={{ fg: props.mode === 'rename' ? ACCENT : KIND_COLOR.User }}>{props.mode === 'rename' ? 'title' : 'User'}</span>
-      <span style={{ fg: MUTED }}>{props.mode === 'rename' ? '  display only, never sent · empty resets' : '  adds a block and sends the Context · @file path[:a-b] adds a file'}</span>
+      <span style={{ fg: KIND_COLOR.User }}>User</span>
+      <span style={{ fg: MUTED }}>  adds a block and sends the Context · @path[:a-b] adds a file</span>
     </Show>
   );
 }
@@ -461,7 +457,7 @@ const WHEEL: Record<string, number> = { up: -1, down: 1 };
 const modifierOf = (key: { option?: boolean; meta: boolean; shift: boolean }) => (key.option || key.meta ? 'alt+' : key.shift ? 'shift+' : '');
 
 const LOOK_KEYS: Hint[] = [['q', 'quit']];
-const KEYS: Hint[] = [['⌥↑↓', 'move'], ['e', 'edit'], ['r', 'rename'], ['d', 'remove'], ['p', 'pin'], ['space', 'mark'], ['c', 'compact'], ['u', 'undo'], ['q', 'quit']];
+const KEYS: Hint[] = [['⌥↑↓', 'move'], ['e', 'edit'], ['d', 'remove'], ['p', 'pin'], ['space', 'mark'], ['c', 'compact'], ['u', 'undo'], ['q', 'quit']];
 
 // Colours of a row: a removed one is muted throughout, one the chat template drops all but its flags.
 const rowFg = (row: Row) =>
@@ -493,7 +489,6 @@ const MODE_KEYS: Partial<Record<KeyMode, Hint[]>> = {
   suggest: [['↑↓', 'choose'], ['tab', 'complete'], ['enter', 'run'], ['esc', 'back']],
   complete: [['↑↓', 'choose'], ['tab/enter', 'complete'], ['esc', 'back']],
   input: [['enter', 'send'], ['tab/esc', 'back']],
-  rename: [['enter', 'set title'], ['tab/esc', 'cancel']],
 };
 function modeKeys(gate: Gate, mode: KeyMode): Hint[] {
   const own = MODE_KEYS[mode];

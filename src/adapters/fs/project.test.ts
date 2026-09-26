@@ -17,7 +17,7 @@ test('files are read relative to the project root, or absolute; anything unreada
   expect(read('src')).toBeNull();
 });
 
-test('the project files for @file completion: git ignores apply in a repository, else dot dirs and node_modules are skipped', () => {
+test('the project files for @path completion: git ignores apply in a repository, else dot dirs and node_modules are skipped', () => {
   const root = dir();
   for (const d of ['src', 'node_modules/x', '.cache', 'dist']) mkdirSync(join(root, d), { recursive: true });
   for (const f of ['src/a.ts', 'node_modules/x/i.js', '.cache/c', 'dist/out.js', 'README.md']) writeFileSync(join(root, f), '');

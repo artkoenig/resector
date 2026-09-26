@@ -27,7 +27,7 @@ export type LaunchOptions = {
   store: SessionStore;
   // Project root: where bash runs (FR-21); default the working directory.
   cwd?: string;
-  // $EDITOR for `e` (FR-8), and on a file itself (`e` on an @file reference, FR-27).
+  // $EDITOR for `e` (FR-8), and on a file itself (`e` on an @path reference, FR-27).
   editor: Editor;
   openFile: (file: string) => Promise<void>;
   // Copy on select.

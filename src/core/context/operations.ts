@@ -83,8 +83,6 @@ export function edit(events: SessionEvent[], block: Block, edited: string): Outc
 export const nextRevision = (events: SessionEvent[], id: number) =>
   FIRST_REVISION + events.filter(e => e.type === 'Edit' && e.id === id).length + 1;
 
-export const rename = (block: Block, title: string): Outcome => ({ event: { type: 'Rename', id: block.id, title: title.trim() } });
-
 // Undo cancels the latest Context operation not yet undone, by a counter-event.
 export function undo(events: SessionEvent[]): Outcome<Undo> {
   const skip = undone(events);
