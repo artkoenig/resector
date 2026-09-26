@@ -14,8 +14,34 @@ const BASH = {
   parameters: { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] },
 };
 
+const OPTION = { type: 'object', properties: { label: { type: 'string' }, description: { type: 'string' } }, required: ['label', 'description'] };
+const QUESTION_TOOL = {
+  name: 'question',
+  description: expect.stringContaining('`recommended` is the label of the option you advise'),
+  parameters: {
+    type: 'object',
+    properties: {
+      questions: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            question: { type: 'string', description: 'the full question' },
+            header: { type: 'string', description: 'a very short label' },
+            options: { type: 'array', minItems: 2, items: OPTION },
+            multiple: { type: 'boolean', description: 'several options may be chosen' },
+            recommended: { anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }], description: 'label(s) of the recommended option(s)' },
+          },
+          required: ['question', 'header', 'options', 'recommended'],
+        },
+      },
+    },
+    required: ['questions'],
+  },
+};
+
 test('a new Tools Block offers bash with one command parameter and question (FR-12, FR-21)', () => {
-  expect(JSON.parse(TOOLS)).toEqual([BASH, QUESTION_DEFINITION]);
+  expect(JSON.parse(TOOLS)).toEqual([BASH, QUESTION_TOOL]);
   expect(QUESTION_DEFINITION.description).toContain('always a recommendation');
   expect(QUESTION_DEFINITION.description).toContain('never add an "Other" option');
   expect(toolNames(TOOLS)).toBe('bash, question');
@@ -33,7 +59,7 @@ test('/tools switches a tool off and on again; an unknown one is refused', () =>
 
 test('/tools search switches search on after bash, with one query parameter; off again, bash stays', () => {
   const on = toggleTool(TOOLS, 'search') as { content: string };
-  expect(JSON.parse(on.content)).toEqual([BASH, SEARCH, QUESTION_DEFINITION]);
+  expect(JSON.parse(on.content)).toEqual([BASH, SEARCH, QUESTION_TOOL]);
   expect(toolNames(on.content)).toBe('bash, search, question');
   expect(toggleTool('[]', 'search')).toEqual({ content: JSON.stringify([JSON.parse(on.content)[1]], null, 2) });
   expect(toggleTool(on.content, 'search')).toEqual({ content: TOOLS });

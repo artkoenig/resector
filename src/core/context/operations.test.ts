@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
 import { TOOLS } from '../toolcall/bash';
-import { approvable, deny, edit, isFixed, inPair, move, nextCall, pin, reject, remove, removeAll, toggleTool, toNote, toolResult, undo } from './operations';
+import { approvable, decline, deny, edit, isFixed, inPair, move, nextCall, pin, reject, remove, removeAll, toggleTool, toNote, toolResult, undo } from './operations';
 
 const session = (...then: SessionEvent[]): SessionEvent[] => [
   { type: 'SessionCreated', profile: 'default', protocol: 'native' },
@@ -136,6 +136,12 @@ test('a denied call is answered with a Tool Result "denied by rule" (FR-23)', ()
     event: { type: 'BlockAdded', id: 8, kind: 'Tool Result', origin: 'tool', content: 'denied by rule', call: 6 },
   });
   expect(deny(...at(events, 7), 8)).toEqual({ error: 'approve the earlier Tool Call first' });
+});
+
+test('a declined Question is answered with a Tool Result "declined" (FR-21)', () => {
+  expect(decline(...at(session(call(6)), 6), 8)).toEqual({
+    event: { type: 'BlockAdded', id: 8, kind: 'Tool Result', origin: 'tool', content: 'declined', call: 6 },
+  });
 });
 
 test('a run becomes the Tool Result of its call, flagged when stopped', () => {

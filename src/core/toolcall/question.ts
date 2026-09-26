@@ -43,7 +43,7 @@ const problemOf = (q: Record<string, unknown>): string | null => textProblem(q) 
 const textProblem = (q: Record<string, unknown>) => (isText(q.question) && isText(q.header) ? null : 'question and header must be strings');
 function optionsProblem(options: unknown): string | null {
   if (!Array.isArray(options) || options.length < 2) return 'at least 2 options';
-  return options.every(o => isText(o?.label) && isText(o?.description)) ? null : 'every option needs a label and a description';
+  return options.every(o => isText(o?.label) && isText(o.description)) ? null : 'every option needs a label and a description';
 }
 // Options are valid by now.
 function recommendedProblem({ recommended, multiple, options }: Record<string, unknown>): string | null {
@@ -72,7 +72,7 @@ export const questionsOf = (content: string): Question[] => (JSON.parse(content)
 export type Answer = string[];
 // Tool Result of an answered Question: one line per question, `<full question text>: <answer>`, several comma-separated.
 // It does not say whether the user followed the recommendation.
-export const answerText = (questions: Question[], answers: Answer[]): string => questions.map((q, i) => `${q.question}: ${shownAnswer(answers[i] ?? [])}`).join('\n');
+export const answerText = (questions: Question[], answers: Answer[]): string => questions.map((q, i) => `${q.question}: ${shownAnswer(answers[i]!)}`).join('\n');
 export const shownAnswer = (answer: Answer) => (answer.length ? answer.join(', ') : 'Unanswered');
 
 // The options as the dock lists them: the Recommended Option(s) first, then the others in the model's order.

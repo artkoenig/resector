@@ -1338,6 +1338,12 @@ async function questioned(...questions: object[]) {
 }
 // The Tool Result the model got for the Question.
 const answerSent = () => (fake.chatRequests[1] as Sent).messages.at(-1);
+// Moves the dock's cursor `downs` rows down, then Enter picks that row.
+async function choose(downs: number) {
+  for (let i = 0; i < downs; i++) await press('down');
+  ui.mockInput.pressEnter();
+  await ui.flush();
+}
 
 test('a Question opens the dock: the Recommended Option on top, marked and preselected; Enter answers and sends (#33)', async () => {
   const { events } = await questioned(RUNTIME);
@@ -1346,9 +1352,11 @@ test('a Question opens the dock: the Recommended Option on top, marked and prese
   expect(line(frame, /Tool Call/)).toMatch(/4\s+Tool Call\s+question Which runtime shou….*\? answer/);
   expect(frame).not.toContain('? approve');
   expect(frame).toContain('Which runtime should we use?');
-  expect(line(frame, /1 Bun/)).toMatch(/› 1 Bun .*recommended.*fast/);
-  expect(line(frame, /2 Node/)).toMatch(/^ +2 Node .*common/);
-  expect(line(frame, /own answer/)).toMatch(/^ +3 own answer/);
+  expect(line(frame, /› Bun/)).toMatch(/› Bun .*recommended.*fast/);
+  expect(line(frame, /┃ +Node/)).toMatch(/^┃ +Node .*common/);
+  expect(line(frame, /own answer/)).toMatch(/^┃ +own answer/);
+  // The dock takes the prompt band's place: nothing can be written there.
+  expect(frame).not.toContain('Tab to write');
   fake.reply({ chunks: ['great'] });
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('answer complete'));
@@ -1359,24 +1367,26 @@ test('a Question opens the dock: the Recommended Option on top, marked and prese
   expect(answerSent()).toEqual({ role: 'tool', tool_call_id: 'call_0', content: 'Which runtime should we use?: Bun' });
 });
 
-test('1–9 pick an option at once; j/k move; own answer takes free text (#33)', async () => {
+test('↑↓ move, Enter picks; own answer takes free text (#33)', async () => {
   await questioned(RUNTIME);
   fake.reply({ chunks: ['ok'] });
-  await press('2');
+  await choose(1);
   await frameMatching(ui, f => f.includes('answer complete'));
   expect(answerSent()).toMatchObject({ content: 'Which runtime should we use?: Node' });
   ui.renderer.destroy();
   fake.stop();
 
   await questioned(RUNTIME);
-  await press('j');
-  await press('j');
-  await press('k');
-  await press('j');
-  await frameMatching(ui, f => /› 3 own answer/.test(f));
+  await press('down');
+  await press('down');
+  await press('up');
+  await press('down');
+  await frameMatching(ui, f => /› own answer/.test(f));
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('answer >'));
   await ui.mockInput.typeText('Deno 2');
+  // Typed in the own answer's row.
+  expect(line(await frameMatching(ui, f => f.includes('Deno 2')), /answer >/)).toMatch(/^┃ +› answer > Deno 2/);
   fake.reply({ chunks: ['ok'] });
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('answer complete'));
@@ -1409,36 +1419,40 @@ test('several questions: one tab each plus Confirm; `multiple` toggles, its Reco
   await questioned(RUNTIME, LINTERS);
   let frame = ui.captureCharFrame();
   expect(line(frame, /Confirm/)).toMatch(/Runtime.*Linters.*Confirm/);
-  expect(line(frame, /1 Bun/)).toMatch(/› 1 Bun .*recommended/);
-  await press('1');
+  expect(line(frame, /› Bun/)).toMatch(/› Bun .*recommended/);
+  await choose(0);
   frame = await frameMatching(ui, f => f.includes('[✓]'));
   expect(frame).toContain('Which linters should run?');
-  expect(line(frame, /Biome/)).toMatch(/› 1 \[✓\] Biome .*recommended/);
-  expect(line(frame, /Oxlint/)).toMatch(/2 \[✓\] Oxlint .*recommended/);
-  expect(line(frame, /ESLint/)).toMatch(/3 \[ \] ESLint/);
-  await press('3');
-  await press('1');
-  await frameMatching(ui, f => /3 \[✓\] ESLint/.test(f) && /1 \[ \] Biome/.test(f));
-  ui.mockInput.pressTab();
+  expect(line(frame, /Biome/)).toMatch(/› \[✓\] Biome .*recommended/);
+  expect(line(frame, /Oxlint/)).toMatch(/ \[✓\] Oxlint .*recommended/);
+  expect(line(frame, /ESLint/)).toMatch(/ \[ \] ESLint/);
+  await choose(2);
+  await press('up');
+  await press('up');
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => /\[✓\] ESLint/.test(f) && /\[ \] Biome/.test(f));
+  ui.mockInput.pressArrow('right');
   frame = await frameMatching(ui, f => f.includes('enter sends'));
-  expect(line(frame, /^\s+Runtime/)).toMatch(/Runtime\s+Bun/);
-  expect(line(frame, /^\s+Linters/)).toMatch(/Linters\s+ESLint, Oxlint/);
+  expect(line(frame, /^┃\s+Runtime/)).toMatch(/Runtime\s+Bun/);
+  expect(line(frame, /^┃\s+Linters/)).toMatch(/Linters\s+ESLint, Oxlint/);
   fake.reply({ chunks: ['ok'] });
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('answer complete'));
   expect(answerSent()).toMatchObject({ content: `${RUNTIME.question}: Bun\nWhich linters should run?: ESLint, Oxlint` });
 });
 
-test('skipped questions come back as Unanswered; h/l and ←→ switch tabs (#34)', async () => {
+test('skipped questions come back as Unanswered; ←→ switch tabs (#34)', async () => {
   await questioned(RUNTIME, LINTERS);
-  await press('l');
+  ui.mockInput.pressArrow('right');
+  await ui.flush();
   await frameMatching(ui, f => f.includes('Which linters should run?'));
-  await press('h');
+  ui.mockInput.pressArrow('left');
+  await ui.flush();
   await frameMatching(ui, f => f.includes('Which runtime should we use?'));
   ui.mockInput.pressArrow('right');
   await frameMatching(ui, f => f.includes('Which linters should run?'));
-  await press('1');
-  await press('2');
+  await choose(0);
+  await choose(1);
   ui.mockInput.pressArrow('right');
   await frameMatching(ui, f => f.includes('enter sends'));
   fake.reply({ chunks: ['ok'] });
@@ -1449,16 +1463,16 @@ test('skipped questions come back as Unanswered; h/l and ←→ switch tabs (#34
 
 test('r fills the unanswered questions with their Recommended Options and jumps to Confirm; own answers join the toggles (#34)', async () => {
   await questioned(RUNTIME, LINTERS, { ...RUNTIME, question: 'Which package manager?', header: 'Packages' });
-  await press('2');
+  await choose(1);
   await frameMatching(ui, f => f.includes('Which linters should run?'));
-  await press('4');
+  await choose(3);
   await frameMatching(ui, f => f.includes('answer >'));
   await ui.mockInput.typeText('Prettier');
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => /\[✓\] own answer: Prettier/.test(f));
   await press('r');
   const frame = await frameMatching(ui, f => f.includes('enter sends'));
-  expect(line(frame, /^\s+Packages/)).toMatch(/Packages\s+Bun/);
+  expect(line(frame, /^┃\s+Packages/)).toMatch(/Packages\s+Bun/);
   fake.reply({ chunks: ['ok'] });
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('answer complete'));
@@ -1478,10 +1492,10 @@ test('Esc declines the Question: its Tool Result says declined, the loop stops a
 test('resuming with an unanswered Question reopens the dock, after the earlier calls are decided (#35)', async () => {
   const { events } = await start({ tools: TOOLS, users: ['go'], calls: ['ls -d .', { tool: 'question', content: JSON.stringify({ questions: [RUNTIME] }) }] });
   const frame = await frameMatching(ui, f => f.includes('own answer'));
-  expect(line(frame, /1 Bun/)).toMatch(/› 1 Bun .*recommended/);
+  expect(line(frame, /› Bun/)).toMatch(/› Bun .*recommended/);
   expect(events().at(-1)).toMatchObject({ kind: 'Tool Result', content: '.\n[exit 0]', call: 4 });
   fake.reply({ chunks: ['ok'] });
-  await press('2');
+  await choose(1);
   await frameMatching(ui, f => f.includes('answer complete'));
   expect((fake.chatRequests[0] as Sent).messages.at(-1)).toMatchObject({ role: 'tool', content: 'Which runtime should we use?: Node' });
 });
@@ -1495,7 +1509,7 @@ test('mixed bash and question calls are decided in order: the Question waits for
   await press('y');
   await frameMatching(ui, f => f.includes('own answer'));
   expect(await Bun.file(join(project, 'last.txt')).exists()).toBe(false);
-  await press('1');
+  await choose(0);
   frame = await frameMatching(ui, f => /Tool Call\s+touch last\.txt.*\? approve/.test(f));
   expect(frame).not.toContain('own answer');
   fake.reply({ chunks: ['ok'] });
@@ -1511,7 +1525,7 @@ test('mixed bash and question calls are decided in order: the Question waits for
 test('the answer is a normal Context Block: e makes a new Revision; d removes the Tool Pair as a whole (#35)', async () => {
   const { events } = await questioned(RUNTIME);
   fake.reply({ chunks: ['ok'] });
-  await press('2');
+  await choose(1);
   await frameMatching(ui, f => f.includes('answer complete'));
   await press('up');
   await frameMatching(ui, f => f.includes('┃ Tool Result  #5'));

@@ -79,4 +79,12 @@ test('a Question without a valid Recommended Option is answered with the error a
     ],
     notRun: null,
   });
+  const error = 'error: question 1: recommended is missing – give the label of the Recommended Option';
+  expect(answerBlocks(result({ content: 'Asking.', calls: [{ name: 'question', arguments: invalid }, { name: 'question', arguments: invalid }] }), 3, ['question']).events).toEqual([
+    { type: 'BlockAdded', id: 3, kind: 'Assistant', origin: 'model', content: 'Asking.' },
+    { type: 'BlockAdded', id: 4, kind: 'Tool Call', origin: 'model', content: invalid, tool: 'question' },
+    { type: 'BlockAdded', id: 5, kind: 'Tool Call', origin: 'model', content: invalid, tool: 'question' },
+    { type: 'BlockAdded', id: 6, kind: 'Tool Result', origin: 'tool', content: error, call: 4 },
+    { type: 'BlockAdded', id: 7, kind: 'Tool Result', origin: 'tool', content: error, call: 5 },
+  ]);
 });
