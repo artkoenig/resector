@@ -41,14 +41,14 @@ let environment: string;
 let openedFiles: string[];
 
 // `users`: User blocks already in the Session Log, not yet sent; `global`, `project`: permission rules of the config.
-// `calls`: pending Tool Calls after them, as at a resume.
-type Start = { notes?: SessionNotes; timeout?: number; compactor?: GateOptions['compactor']; users?: string[]; calls?: string[]; global?: Permissions; project?: Permissions };
-async function start({ notes, timeout = 120, compactor, users = [], calls = [], global, project: own }: Start = {}) {
+// `calls`: pending Tool Calls after them, as at a resume. `template`: the chat template the server reports.
+type Start = { template?: string; notes?: SessionNotes; timeout?: number; compactor?: GateOptions['compactor']; users?: string[]; calls?: string[]; global?: Permissions; project?: Permissions };
+async function start({ template, notes, timeout = 120, compactor, users = [], calls = [], global, project: own }: Start = {}) {
   editor = async text => text;
   copied = [];
   environment = notes?.environment ?? '';
   openedFiles = [];
-  fake = startFakeLlamaCpp({ nCtx: 4096 });
+  fake = startFakeLlamaCpp({ nCtx: 4096, template });
   const backend = await connectLlamaCpp(fake.url);
   const log = createSessionLog(mkdtempSync(join(tmpdir(), 'resector-')), 'ses_test');
   const runner = createRunner({ cwd: project, timeout });
@@ -90,7 +90,7 @@ async function write(text: string) {
 test('the Gate shows every Context Block with its exact tokens and the Template row', async () => {
   const { events } = await start();
   const frame = ui.captureCharFrame();
-  expect(line(frame, /default/)).toMatch(/^ {2}resector {2}default +52 \/ 4k/);
+  expect(line(frame, /default/)).toMatch(/^ {2}resector {2}default · thinking off +52 \/ 4k/);
   expect(frame.split('\n')[1]).toMatch(/^ {2}▀+/);
   expect(line(frame, /Type/)).toMatch(/#\s+Type\s+Content\s+Tokens\s+Cache\s+Flags/);
   expect(line(frame, /System prompt/)).toMatch(/1\s+System\s+System prompt\s+12\b/);
@@ -288,6 +288,41 @@ test('p cycles pin top → bottom → off; a bottom pin is sent as a user-role m
   frame = await frameMatching(ui, f => f.includes('unpinned'));
   expect(order(frame)).toEqual(['1 System', '2 bash', '3 question', '4 answer', '5 rules']);
   expect(events().at(-1)).toEqual({ type: 'Unpin', id: 3 });
+});
+
+test('t cycles thinking off → on → on:<effort>, shown in the header, logged and sent with the next request (FR-49)', async () => {
+  const { events } = await withUsers('question');
+  expect(line(await frameMatching(ui, f => f.includes('default')), /default/)).toContain('default · thinking off');
+  await press('t');
+  await frameMatching(ui, f => f.includes('default · thinking on '));
+  await press('t');
+  const frame = await frameMatching(ui, f => f.includes('default · thinking on:low'));
+  expect(frame).toContain('thinking on:low');
+  expect(events().slice(-2)).toEqual([{ type: 'ThinkingSet', thinking: 'on' }, { type: 'ThinkingSet', thinking: 'low' }]);
+  fake.reply({ chunks: ['ok'] });
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(fake.chatRequests[0]).toMatchObject({ chat_template_kwargs: { enable_thinking: true }, reasoning_effort: 'low' });
+  for (const _ of [1, 2, 3]) await press('t');
+  await frameMatching(ui, f => f.includes('default · thinking off'));
+});
+
+test('t cycles the thinking modes of the chat template (FR-49)', async () => {
+  const { events } = await start({ template: "{% if reasoning_effort not in ('xhigh', 'low') %}{% endif %}" });
+  await press('t');
+  await frameMatching(ui, f => f.includes('default · thinking on:low') && f.includes('t: on:low → on:xhigh'));
+  await press('t');
+  await frameMatching(ui, f => f.includes('default · thinking on:xhigh'));
+  await press('t');
+  await frameMatching(ui, f => f.includes('default · thinking on:low'));
+  expect(events().filter(e => e.type === 'ThinkingSet').map(e => e.thinking)).toEqual(['low', 'xhigh', 'low']);
+});
+
+test('a chat template without thinking: t says so and logs nothing', async () => {
+  const { events } = await start({ template: '{{ messages }}' });
+  await press('t');
+  await frameMatching(ui, f => f.includes('the chat template has no thinking switch'));
+  expect(events().some(e => e.type === 'ThinkingSet')).toBe(false);
 });
 
 test('d strikes the block through until sent; u brings it back as a counter-event', async () => {

@@ -5,7 +5,8 @@
 import { commonPrefix } from '../src/core/cache/cache';
 import { answer, chatml, stream, tokenize, type ChatMessage, type ChatTool, type Reply } from './fake-llamacpp';
 
-export type FakeModel = { id: string; maxModelLen?: number };
+// path: the model directory the admin API names.
+export type FakeModel = { id: string; maxModelLen?: number; path?: string };
 // probe: whether the admin cache probe answers; lagging: it does not see the last request yet (blocks
 // are written to the SSD cache after the answer); blockSize: cache block size in fake tokens.
 export type FakeOmlxOptions = { models?: FakeModel[]; probe?: boolean; lagging?: boolean; blockSize?: number };
@@ -54,6 +55,7 @@ export function startFakeOmlx({ models = [{ id: 'Qwen3-8B-4bit', maxModelLen: 57
     port: 0,
     async fetch(req) {
       const url = new URL(req.url);
+      if (url.pathname === '/admin/api/models') return Response.json({ models: models.map(m => ({ id: m.id, ...(m.path && { model_path: m.path }) })) });
       if (url.pathname === '/v1/models')
         return Response.json({
           object: 'list',

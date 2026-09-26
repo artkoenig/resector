@@ -35,11 +35,11 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 | `↑` `↓` | select |
 | `⌥↑` `⌥↓` | move block |
 | `e` | edit block in `$EDITOR` (new Revision) |
-| `r` | rename |
 | `d` | remove (struck through until sent, then hidden; undoable) |
 | `p` | pin cycle: top → bottom → off |
 | `Space` | mark / unmark (selection stays) |
 | `c` | compact marked blocks (or current) |
+| `t` | thinking: cycle the chat template's modes, `off → on → on:<effort>` (FR-49) |
 | `u` | undo |
 | `q` | quit |
 
@@ -111,7 +111,7 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 - **FR-46** Model reasoning (`reasoning_content` or `<think>…</think>`) becomes its own Thinking block before the Assistant block of the same answer; own row, own token count; edited, moved, removed and compacted like any block.
 - **FR-47** Thinking blocks stay in the Context and are sent with every request until the user removes them.
 - **FR-48** If the model's chat template drops a Thinking block (e.g. Qwen3 strips thinking before the last user message), its token count is what actually gets rendered (0), the row is dimmed and flagged `✂ template`. Resector does not bypass the template. Exact on llama.cpp, best effort on Ollama/LM Studio.
-- **FR-49** Thinking is set per Model Profile only: `thinking: off | on | low | medium | high`, restricted to what the model supports (e.g. Qwen3 on/off, gpt-oss low/medium/high). No runtime switch; start a new session with another profile.
+- **FR-49** Thinking: `off`, `on` or an effort level (e.g. `low`, `xhigh`). The modes are read from the model's chat template on connect (start, setup, `/reload`): `off`/`on` if it reads `enable_thinking`, plus the efforts it accepts for `reasoning_effort` (llama.cpp: `/props`; oMLX: the model directory the admin API names). Template unknown → `off, on, low, medium, high`. The Model Profile sets it at session start; `t` at the Gate cycles the modes (`off → on → on:<effort> …`) for the following requests. Shown in the header next to the Model Profile, logged (`ThinkingSet`), kept on resume.
 - **FR-50** While the model thinks, the status line shows `thinking` and the preview streams the thinking dimmed.
 
 ## 5. Non-functional requirements

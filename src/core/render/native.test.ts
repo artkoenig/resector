@@ -162,3 +162,10 @@ test('an Assistant block after anything but its Thinking block starts its own me
     { role: 'assistant', content: 'after call' },
   ]);
 });
+
+test('thinking set at the Gate goes into every prefix; without it the backend sends the profile thinking (FR-49)', () => {
+  const events: SessionEvent[] = [created, add(1, 'System', 'sys'), add(2, 'User', 'hi')];
+  expect(renderPrefixes(fold(events)).map(r => r.thinking)).toEqual([undefined, undefined]);
+  const set = renderPrefixes(fold([...events, { type: 'ThinkingSet', thinking: 'medium' }]));
+  expect(set.map(r => r.thinking)).toEqual(['medium', 'medium']);
+});

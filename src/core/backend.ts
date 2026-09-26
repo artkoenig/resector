@@ -1,5 +1,5 @@
 // Backend port: what the Review Gate needs from a model server. Adapters implement it (architecture §2).
-import type { Usage } from './log/events';
+import type { Thinking, Usage } from './log/events';
 import type { Request } from './render/native';
 import type { RawCall } from './toolcall/bash';
 import type { TokenSplit } from './tokens/split';
@@ -14,8 +14,12 @@ export type ChatOptions = { signal: AbortSignal; onDelta: (text: string) => void
 export type CacheHit = { tokens: number; exact: boolean };
 export type Counted = TokenSplit & { cached: CacheHit };
 
+// thinking: what requests without their own are sent with (the Model Profile's, FR-49); thinkingModes:
+// what the model's chat template offers, null when it is not known.
 export type Backend = {
   window: number;
+  thinking?: Thinking;
+  thinkingModes?: Thinking[] | null;
   // prefixes: the request rendered for the first 1, 2, … blocks (renderPrefixes); the last is the request.
   count(prefixes: Request[]): Promise<Counted>;
   chat(request: Request, options: ChatOptions): Promise<ChatResult>;

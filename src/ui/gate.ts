@@ -6,14 +6,15 @@ import { evaluate, quoted, sessionAllowed, sessionRules, type Rule, type Split, 
 import { warmRows } from '../core/cache/cache';
 import * as compaction from '../core/compaction/compaction';
 import * as ops from '../core/context/operations';
-import type { Kind, SessionEvent, SessionLog } from '../core/log/events';
+import type { Kind, SessionEvent, SessionLog, Thinking } from '../core/log/events';
 import { afterCalls, fold, pairOf, type Block } from '../core/log/fold';
 import { refreshEnvironment } from '../core/notes/environment';
 import { parseReference, peekReferences, readReferences, references, type ReadFile } from '../core/notes/files';
 import { renderNative, renderPrefixes, sentBlocks, type Request } from '../core/render/native';
+import { DEFAULT_MODES } from '../core/render/template';
 import { answerBlocks } from '../core/toolcall/answer';
 import type { Runner } from '../core/toolcall/bash';
-import { count, errorText, formatTokens, titleOf } from './format';
+import { count, errorText, formatTokens, thinkingLabel, titleOf } from './format';
 
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
 // events: the Session Log so far (new or resumed); reconnect: re-reads the config and opens the session's
@@ -579,6 +580,18 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     }
   }
 
+  // Thinking for the following requests (FR-49): the one set at the Gate, else the Model Profile's.
+  const thinking = (): Thinking => context().thinking ?? backend().thinking ?? 'off';
+  // The modes of the model's chat template, as the backend read them when it connected (setup, /reload).
+  const thinkingModes = () => backend().thinkingModes ?? DEFAULT_MODES;
+  function cycleThinking() {
+    const modes = thinkingModes();
+    if (!modes.length) return setStatus({ text: 'the chat template has no thinking switch', tone: 'info' });
+    const next = modes[(modes.indexOf(thinking()) + 1) % modes.length]!;
+    append({ type: 'ThinkingSet', thinking: next });
+    setStatus({ text: `thinking ${thinkingLabel(next)} · t: ${modes.map(thinkingLabel).join(' → ')}`, tone: 'info' });
+  }
+
   function renameSession(title: string) {
     append({ type: 'SessionRenamed', title });
     setStatus({ text: title ? `session renamed: ${title}` : 'session title reset to the first User message', tone: 'info' });
@@ -630,6 +643,8 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     // Whether a sent block is still cached; null while counting.
     warm: (id: number) => warm()?.[sent().findIndex(b => b.id === id)] ?? null,
     profile: () => context().profile,
+    thinking,
+    cycleThinking,
     submit,
     send,
     abort: () => (streaming() ?? running() ?? compacting())?.abort?.abort(),

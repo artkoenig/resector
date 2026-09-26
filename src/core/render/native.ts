@@ -1,3 +1,4 @@
+import type { Thinking } from '../log/events';
 import type { Block, Context } from '../log/fold';
 
 export type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
@@ -7,8 +8,9 @@ export type Message =
   | AssistantMessage
   | { role: 'tool'; tool_call_id: string; content: string };
 export type ToolDefinition = { type: 'function'; function: { name: string; description: string; parameters: unknown } };
-// A chat request as the backend receives it: messages plus the tools field.
-export type Request = { messages: Message[]; tools: ToolDefinition[] };
+// A chat request as the backend receives it: messages plus the tools field; thinking: set at the Gate,
+// else the backend sends the Model Profile's (FR-49).
+export type Request = { messages: Message[]; tools: ToolDefinition[]; thinking?: Thinking };
 
 // What goes into the next request: removed blocks are only struck through at the Gate.
 export const sentBlocks = (context: Context): Block[] => context.blocks.filter(b => !b.removed);
@@ -67,9 +69,10 @@ function addBlock(request: Request, ids: Map<number, string>, b: Block) {
 export function renderPrefixes(context: Context): Request[] {
   const request: Request = { messages: [], tools: [] };
   const ids = new Map<number, string>();
+  const thinking = context.thinking && { thinking: context.thinking };
   return sentBlocks(context).map(b => {
     addBlock(request, ids, b);
-    return { messages: [...request.messages], tools: request.tools };
+    return { messages: [...request.messages], tools: request.tools, ...thinking };
   });
 }
 

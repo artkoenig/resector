@@ -6,6 +6,8 @@ export type Origin = 'config' | 'user' | 'model' | 'tool' | 'compaction' | 'file
 // How a bash run ended early (FR-21): Esc killed it, or it ran into the timeout.
 export type Stopped = 'killed' | 'timeout';
 export type ToolProtocol = 'native';
+// Reasoning (FR-49): 'off', 'on', or an effort level the model's chat template accepts (e.g. 'low', 'xhigh').
+export type Thinking = string;
 
 // Pin top = after System and Tools Block (FR-10); bottom = very end, sent as user-role Note.
 export type Pin = 'top' | 'bottom';
@@ -43,6 +45,8 @@ export type SessionEvent =
   | { type: 'Rename'; id: number; title: string }
   // "Allow for session" (FR-23, FR-25): an allow rule for the rest of the session, also after resume.
   | { type: 'AllowRuleAdded'; pattern: string }
+  // Thinking for the following requests of the session, instead of the Model Profile's (FR-49).
+  | { type: 'ThinkingSet'; thinking: Thinking }
   // Counter-event (NFR-3): cancels the event at index `eventId` of the Session Log.
   | { type: 'Undo'; eventId: number }
   | { type: 'ResponseReceived'; usage: Usage | null; cached: number | null };

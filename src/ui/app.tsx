@@ -7,7 +7,7 @@ import type { Kind } from '../core/log/events';
 import type { Block } from '../core/log/fold';
 import { fileCompletions } from '../core/notes/files';
 import { COMMANDS, type Compaction, createGate, type Gate, type GateOptions, type Status } from './gate';
-import { around, cell, count, flagsOf, formatTokens, right, titleOf } from './format';
+import { around, cell, count, flagsOf, formatTokens, right, thinkingLabel, titleOf } from './format';
 import { Band, ErrorBand, errorBandLines, Footer, footerLines, HeaderBand, type Hint, PROMPT_LINES, PromptBand } from './parts';
 import { ACCENT, BG, BORDER, FAINT, KIND_COLOR, MUTED, PANEL_BG, SELECTED_BG, TEXT, TONE } from './theme';
 
@@ -170,6 +170,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     e: gate.edit,
     space: gate.toggleMark,
     c: gate.startCompaction,
+    t: gate.cycleThinking,
     escape: () => (gate.status()?.tone === 'error' ? gate.dismiss() : gate.clearMarks()),
     q: props.onQuit,
   };
@@ -405,11 +406,12 @@ function Header(props: { gate: Gate; width: number }) {
   const window = () => ` / ${formatTokens(props.gate.window())}`;
   const tone = () => (total() > props.gate.window() ? TONE.error : total() >= 0.9 * props.gate.window() ? TONE.warn : undefined);
   const profile = () => props.gate.profile();
+  const thinking = () => ` · thinking ${thinkingLabel(props.gate.thinking())}`;
   return (
     <HeaderBand
       width={props.width}
-      title={<span style={{ fg: MUTED }}>{profile()}</span>}
-      titleWidth={profile().length}
+      title={<span style={{ fg: MUTED }}>{profile() + thinking()}</span>}
+      titleWidth={profile().length + thinking().length}
       right={
         <>
           <span style={{ fg: tone() ?? TEXT }}>{used()}</span>
@@ -457,7 +459,7 @@ const WHEEL: Record<string, number> = { up: -1, down: 1 };
 const modifierOf = (key: { option?: boolean; meta: boolean; shift: boolean }) => (key.option || key.meta ? 'alt+' : key.shift ? 'shift+' : '');
 
 const LOOK_KEYS: Hint[] = [['q', 'quit']];
-const KEYS: Hint[] = [['⌥↑↓', 'move'], ['e', 'edit'], ['d', 'remove'], ['p', 'pin'], ['space', 'mark'], ['c', 'compact'], ['u', 'undo'], ['q', 'quit']];
+const KEYS: Hint[] = [['⌥↑↓', 'move'], ['e', 'edit'], ['d', 'remove'], ['p', 'pin'], ['space', 'mark'], ['c', 'compact'], ['t', 'thinking'], ['u', 'undo'], ['q', 'quit']];
 
 // Colours of a row: a removed one is muted throughout, one the chat template drops all but its flags.
 const rowFg = (row: Row) =>

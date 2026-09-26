@@ -14,6 +14,7 @@ test('Context holds the session profile and the added blocks in order', () => {
   expect(context).toEqual({
     profile: 'default',
     protocol: 'native',
+    thinking: null,
     blocks: [
       { id: 1, kind: 'System', origin: 'config', content: 'You are an agent.', cutOff: false, title: null, pin: null, removed: false, moved: false, pinChanged: false, revision: 1, revised: false },
       { id: 2, kind: 'User', origin: 'user', content: 'hi', cutOff: false, title: null, pin: null, removed: false, moved: false, pinChanged: false, revision: 1, revised: false },
@@ -288,4 +289,10 @@ test('a file reference is an unread Note until the file is read, then a plain sn
   const read = block([...referenced, { type: 'FileRead', id: 3, content: '[a.ts:1-2]\n1: x' }], 3);
   expect(read).toMatchObject({ file: 'a.ts:1-2', content: '[a.ts:1-2]\n1: x', revision: 1, revised: false });
   expect(read.unread).toBeUndefined();
+});
+
+test('ThinkingSet sets the thinking of the following requests; the last one wins (FR-49)', () => {
+  const created = { type: 'SessionCreated', profile: 'default', protocol: 'native' } as const;
+  expect(fold([created]).thinking).toBeNull();
+  expect(fold([created, { type: 'ThinkingSet', thinking: 'on' }, { type: 'ThinkingSet', thinking: 'high' }]).thinking).toBe('high');
 });

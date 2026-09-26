@@ -68,7 +68,7 @@ fold(log) → Context
 - `native`: Assistant text + Tool Calls → one assistant message with `tool_calls` (ids `call_<n>` by position in the message, as a server numbers its answer, so the answer and its next rendering are the same tokens); each Tool Result → `tool` message; Tools Block → `tools` field. Per-block tokens come from rendering the first 1, 2, … blocks.
 - `text-xml`: calls as `<function=…><parameter=…>` (Qwen3-Coder syntax) in assistant text; results as user message `<tool_response>…</tool_response>`; Tools Block as compact signatures appended to the system message (own row at the Gate, tokens via prefix difference).
 - Thinking: parsed from `reasoning_content` (llama.cpp `--reasoning-format`, Ollama `thinking`) or `<think>…</think>` in the stream; rendered back as `reasoning_content` of its assistant message where the backend accepts it, else inline `<think>`. The chat template may drop it; the token split then yields 0 → `✂ template`.
-- Profile `thinking` maps to the backend: `chat_template_kwargs.enable_thinking` (on/off), `reasoning_effort` (low/medium/high).
+- Thinking (the Gate's, else the profile's) maps to the backend: `chat_template_kwargs.enable_thinking` (off: false, else true), plus an effort as `reasoning_effort` and `chat_template_kwargs.reasoning_effort`. It travels with the request, so the counted chat template renders with it too. The modes offered come from the chat template's Jinja source (`core/render/template.ts`).
 - Moved Tool Pair = user-role Note `[Tool bash: <cmd>]` + result, never tool syntax. Pin bottom = user-role Note at the end.
 - Tool results use the tool's native text; `resultFormat: toon` renders uniform rows as TOON-style tables. Model output stays JSON.
 

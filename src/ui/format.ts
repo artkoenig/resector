@@ -1,9 +1,13 @@
 // Display helpers for the Gate: token numbers, titles, fixed-width cells.
+import type { Thinking } from '../core/log/events';
 import type { Block } from '../core/log/fold';
 import { toolNames } from '../core/toolcall/bash';
 
 export const formatTokens = (t: number): string =>
   t >= 1024 && t % 1024 === 0 ? `${t / 1024}k` : t >= 1000 ? `${(t / 1000).toFixed(1)}k` : String(t);
+
+// FR-49: `off`, `on`, or `on:<effort>`.
+export const thinkingLabel = (thinking: Thinking) => (thinking === 'off' || thinking === 'on' ? thinking : `on:${thinking}`);
 
 type Titled = Pick<Block, 'kind' | 'content'> & Partial<Pick<Block, 'title' | 'call' | 'source' | 'compacted' | 'file' | 'origin'>>;
 const firstLine = (text: string) => (text.split('\n').find(l => l.trim()) ?? '').trim();

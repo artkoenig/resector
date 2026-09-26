@@ -51,7 +51,7 @@ _Avoid_: reasoning, chain of thought
 Marker that keeps a Context Block at the top (after System and Tools Block) or the very end of the Context, countering lost-in-the-middle. Pinned blocks keep their order among themselves.
 
 **Model Profile**:
-Per-model settings: backend, endpoint, tokenizer, window size, Tool Protocol, tool result format, sampling, thinking (off, on or effort level), and optionally another Model Profile used for Compaction (default: the same). Fixed for a session; only when it is gone from the config at resume does the session fall back to the default Model Profile.
+Per-model settings: backend, endpoint, tokenizer, window size, Tool Protocol, tool result format, sampling, thinking at session start (off, on or effort level; switched at the Gate with `t`), and optionally another Model Profile used for Compaction (default: the same). Fixed for a session; only when it is gone from the config at resume does the session fall back to the default Model Profile.
 
 **Tool Protocol**:
 How tool definitions and tool calls travel between harness and model: `native` (API tool calling) or `text-xml` (defined in the prompt). Blocks are stored protocol-neutral; the protocol only affects rendering of a request.

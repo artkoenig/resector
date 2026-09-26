@@ -1,4 +1,4 @@
-import type { Kind, Origin, Pin, SessionEvent, Stopped, ToolProtocol } from './events';
+import type { Kind, Origin, Pin, SessionEvent, Stopped, Thinking, ToolProtocol } from './events';
 
 export type Block = {
   id: number;
@@ -31,11 +31,12 @@ export type Block = {
   revision: number;
   revised: boolean;
 };
-export type Context = { profile: string; protocol: ToolProtocol; blocks: Block[]; nextId: number };
+// thinking: set at the Gate (FR-49); null = the Model Profile's.
+export type Context = { profile: string; protocol: ToolProtocol; thinking: Thinking | null; blocks: Block[]; nextId: number };
 
 type Entry = Omit<Block, 'revised'> & { hidden: boolean; sentPin: Pin | null; sentRevision: number };
 // unsent: indices of events logged since the last request.
-type State = { profile: string; entries: Map<number, Entry>; order: number[]; events: SessionEvent[]; unsent: Set<number> };
+type State = { profile: string; thinking: Thinking | null; entries: Map<number, Entry>; order: number[]; events: SessionEvent[]; unsent: Set<number> };
 type Apply<T extends SessionEvent['type']> = (state: State, event: Extract<SessionEvent, { type: T }>) => void;
 
 const entry = (state: State, id: number) => state.entries.get(id)!;
@@ -102,6 +103,7 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   Pin: (state, e) => setPin(state, e.id, e.at),
   Unpin: (state, e) => setPin(state, e.id, null),
   ProfileFallback: (state, e) => void (state.profile = e.profile),
+  ThinkingSet: (state, e) => void (state.thinking = e.thinking),
   Remove: (state, e) => pairIn(state, e.id).forEach(id => (entry(state, id).removed = true)),
   // The pair is gone at once, not struck through: its Note follows the calls and results of its answer,
   // so the other calls of the answer keep their results right after them.
@@ -145,7 +147,7 @@ export function fold(events: SessionEvent[]): Context {
   const [first] = events;
   if (first?.type !== 'SessionCreated') throw new Error('Session Log must start with SessionCreated');
   const skip = undone(events);
-  const state: State = { profile: first.profile, entries: new Map(), order: [], events, unsent: new Set() };
+  const state: State = { profile: first.profile, thinking: null, entries: new Map(), order: [], events, unsent: new Set() };
   events.forEach((e, i) => {
     state.unsent.add(i);
     if (skip.has(i)) return;
@@ -157,5 +159,5 @@ export function fold(events: SessionEvent[]): Context {
     .filter(e => !e.hidden)
     .map(({ hidden, sentPin, sentRevision, ...block }) => ({ ...block, revised: block.revision !== sentRevision }))
     .map(block => (block.kind === 'Tool Call' ? { ...block, pending: !answered.has(block.id) } : block));
-  return { profile: state.profile, protocol: first.protocol, blocks, nextId: Math.max(0, ...state.entries.keys()) + 1 };
+  return { profile: state.profile, protocol: first.protocol, thinking: state.thinking, blocks, nextId: Math.max(0, ...state.entries.keys()) + 1 };
 }
