@@ -113,7 +113,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   const [selected, setSelected] = createSignal(1);
   // Marked blocks (Space) for Compaction; UI state, not logged.
   const [marked, setMarked] = createSignal<ReadonlySet<number>>(new Set());
-  // Kind Filter: the one Kind the block table shows; UI state, not logged.
+  // Kind Filter (FR-51): what the block table shows; UI state, not logged.
   const [filter, setFilter] = createSignal<Filter | null>(null);
   const [backend, setBackend] = createSignal(options.backend);
   // Moving or pinning a Tool Pair asks first: the operation and block awaiting the same key again (FR-9).
@@ -176,8 +176,9 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     }
     return ids;
   });
-  // Whether the Kind Filter lets a row through; a Compaction's proposal always passes.
-  const passes = (id: number, kind: Kind) => !filter() || filter()!.kinds.includes(kind) || (!!compacting() && compacting()!.phase !== 'instruction' && id === live()[0]?.id);
+  // Whether the Kind Filter lets a row through (FR-51); a Compaction's proposal always passes.
+  const proposing = () => compacting()?.phase === 'running' || compacting()?.phase === 'review';
+  const passes = (id: number, kind: Kind) => !filter() || filter()!.kinds.includes(kind) || (proposing() && id === live()[0]?.id);
   // The rows shown, in order.
   const shown = createMemo(() => {
     const kinds = new Map<number, Kind>([...sent(), ...live()].map(b => [b.id, b.kind]));
@@ -191,7 +192,9 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     setSelected(ids.find(id => rows().indexOf(id) > at) ?? ids.at(-1)!);
   });
   const selectedBlock = (): Block | undefined => (shown().includes(selected()) ? sent().find(b => b.id === selected()) : undefined);
-  const selectAt = (i: number) => shown().length && setSelected(shown()[Math.max(0, Math.min(shown().length - 1, i))]!);
+  const selectAt = (i: number) => {
+    if (shown().length) setSelected(shown()[Math.max(0, Math.min(shown().length - 1, i))]!);
+  };
   const keepSelection = () => shown().includes(selected()) || selectAt(shown().length - 1);
 
   createEffect(() => {
@@ -260,8 +263,11 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     then();
   }
   const PINNED = { top: 'pinned ⤒ top', bottom: 'pinned ⤓ bottom (sent as user-role Note at the end)' };
-  // Not while a Kind Filter hides the neighbours the block would move past.
-  const move = (dir: -1 | 1) => filter() || viaNote(`move ${dir}`, dir < 0 ? '⌥↑' : '⌥↓', () => operate(b => ops.move(context(), b, dir), () => null));
+  // Not while a Kind Filter hides the neighbours the block would move past (FR-51).
+  function move(dir: -1 | 1) {
+    if (filter()) return;
+    viaNote(`move ${dir}`, dir < 0 ? '⌥↑' : '⌥↓', () => operate(b => ops.move(context(), b, dir), () => null));
+  }
   // A block as it is now, after an operation.
   const blockOf = (id: number) => context().blocks.find(b => b.id === id)!;
   const pinned = ({ pin }: Block) => (pin ? PINNED[pin] : 'unpinned');
@@ -701,10 +707,13 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     setStatus({ text: `${name} ${toolsOn().includes(name) ? 'on' : 'off'} · u = undo`, tone: 'info' });
   }
 
-  // /filter <kind> shows only blocks of that Kind, /filter off all again. A change clears the marks: none stay hidden.
+  // /filter <kind> shows only blocks of that Kind, /filter off all again; alone it shows the filter (FR-51).
+  // A change clears the marks: none stay hidden.
   function filterBy(name: string) {
+    const values = `off ${FILTERS.map(f => f.name).join(' ')}`;
+    if (!name) return setStatus({ text: `filter ${filter()?.name ?? 'off'} · /filter ${values}`, tone: 'info' });
     const chosen = name.toLowerCase() === 'off' ? null : FILTERS.find(f => f.name === name.toLowerCase());
-    if (chosen === undefined) return setStatus({ text: `unknown filter ${name}: off ${FILTERS.map(f => f.name).join(' ')}`, tone: 'error' });
+    if (chosen === undefined) return setStatus({ text: `unknown filter ${name}: ${values}`, tone: 'error' });
     if (chosen !== filter()) setMarked(new Set<number>());
     setFilter(chosen);
   }
@@ -717,7 +726,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   function submit(text: string) {
     const name = text.trim().split(/\s/)[0]!;
     if (name in commands) commands[name as CommandName](text.trim().slice(name.length).trim());
-    else if (/^\/\w+$/.test(name)) setStatus({ text: `unknown command ${name} – ${COMMANDS.map(c => c.name).join(' ')}`, tone: 'error' });
+    else if (/^\/\w+$/.test(name)) setStatus({ text: `unknown command ${name}: ${COMMANDS.map(c => c.name).join(' ')}`, tone: 'error' });
     else if (text.trim()) addInput(text);
   }
   // `@path` references become rows of their own before the text; only a text is sent right away (FR-27).
@@ -754,6 +763,12 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     marked,
     filter,
     passes,
+    // The Kind Filter's share of the Context: its sent blocks, their tokens (null while counting) (FR-51).
+    filterShare: () => {
+      const indexes = sent().flatMap((b, i) => (filter()?.kinds.includes(b.kind) ? [i] : []));
+      const s = split();
+      return { blocks: indexes.length, all: sent().length, tokens: s && indexes.reduce((sum, i) => sum + s.blocks[i]!, 0), total: s && s.total };
+    },
     window: () => backend().window,
     // The Context's budget (FR-2, FR-18); null while counting.
     budget: () => (split() ? budgetOf(split()!.total) : null),

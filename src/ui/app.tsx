@@ -65,13 +65,14 @@ export function App(props: GateOptions & { onQuit: () => void }) {
       const row = { ...live, n: n(live.id), title: titleOf({ ...live, call: running }, blocks), tokens: counted, cache: '', flags: '', live: true, removed: false };
       done.splice(at < 0 ? done.length : at, 0, row);
     }
+    // The Kind Filter as the Gate applies it to selection, here also to removed rows (FR-51).
     return done.filter(r => gate.passes(r.id, r.kind));
   };
 
   // The project's files, listed when the input opens: @path completion (FR-27).
   const [files, setFiles] = createSignal<string[]>([]);
   createEffect(on(mode, m => m === 'input' && setFiles(props.project.list())));
-  // Suggestions above the input: commands while it is a single `/word` (FR-6), the tools after `/tools `, the Kinds after `/filter `, project files while an @path
+  // Suggestions above the input: commands while it is a single `/word` (FR-6), the tools after `/tools `, the filter values after `/filter ` (FR-51), project files while an @path
   // is typed at its end (FR-27). Tab completes; Enter runs a command taking no argument, else completes too.
   const suggestions = createMemo((): Suggestion[] => {
     if (mode() !== 'input') return [];
@@ -289,7 +290,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   const keyMode = (): KeyMode => (dockOpen() ? dockMode(dockState()!, typingOwn()) : (phase() ?? mode()));
   const keys = () => keysOf(gate, suggestion() ? (suggestion()!.run === null ? 'complete' : 'suggest') : keyMode(), error() !== null);
   const errorLines = () => (error() === null ? 0 : errorBandLines(error()!, width()) + 1);
-  // Block rows that fit: the screen less header band, column header, Template, preview band, error band, suggestions,
+  // Block rows that fit: the screen less header band, filter line, column header, Template, preview band, error band, suggestions,
   // prompt band and footer. Preview and error band have a blank line above, the prompt band too. Lines never shrink, so rows cannot overlap.
   const capacity = () =>
     Math.max(1, size().height - 2 - 2 - (gate.filter() ? 1 : 0) - (previewHeight() + 1) - errorLines() - 1 - suggestions().length - (dockOpen() ? dockLines() : PROMPT_LINES) - footerLines(footerStatus()?.text ?? '', keys(), width()));
@@ -351,7 +352,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
             );
           }}
         </For>
-        <Show when={gate.filter() && !rows().length}>
+        <Show when={gate.filter() && rows().every(r => r.removed)}>
           <text fg={MUTED} flexShrink={0}>{`        no ${gate.filter()!.name} blocks`}</text>
         </Show>
         <text fg={MUTED} flexShrink={0}>
@@ -642,19 +643,14 @@ function Header(props: { gate: Gate; width: number }) {
   );
 }
 
-// Kind Filter: the Kind shown, its blocks and tokens of the ones sent (removed ones are not).
+// The Kind Filter below the header: its share of the blocks and tokens sent; removed ones are not (FR-51).
 function FilterLine(props: { gate: Gate; filter: Filter }) {
-  const sent = () => props.gate.sent();
-  const split = () => props.gate.split();
-  const shown = () => sent().flatMap((b, i) => (props.filter.kinds.includes(b.kind) ? [i] : []));
-  const tokens = () => {
-    const s = split();
-    return s ? `${formatTokens(shown().reduce((sum, i) => sum + s.blocks[i]!, 0))}/${formatTokens(s.total)}` : '…';
-  };
+  const share = () => props.gate.filterShare();
+  const tokens = () => (share().total === null ? '…' : `${formatTokens(share().tokens!)}/${formatTokens(share().total!)}`);
   return (
     <text flexShrink={0}>
       <span style={{ fg: ACCENT }}>{`  filter: ${props.filter.name}`}</span>
-      <span style={{ fg: MUTED }}>{` · ${shown().length}/${sent().length} blocks · ${tokens()} tokens`}</span>
+      <span style={{ fg: MUTED }}>{` · ${share().blocks}/${share().all} blocks · ${tokens()} tokens`}</span>
     </text>
   );
 }
@@ -698,7 +694,8 @@ const modifierOf = (key: { option?: boolean; meta: boolean; shift: boolean }) =>
 const LOOK_KEYS: Hint[] = [['q', 'quit']];
 // With marks only what acts on all marked blocks.
 const MARKED_KEYS: Hint[] = [['d', 'remove'], ['c', 'compact'], ['space', 'mark'], ['esc', 'unmark'], ['q', 'quit']];
-const KEYS: Hint[] = [['⌥↑↓', 'move'], ['e', 'edit'], ['d', 'remove'], ['p', 'pin'], ['space', 'mark'], ['c', 'compact'], ['t', 'thinking'], ['u', 'undo'], ['q', 'quit']];
+const MOVE: Hint = ['⌥↑↓', 'move'];
+const KEYS: Hint[] = [MOVE, ['e', 'edit'], ['d', 'remove'], ['p', 'pin'], ['space', 'mark'], ['c', 'compact'], ['t', 'thinking'], ['u', 'undo'], ['q', 'quit']];
 
 // Colours of a row: a removed one is muted throughout, one the chat template drops all but its flags.
 const rowFg = (row: Row) =>
@@ -747,6 +744,7 @@ function modeKeys(gate: Gate, mode: KeyMode): Hint[] {
   if (gate.running()) return [['esc', 'kill'], ...LOOK_KEYS];
   if (gate.streaming()) return [['esc', 'abort'], ...LOOK_KEYS];
   if (gate.marked().size) return MARKED_KEYS;
-  const keys = gate.filter() ? KEYS.filter(([, action]) => action !== 'move') : KEYS;
+  // No move under a Kind Filter (FR-51).
+  const keys = gate.filter() ? KEYS.filter(k => k !== MOVE) : KEYS;
   return gate.selectedBlock()?.pending ? [['y', 'run once'], ['a', 'allow for session'], ['n', 'reject'], ...keys] : keys;
 }

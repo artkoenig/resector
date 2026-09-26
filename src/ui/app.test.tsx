@@ -609,7 +609,7 @@ test('typing / suggests the commands, filtered while typing; ↑↓ choose, Ente
   await write('/sessions');
   await until(() => opened.length > 0);
   await write('/nope');
-  await frameMatching(ui, f => f.includes('unknown command /nope – /sessions /rename /reload /tools /filter'));
+  await frameMatching(ui, f => f.includes('✗ unknown command /nope') && f.includes('/sessions /rename /reload /tools /filter'));
 });
 
 test('/ in the Context starts a command in the input line', async () => {
@@ -1624,7 +1624,7 @@ test('/filter tool-calls shows Tool Calls with their Tool Results; none follows 
   expect(frame).not.toMatch(/\d\s+(System|Tools|User|Assistant)\s/);
 });
 
-test('with no matching block the table says so and keeps the Template row; d acts on nothing hidden', async () => {
+test('with no matching block the table says so and keeps the Template row; d, p and c act on nothing hidden', async () => {
   const { events } = await withUsers('one');
   await write('/filter thinking');
   const frame = await frameMatching(ui, f => f.includes('filter: thinking'));
@@ -1687,4 +1687,37 @@ test('under a filter the proposal of a Compaction stays visible while it is revi
   expect(line(frame, /Note/)).toMatch(/4\s+Note\s+◇ proposal · 1 block/);
   expect(line(frame, /User\s+two/)).toMatch(/◇ proposed/);
   expect(previewed(frame)).toBe('short');
+});
+
+test('a filter lasts across sending: new blocks of its Kind show, others stay hidden', async () => {
+  await withUsers('one');
+  await write('/filter user');
+  await frameMatching(ui, f => f.includes('filter: user'));
+  fake.reply({ chunks: ['fine'] });
+  await write('two');
+  const frame = await frameMatching(ui, f => f.includes('answer complete'));
+  expect(frame).toContain('filter: user · 2/5 blocks');
+  expect(line(frame, /two/)).toMatch(/^┃ +4\s+User/);
+  expect(frame).not.toMatch(/Assistant\s+fine/);
+});
+
+test('with only removed blocks of the Kind the table still says none match', async () => {
+  await withUsers('one');
+  await press('d');
+  await write('/filter user');
+  const frame = await frameMatching(ui, f => f.includes('filter: user'));
+  expect(line(frame, /one/)).toMatch(/User\s+one\s+removed/);
+  expect(frame).toContain('no user blocks');
+});
+
+test('/filter alone shows the filter and its values', async () => {
+  await withUsers('one');
+  await write('/filter');
+  let frame = await frameMatching(ui, f => f.includes('filter off ·'));
+  expect(frame).toContain('filter off · /filter off user thinking assistant tool-calls note');
+  await write('/filter note');
+  await frameMatching(ui, f => f.includes('filter: note'));
+  await write('/filter');
+  frame = await frameMatching(ui, f => f.includes('filter note ·'));
+  expect(frame).not.toContain('✗');
 });
