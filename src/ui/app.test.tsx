@@ -1027,7 +1027,7 @@ test('@file adds a reference row, not sent; e opens the file; on send it becomes
   writeFileSync(join(project, 'notes.txt'), 'one\ntwo\nthree\n');
   const { events } = await start();
   await write('@file notes.txt:2-3');
-  let frame = await frameMatching(ui, f => f.includes('1 file reference added'));
+  let frame = await frameMatching(ui, f => f.includes('1 file reference added') && f.includes('@file reference – read at send'));
   expect(line(frame, /@file notes/)).toMatch(/3\s+Note\s+@file notes\.txt:2-3\s+.*@ read at send/);
   expect(frame).toContain('@file reference – read at send');
   expect(frame).toContain('[notes.txt:2-3]');
@@ -1080,4 +1080,15 @@ test('the project instructions are a pinned-top Note after the environment (FR-2
   await start({ notes: { environment: 'cwd: /p', instructions: { file: 'AGENTS.md', content: '# Rules' } } });
   const frame = ui.captureCharFrame();
   expect(line(frame, /AGENTS/)).toMatch(/4\s+Note\s+@file AGENTS\.md\s+\d+/);
+});
+
+test('a file reference alone is sent with Enter, the file as the last user message (FR-27)', async () => {
+  writeFileSync(join(project, 'alone.txt'), 'content');
+  await start();
+  await write('@file alone.txt');
+  await frameMatching(ui, f => f.includes('1 file reference added'));
+  fake.reply({ chunks: ['ok'] });
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(messages(0).at(-1)).toEqual({ role: 'user', content: '[alone.txt]\ncontent' });
 });

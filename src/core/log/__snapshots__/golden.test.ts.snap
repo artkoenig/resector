@@ -902,6 +902,7 @@ exports[`fixture compaction.jsonl replays to its Context and request 1`] = `
 }
 `;
 
+
 exports[`fixture file-notes.jsonl replays to its Context and request 1`] = `
 {
   "context": {
@@ -936,7 +937,8 @@ exports[`fixture file-notes.jsonl replays to its Context and request 1`] = `
       },
       {
         "content": 
-"cwd: /p
+"[environment]
+cwd: /p
 os: linux x64 · shell: bash
 date: 2026-09-27
 git branch: main"
@@ -1032,7 +1034,8 @@ git branch: main"
       },
       {
         "content": 
-"cwd: /p
+"[environment]
+cwd: /p
 os: linux x64 · shell: bash
 date: 2026-09-27
 git branch: main"

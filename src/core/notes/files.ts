@@ -10,7 +10,8 @@ const REFERENCE = /(?<=^|\s)@file\s+(\S+)/g;
 
 // The references in the input text, in order, and the text without them.
 export function references(input: string): { files: string[]; text: string } {
-  const files = [...input.matchAll(REFERENCE)].map(m => m[1]!);
+  // Punctuation after the path belongs to the sentence: `see @file a.ts, then …`.
+  const files = [...input.matchAll(REFERENCE)].map(m => m[1]!.replace(/[.,;:!?)]+$/, ''));
   const text = input.replace(REFERENCE, '').replace(/[ \t]{2,}/g, ' ').trim();
   return { files, text };
 }

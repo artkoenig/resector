@@ -7,7 +7,7 @@ import type { Context } from '../log/fold';
 export type Environment = { cwd: string; os: string; shell: string; date: string; branch: string | null };
 
 export const environmentText = ({ cwd, os, shell, date, branch }: Environment) =>
-  `cwd: ${cwd}\nos: ${os} · shell: ${shell}\ndate: ${date}\ngit branch: ${branch ?? '(none)'}`;
+  `[environment]\ncwd: ${cwd}\nos: ${os} · shell: ${shell}\ndate: ${date}\ngit branch: ${branch ?? '(none)'}`;
 
 type Edit = Extract<SessionEvent, { type: 'Edit' }>;
 type Written = Edit | Extract<SessionEvent, { type: 'BlockAdded' }>;

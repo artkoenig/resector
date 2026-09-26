@@ -8,8 +8,8 @@ const env = { cwd: '/p', os: 'linux x64', shell: 'bash', date: '2026-09-26', bra
 const text = environmentText(env);
 
 test('the environment Note holds cwd, OS and shell, date and git branch (FR-28)', () => {
-  expect(text).toBe('cwd: /p\nos: linux x64 · shell: bash\ndate: 2026-09-26\ngit branch: main');
-  expect(environmentText({ ...env, branch: null })).toBe('cwd: /p\nos: linux x64 · shell: bash\ndate: 2026-09-26\ngit branch: (none)');
+  expect(text).toBe('[environment]\ncwd: /p\nos: linux x64 · shell: bash\ndate: 2026-09-26\ngit branch: main');
+  expect(environmentText({ ...env, branch: null })).toBe('[environment]\ncwd: /p\nos: linux x64 · shell: bash\ndate: 2026-09-26\ngit branch: (none)');
 });
 
 const start = newSession('qwen', 'sys', { environment: text });

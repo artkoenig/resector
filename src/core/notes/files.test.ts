@@ -11,6 +11,7 @@ test('@file references are taken from the input; the rest is the User text (FR-2
   expect(references('@files x')).toEqual({ files: [], text: '@files x' });
   expect(references('  hi  ')).toEqual({ files: [], text: 'hi' });
   expect(references('@file  a.ts')).toEqual({ files: ['a.ts'], text: '' });
+  expect(references('see @file a.ts:3-5, then @file b.ts).')).toEqual({ files: ['a.ts:3-5', 'b.ts'], text: 'see then' });
   expect(references('@file a.ts\nline one\nline two')).toEqual({ files: ['a.ts'], text: 'line one\nline two' });
 });
 

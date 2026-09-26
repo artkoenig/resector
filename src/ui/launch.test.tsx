@@ -403,7 +403,7 @@ test('a new session starts with the environment Note and AGENTS.md, else CLAUDE.
   expect(frame).toMatch(/3\s+Note\s+Environment/);
   expect(frame).toMatch(/4\s+Note\s+@file AGENTS\.md/);
   expect(log().slice(3)).toEqual([
-    { type: 'BlockAdded', id: 3, kind: 'Note', origin: 'environment', content: expect.stringMatching(/^cwd: .*\nos: .* · shell: bash\ndate: \d{4}-\d\d-\d\d\ngit branch: /), pin: 'top' },
+    { type: 'BlockAdded', id: 3, kind: 'Note', origin: 'environment', content: expect.stringMatching(/^\[environment\]\ncwd: .*\nos: .* · shell: bash\ndate: \d{4}-\d\d-\d\d\ngit branch: /), pin: 'top' },
     { type: 'BlockAdded', id: 4, kind: 'Note', origin: 'file', file: 'AGENTS.md', content: '[AGENTS.md]\n# Agents', pin: 'top' },
   ]);
 });

@@ -394,8 +394,9 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     if (pending) setSelected(pending.id);
     if (pending) return { text: `Tool Calls await approval – ${APPROVE} on the ? approve row`, tone: 'warn' };
     const changed = lastAnswer() !== null && !same(lastAnswer(), request());
-    const last = sent().filter(b => b.pin !== 'bottom').at(-1)?.kind;
-    return changed || last === 'User' || last === 'Tool Result' ? null : { text: 'nothing to send – Tab to write', tone: 'info' };
+    // The last unpinned block: a User message, a Tool Result or a Note (e.g. an @file reference) asks for an answer.
+    const last = sent().filter(b => !b.pin).at(-1)?.kind;
+    return changed || last === 'User' || last === 'Tool Result' || last === 'Note' ? null : { text: 'nothing to send – Tab to write', tone: 'info' };
   }
 
   async function send() {
