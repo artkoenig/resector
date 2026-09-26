@@ -213,6 +213,29 @@ test('a Thinking block the chat template drops counts 0 tokens, is dimmed and fl
   expect(Array.from(title.fg.buffer.slice(0, 3)).join()).toBe('138,138,138');
 });
 
+test('the preview shows every block muted, Thinking in italics', async () => {
+  await start();
+  fake.reply({ thinking: ['plan it'], chunks: ['hello'] });
+  await write('hi there');
+  await frameMatching(ui, f => f.includes('answer complete'));
+  const fg = (text: string) => {
+    const span = ui.captureSpans().lines.slice(-20).flatMap(l => l.spans).findLast(s => s.text.includes(text))!;
+    return Array.from(span.fg.buffer.slice(0, 3)).join();
+  };
+  const italic = (text: string) => {
+    const spans = ui.captureSpans().lines.flatMap(l => l.spans).filter(s => s.text.includes(text));
+    return spans.length > 1 && spans.every(s => (s.attributes & TextAttributes.ITALIC) !== 0);
+  };
+  await press('up');
+  await frameMatching(ui, f => f.includes('┃ Thinking  #4'));
+  expect(fg('plan it')).toBe('138,138,138');
+  expect(italic('plan it')).toBe(true);
+  await press('up');
+  await frameMatching(ui, f => previewed(f) === 'hi there');
+  expect(fg('hi there')).toBe('138,138,138');
+  expect(ui.captureSpans().lines.flatMap(l => l.spans).filter(s => s.text.includes('hi there')).some(s => (s.attributes & TextAttributes.ITALIC) !== 0)).toBe(false);
+});
+
 test('while the answer streams, ↑↓ select and the preview scrolls; the Context stays as sent', async () => {
   const { events } = await start();
   fake.reply({ chunks: ['Hal'], hang: true });

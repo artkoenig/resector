@@ -1,5 +1,5 @@
 // The one screen (FR-1): header band · block table · preview · prompt band · footer.
-import type { MouseEvent, ScrollBoxRenderable } from '@opentui/core';
+import { type MouseEvent, type ScrollBoxRenderable, TextAttributes } from '@opentui/core';
 import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/solid';
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import { quoted, sessionRules, type Action, type Verdict } from '../core/approval/approval';
@@ -245,9 +245,9 @@ export function App(props: GateOptions & { onQuit: () => void }) {
               <span style={{ fg: isSelected(row) ? TEXT : MUTED }}>{`${right(row.n, 3)}  `}</span>
               <span style={{ fg: rowFg(row).kind, strikethrough: row.removed }}>{row.kind.padEnd(11)}</span>
               <span>{'  '}</span>
-              <span style={{ strikethrough: row.removed }}>{cell(row.title, titleWidth())}</span>
+              <span style={{ fg: isSelected(row) ? TEXT : MUTED, strikethrough: row.removed, italic: row.kind === 'Thinking' }}>{cell(row.title, titleWidth())}</span>
               <span>{'  '}</span>
-              <span style={{ fg: rowFg(row).tokens }}>{right(row.tokens, 6)}</span>
+              <span style={{ fg: row.live && !row.removed ? TONE.warn : isSelected(row) ? TEXT : MUTED }}>{right(row.tokens, 6)}</span>
               <span style={{ fg: CACHE_COLOR[row.cache] }}>{`    ${row.cache.padEnd(1)}    `}</span>
               <span style={{ fg: rowFg(row).flags }}>{cell(row.flags, FLAGS_WIDTH).trimEnd()}</span>
             </text>
@@ -277,7 +277,12 @@ export function App(props: GateOptions & { onQuit: () => void }) {
                     {(verdict: () => Verdict) => <Checks verdict={verdict()} />}
                   </Show>
                   <ReferenceHint block={row().live ? undefined : gate.context().blocks.find(b => b.id === row().id)} />
-                  <text fg={row().kind === 'Thinking' ? MUTED : TEXT}>{row().content}</text>
+                  {/* Two elements: opentui keeps italic once set on a span. */}
+                  <Show when={row().kind === 'Thinking'} fallback={<text fg={MUTED}>{row().content}</text>}>
+                    <text fg={MUTED} attributes={TextAttributes.ITALIC}>
+                      {row().content}
+                    </text>
+                  </Show>
                 </scrollbox>
               </Band>
             </>
@@ -464,8 +469,8 @@ const KEYS: Hint[] = [['⌥↑↓', 'move'], ['e', 'edit'], ['d', 'remove'], ['p
 // Colours of a row: a removed one is muted throughout, one the chat template drops all but its flags.
 const rowFg = (row: Row) =>
   row.removed || row.dropped
-    ? { text: MUTED, kind: MUTED, tokens: MUTED, flags: row.dropped ? TONE.warn : MUTED }
-    : { text: TEXT, kind: KIND_COLOR[row.kind], tokens: row.live ? TONE.warn : MUTED, flags: TONE.warn };
+    ? { text: MUTED, kind: MUTED, flags: row.dropped ? TONE.warn : MUTED }
+    : { text: TEXT, kind: KIND_COLOR[row.kind], flags: TONE.warn };
 
 // Status line: a running command, the streaming answer (both with the row's spinner), else the last action.
 function statusOf(gate: Gate, spin: string): Status | null {
