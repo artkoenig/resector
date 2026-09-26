@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
 import { TOOLS } from '../toolcall/bash';
-import { approvable, decline, deny, edit, isFixed, inPair, move, nextCall, pin, reject, remove, removeAll, toggleTool, toNote, toolResult, undo } from './operations';
+import { approvable, decline, deny, edit, isFixed, inPair, move, nextCall, pin, reject, remove, removeAll, toggleTool, withoutDenied, toNote, toolResult, undo } from './operations';
 
 const session = (...then: SessionEvent[]): SessionEvent[] => [
   { type: 'SessionCreated', profile: 'default', protocol: 'native' },
@@ -99,9 +99,28 @@ test('/tools switches a tool in the Tools Block as its next Revision; unknown to
   const on = { type: 'BlockAdded', id: 5, kind: 'Tools', origin: 'config', content: TOOLS } as const;
   const events = session(on);
   const [context] = at(events, 5);
-  expect(toggleTool(events, context, 'search')).toEqual({ event: { type: 'Edit', id: 5, revision: 2, content: expect.stringContaining('"search"') } });
-  expect(toggleTool(events, context, 'python')).toEqual({ error: 'unknown tool python – bash search question' });
-  expect(toggleTool(session(), fold(session()), 'search')).toEqual({ error: 'no Tools Block' });
+  expect(toggleTool(events, context, 'search', [])).toEqual({ event: { type: 'Edit', id: 5, revision: 2, content: expect.stringContaining('"search"') } });
+  expect(toggleTool(events, context, 'python', [])).toEqual({ error: 'unknown tool python – bash search question' });
+  expect(toggleTool(session(), fold(session()), 'search', [])).toEqual({ error: 'no Tools Block' });
+});
+
+// The new session's Tools Block without one tool.
+const toolsWithout = (name: string) => JSON.stringify((JSON.parse(TOOLS) as { name: string }[]).filter(t => t.name !== name), null, 2);
+
+test('a tool denied by rule cannot be switched on, but off (FR-21)', () => {
+  const events = session({ type: 'BlockAdded', id: 5, kind: 'Tools', origin: 'config', content: toolsWithout('question') });
+  const [context] = at(events, 5);
+  expect(toggleTool(events, context, 'question', ['question'])).toEqual({ error: 'question is denied by rule' });
+  const on = session({ type: 'BlockAdded', id: 5, kind: 'Tools', origin: 'config', content: TOOLS });
+  expect(toggleTool(on, fold(on), 'question', ['question'])).toEqual({ event: { type: 'Edit', id: 5, revision: 2, content: toolsWithout('question') } });
+});
+
+test('the harness takes denied tools out of the Tools Block, not undoable; nothing when none is on (FR-21)', () => {
+  const events = session({ type: 'BlockAdded', id: 5, kind: 'Tools', origin: 'config', content: TOOLS });
+  expect(withoutDenied(events, fold(events), ['question'])).toEqual({ type: 'Edit', id: 5, revision: 2, content: toolsWithout('question'), harness: true });
+  expect(withoutDenied(events, fold(events), [])).toBeNull();
+  expect(withoutDenied(events, fold(events), ['search'])).toBeNull();
+  expect(withoutDenied(session(), fold(session()), ['question'])).toBeNull();
 });
 
 test('a Tool Call awaiting approval is not moved, pinned or removed', () => {

@@ -1,5 +1,5 @@
 // Context operations at the Review Gate (FR-4, FR-10, NFR-3): each yields the event to append, or why not.
-import type { SessionEvent } from '../log/events';
+import type { SessionEvent, Tool } from '../log/events';
 import { undone, type Block, type Context } from '../log/fold';
 import * as bash from '../toolcall/bash';
 import { resultText, type RunResult } from '../toolcall/bash';
@@ -92,13 +92,24 @@ export function edit(events: SessionEvent[], block: Block, edited: string): Outc
   return { event: { type: 'Edit', id: block.id, revision: nextRevision(events, block.id), content } };
 }
 
-// /tools <name>: the Tools Block with the tool switched on or off, as a new Revision.
-export function toggleTool(events: SessionEvent[], { blocks }: Context, name: string): Outcome {
+// /tools <name>: the Tools Block with the tool switched on or off, as a new Revision; a tool denied by rule stays off.
+export function toggleTool(events: SessionEvent[], { blocks }: Context, name: string, denied: Tool[]): Outcome {
   const tools = blocks.find(b => b.kind === 'Tools');
   if (!tools) return { error: 'no Tools Block' };
+  if (denied.includes(name as Tool) && !bash.toolsIn(tools.content).includes(name)) return { error: `${name} is denied by rule` };
   const toggled = bash.toggleTool(tools.content, name);
   if ('error' in toggled) return toggled;
   return { event: { type: 'Edit', id: tools.id, revision: nextRevision(events, tools.id), content: toggled.content } };
+}
+
+// The harness takes the tools denied by rule out of the Tools Block, not undoable (FR-21).
+export function withoutDenied(events: SessionEvent[], { blocks }: Context, denied: Tool[]): Extract<SessionEvent, { type: 'Edit' }> | null {
+  const tools = blocks.find(b => b.kind === 'Tools');
+  if (!tools) return null;
+  const on = bash.toolsIn(tools.content);
+  if (!denied.some(name => on.includes(name))) return null;
+  const content = bash.toolsWith(on.filter(name => !denied.includes(name as Tool)));
+  return { type: 'Edit', id: tools.id, revision: nextRevision(events, tools.id), content, harness: true };
 }
 
 export const nextRevision = (events: SessionEvent[], id: number) =>

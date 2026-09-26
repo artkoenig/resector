@@ -1721,3 +1721,43 @@ test('/filter alone shows the filter and its values', async () => {
   frame = await frameMatching(ui, f => f.includes('filter note ·'));
   expect(frame).not.toContain('✗');
 });
+
+// Question: switch off via Permission Rules (#36) ------------------------------------------------------------
+test('a deny rule for question takes it out of the Tools Block; a call anyway is "denied by rule", no dock (#36)', async () => {
+  const { events } = await start({ tools: TOOLS, global: { question: 'allow' }, project: { question: 'deny' } });
+  expect(events().at(-1)).toEqual({ type: 'Edit', id: 2, revision: 2, content: BASH_TOOLS, harness: true });
+  await frameMatching(ui, f => /Tools\s+bash\s/.test(f) && f.includes('52 / 4k'));
+  fake.reply({ chunks: [], calls: [questionCall(RUNTIME)] });
+  await write('go');
+  const frame = await frameMatching(ui, f => f.includes('⚠ denied by rule: question'));
+  expect(frame).not.toContain('own answer');
+  expect((fake.chatRequests[0] as Sent).tools!.map(t => t.function.name)).toEqual(['bash']);
+  expect(events().filter(e => e.kind === 'Tool Result')).toEqual([
+    { type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'denied by rule', call: 4 },
+  ]);
+  await write('/tools question');
+  await frameMatching(ui, f => f.includes('question is denied by rule'));
+});
+
+test('ask never pauses a Question; a Question still open at a resume is denied once a rule denies it (#36)', async () => {
+  await start({ tools: TOOLS, global: { question: 'ask' } });
+  fake.reply({ chunks: [], calls: [questionCall(RUNTIME)] });
+  await write('go');
+  await frameMatching(ui, f => f.includes('own answer'));
+  ui.renderer.destroy();
+  fake.stop();
+
+  const { events } = await start({ tools: TOOLS, global: { question: 'deny' }, users: ['go'], calls: [{ tool: 'question', content: JSON.stringify({ questions: [RUNTIME] }) }] });
+  const frame = await frameMatching(ui, f => f.includes('⚠ denied by rule: question'));
+  expect(frame).not.toContain('own answer');
+  expect(events().at(-1)).toEqual({ type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'denied by rule', call: 4 });
+});
+
+test('/reload with a new deny rule takes question out of the Tools Block (#36)', async () => {
+  const global: Permissions = {};
+  const { events } = await start({ tools: TOOLS, global });
+  global.question = 'deny';
+  await write('/reload');
+  await frameMatching(ui, f => f.includes('config reloaded') && /Tools\s+bash\s/.test(f));
+  expect(events().at(-1)).toEqual({ type: 'Edit', id: 2, revision: 2, content: BASH_TOOLS, harness: true });
+});

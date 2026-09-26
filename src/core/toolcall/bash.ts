@@ -36,9 +36,10 @@ export const toolNames = (tools: string): string => toolsIn(tools).join(', ') ||
 export function toggleTool(tools: string, name: string): { content: string } | { error: string } {
   if (!TOOL_NAMES.includes(name)) return { error: `unknown tool ${name} – ${TOOL_NAMES.join(' ')}` };
   const on = toolsIn(tools);
-  const next = on.includes(name) ? on.filter(n => n !== name) : [...on, name];
-  return { content: toolsContent(CATALOG.filter(t => next.includes(t.name))) };
+  return { content: toolsWith(on.includes(name) ? on.filter(n => n !== name) : [...on, name]) };
 }
+// Tools Block content with the named tools, in catalog order.
+export const toolsWith = (names: string[]) => toolsContent(CATALOG.filter(t => names.includes(t.name)));
 
 // A tool call as the model sent it: arguments are a JSON string.
 export type RawCall = { name: string; arguments: string };

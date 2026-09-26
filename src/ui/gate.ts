@@ -2,7 +2,7 @@
 import { createEffect, createMemo, createSignal } from 'solid-js';
 import type { Clipboard } from '../adapters/clipboard/clipboard';
 import type { Backend, ChatResult, Counted } from '../core/backend';
-import { quoted, sessionAllowed, sessionRules, verdictOf as decide, type Rule, type Split, type Verdict } from '../core/approval/approval';
+import { deniedTools, quoted, sessionAllowed, sessionRules, verdictOf as decide, type Rule, type Split, type Verdict } from '../core/approval/approval';
 import { warmRows } from '../core/cache/cache';
 import * as compaction from '../core/compaction/compaction';
 import * as ops from '../core/context/operations';
@@ -348,7 +348,8 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
 
   // The answer's text and Tool Calls become blocks; its calls are decided by the rules.
   function finish(result: ChatResult) {
-    const { events, notRun } = answerBlocks(result, nextId(), toolsOn());
+    // Calls to a tool denied by rule are parsed too: they are answered "denied by rule" (FR-21).
+    const { events, notRun } = answerBlocks(result, nextId(), [...toolsOn(), ...deniedTools(rules())]);
     events.forEach(append);
     held = !!notRun;
     append({ type: 'ResponseReceived', usage: result.usage, cached: result.cached });
@@ -372,17 +373,9 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   // first to ask for is selected. Then the results are sent, or held at the Gate. notes: what happened so far.
   function advance(notes: string[] = []) {
     for (let call = ops.nextCall(context()); call; call = ops.nextCall(context())) {
-      // A Question never needs Tool Approval: the dock opens (asked) and waits for the answer.
-      if (call.tool === 'question') {
-        setSelected(call.id);
-        return setStatus({ text: [...notes, `? ${QUESTION_HINT}`].join(' · '), tone: 'warn' });
-      }
       const { action } = verdictOf(call);
-      if (action === 'allow') return void run(call, notes);
-      if (action === 'ask') {
-        setSelected(call.id);
-        return setStatus({ text: [...notes, `? approve – ${APPROVE}`].join(' · '), tone: 'warn' });
-      }
+      if (action === 'allow' && call.tool !== 'question') return void run(call, notes);
+      if (action !== 'deny') return awaitUser(call, notes);
       setSelected(nextId());
       held = true;
       apply(ops.deny(context(), call, nextId()));
@@ -390,6 +383,12 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     }
     if (!held) return void send();
     setStatus({ text: `${notes.join(' · ') || 'tool loop paused'} – review the results, Enter sends`, tone: notes.length ? 'warn' : 'ok' });
+  }
+
+  // The call waits for the user: a Question for its answer in the dock (it never needs Tool Approval), others for approval.
+  function awaitUser(call: Block, notes: string[]) {
+    setSelected(call.id);
+    setStatus({ text: [...notes, call.tool === 'question' ? `? ${QUESTION_HINT}` : `? approve – ${APPROVE}`].join(' · '), tone: 'warn' });
   }
 
   // Runs the call with its tool's runner (FR-21); its output streams into a live Tool Result row, then the next call is decided.
@@ -417,7 +416,8 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   // The Question the dock asks now: the next pending call, while nothing streams or runs.
   const asked = createMemo((): Asked | null => {
     const call = ops.nextCall(context());
-    return call?.tool === 'question' && !streaming() && !running() ? { call, questions: questionsOf(call.content) } : null;
+    if (call?.tool !== 'question' || streaming() || running() || verdictOf(call).action === 'deny') return null;
+    return { call, questions: questionsOf(call.content) };
   });
   // The user's answers, one per question: the Tool Result, written by the user; then the loop goes on.
   function answer(answers: Answer[]) {
@@ -676,6 +676,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   async function reload() {
     try {
       setBackend(await reconnect());
+      dropDenied();
       setStatus(withHint({ text: 'config reloaded', tone: 'ok' }, ignoredHint(approval)));
     } catch (e) {
       setStatus({ text: `reload failed: ${errorText(e)}`, tone: 'error' });
@@ -703,7 +704,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   const toolsOn = () => toolsIn(context().blocks.find(b => b.kind === 'Tools')?.content ?? '[]');
   function toggleTool(name: string) {
     if (!name) return setStatus({ text: `tools: ${toolsOn().join(', ') || 'none'} · /tools <tool> switches one`, tone: 'info' });
-    if (!apply(ops.toggleTool(events(), context(), name))) return;
+    if (!apply(ops.toggleTool(events(), context(), name, deniedTools(rules())))) return;
     setStatus({ text: `${name} ${toolsOn().includes(name) ? 'on' : 'off'} · u = undo`, tone: 'info' });
   }
 
@@ -742,6 +743,13 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
       void send();
     } else setStatus({ text: `${count(files.length, 'file reference')} added – read at send · e opens the file · Enter sends`, tone: 'info' });
   }
+
+  // Tools denied by rule leave the Tools Block (FR-21), at open and on /reload.
+  function dropDenied() {
+    const edit = ops.withoutDenied(events(), context(), deniedTools(rules()));
+    if (edit) append(edit);
+  }
+  dropDenied();
 
   // Calls still pending when the Gate opens (resume) are decided like fresh ones.
   if (ops.nextCall(context())) queueMicrotask(() => advance(status() ? [status()!.text] : []));

@@ -1,6 +1,6 @@
 // Tool Approval (FR-22–FR-25, architecture §5): permission rules decide each sub-command of a bash call.
 import { posix } from 'node:path';
-import type { SessionEvent } from '../log/events';
+import type { SessionEvent, Tool } from '../log/events';
 import type { Block } from '../log/fold';
 
 export type Action = 'allow' | 'ask' | 'deny';
@@ -86,10 +86,21 @@ export function evaluate(command: string, input: ApprovalInput): Verdict {
   return { action, checks };
 }
 
+const ALLOWED: Verdict = { action: 'allow', checks: [] };
+// A Question never needs Tool Approval, but the last rule for `question` switches it off when it denies; `ask` never
+// applies to it, so a project `ask` cannot loosen a global deny (FR-21, FR-25).
+function questionVerdict(rules: Rule[]): Verdict {
+  const rule = rules.findLast(r => r.pattern === 'question' && r.action !== 'ask');
+  if (rule?.action !== 'deny') return ALLOWED;
+  return { action: 'deny', checks: [{ text: 'question', action: 'deny', why: `${rule.source} rule "question"`, unallowable: false }] };
+}
 // search only reads the web: always allowed, no rule decides it (FR-21).
-const SEARCH: Verdict = { action: 'allow', checks: [] };
-export const verdictOf = (call: Pick<Block, 'tool' | 'content'>, input: ApprovalInput): Verdict =>
-  call.tool === 'search' ? SEARCH : evaluate(call.content, input);
+export function verdictOf(call: Pick<Block, 'tool' | 'content'>, input: ApprovalInput): Verdict {
+  if (call.tool === 'search') return ALLOWED;
+  return call.tool === 'question' ? questionVerdict(input.rules) : evaluate(call.content, input);
+}
+// The tools rules switch off: kept out of the Tools Block, calls denied (FR-21).
+export const deniedTools = (rules: Rule[]): Tool[] => (questionVerdict(rules).action === 'deny' ? ['question'] : []);
 
 // Words of a command's prefix for "allow for session", by its first words (architecture §5).
 const ARITY: Record<string, number> = {

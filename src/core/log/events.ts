@@ -32,7 +32,7 @@ export type SessionEvent =
   | { type: 'FileRead'; id: number; content: string }
   | { type: 'RequestSent'; hash: string; tokens: number }
   // A new Revision of the block's content (FR-8); the block's first content is Revision 1.
-  // harness: the environment Note refreshed (FR-28), not undoable.
+  // harness: the environment Note refreshed (FR-28) or a tool denied by rule taken out of the Tools Block (FR-21), not undoable.
   | { type: 'Edit'; id: number; revision: number; content: string; harness?: true }
   // Context operations (FR-4, FR-10); `after` is the block the moved block now follows.
   | { type: 'Move'; id: number; after: number }

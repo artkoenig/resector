@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { BUILTIN_ALLOW, evaluate, matches, verdictOf, permissionRules, prefixRule, quoted, sessionAllowed, sessionRules, type Command, type Rule, type Split } from './approval';
+import { BUILTIN_ALLOW, deniedTools, evaluate, matches, verdictOf, permissionRules, prefixRule, quoted, sessionAllowed, sessionRules, type Command, type Rule, type Split } from './approval';
 
 const ROOT = '/work/project';
 // A split that treats `&&` as the only separator and every word after the first as a literal argument.
@@ -13,6 +13,24 @@ test('search is always allowed, whatever the rules; a bash call is decided by th
   expect(verdictOf({ tool: 'search', content: 'rm -rf /' }, input)).toEqual({ action: 'allow', checks: [] });
   expect(verdictOf({ content: 'ls' }, input).action).toBe('deny');
   expect(verdictOf({ tool: 'bash', content: 'ls' }, input).action).toBe('deny');
+});
+
+test('a Question is never asked for: only a rule for `question` denies it, the last one wins (FR-21)', () => {
+  const input = (...rules: Rule[]) => ({ rules, split: words, root: ROOT });
+  const question = { tool: 'question' as const, content: '{}' };
+  expect(verdictOf(question, input(rule('*', 'deny'), rule('question *', 'deny'), rule('question', 'ask')))).toEqual({ action: 'allow', checks: [] });
+  expect(verdictOf(question, input(rule('question', 'deny', 'project')))).toEqual({
+    action: 'deny',
+    checks: [{ text: 'question', action: 'deny', why: 'project rule "question"', unallowable: false }],
+  });
+  expect(verdictOf(question, input(rule('question', 'deny'), rule('question', 'allow', 'session'))).action).toBe('allow');
+  expect(verdictOf(question, input()).action).toBe('allow');
+  expect(verdictOf(question, input(rule('question', 'deny'), rule('ls *', 'allow'))).action).toBe('deny');
+  expect(deniedTools([rule('question', 'deny')])).toEqual(['question']);
+  expect(deniedTools([rule('question', 'deny'), rule('question', 'ask', 'project')])).toEqual(['question']);
+  expect(deniedTools([rule('question', 'deny'), rule('question', 'allow')])).toEqual([]);
+  expect(deniedTools(permissionRules({ question: 'allow' }, { question: 'deny' }).rules)).toEqual(['question']);
+  expect(deniedTools(permissionRules({ question: 'deny' }, { question: 'allow' }).rules)).toEqual(['question']);
 });
 
 test('a pattern ending in " *" matches the command alone or with arguments, not a longer word (FR-22)', () => {
