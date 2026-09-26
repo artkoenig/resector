@@ -180,6 +180,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   function contextAction(name: string) {
     if (name !== lastKey) gate.cancelConfirm();
     lastKey = name;
+    if (gate.marked().size && SINGLE_KEYS.has(name)) return undefined;
     if (!gate.busy()) return contextKeys[name];
     return name === 'escape' ? gate.abort : BUSY_KEYS.has(name) ? contextKeys[name] : undefined;
   }
@@ -458,12 +459,16 @@ function contextBar(gate: Gate, width: number): { char: string; color: string }[
   return cells;
 }
 
+// Keys acting on the selected block only: off while blocks are marked.
+const SINGLE_KEYS = new Set(['alt+up', 'alt+down', 'y', 'a', 'n', 'p', 'e']);
 const BUSY_KEYS = new Set(['up', 'down', 'shift+up', 'shift+down', 'pageup', 'pagedown', 'q']);
 const WHEEL: Record<string, number> = { up: -1, down: 1 };
 
 const modifierOf = (key: { option?: boolean; meta: boolean; shift: boolean }) => (key.option || key.meta ? 'alt+' : key.shift ? 'shift+' : '');
 
 const LOOK_KEYS: Hint[] = [['q', 'quit']];
+// With marks only what acts on all marked blocks.
+const MARKED_KEYS: Hint[] = [['d', 'remove'], ['c', 'compact'], ['space', 'mark'], ['esc', 'unmark'], ['q', 'quit']];
 const KEYS: Hint[] = [['⌥↑↓', 'move'], ['e', 'edit'], ['d', 'remove'], ['p', 'pin'], ['space', 'mark'], ['c', 'compact'], ['t', 'thinking'], ['u', 'undo'], ['q', 'quit']];
 
 // Colours of a row: a removed one is muted throughout, one the chat template drops all but its flags.
@@ -502,5 +507,6 @@ function modeKeys(gate: Gate, mode: KeyMode): Hint[] {
   if (own) return own;
   if (gate.running()) return [['esc', 'kill'], ...LOOK_KEYS];
   if (gate.streaming()) return [['esc', 'abort'], ...LOOK_KEYS];
+  if (gate.marked().size) return MARKED_KEYS;
   return gate.selectedBlock()?.pending ? [['y', 'run once'], ['a', 'allow for session'], ['n', 'reject'], ...KEYS] : KEYS;
 }

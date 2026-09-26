@@ -50,6 +50,16 @@ export function remove(block: Block): Outcome {
   return { event: { type: 'Remove', id: block.id } };
 }
 
+// d with marks: every marked block in one event, undone together.
+export function removeAll(blocks: Block[]): Outcome {
+  for (const block of blocks) {
+    const outcome = remove(block);
+    if ('error' in outcome) return outcome;
+  }
+  const [first, ...others] = blocks.map(b => b.id);
+  return first === undefined ? { error: 'nothing marked' } : { event: { type: 'Remove', id: first, others } };
+}
+
 // Editor port (adapters/editor): the user edits a text; resolves to the saved text.
 export type Editor = (text: string) => Promise<string>;
 

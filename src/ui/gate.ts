@@ -230,11 +230,19 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
   const pinned = ({ pin }: Block) => (pin ? PINNED[pin] : 'unpinned');
   const pin = () => viaNote('pin', 'p', () => operate(ops.pin, b => pinned(blockOf(b.id))));
   const whole = (b: Block) => (ops.inPair(b) ? ' (whole Tool Pair)' : '');
+  // d: the marked blocks, else the selected one.
   function remove() {
     const at = rows().indexOf(selected());
-    operate(ops.remove, b => `removed${whole(b)} · struck through until sent · u = undo`);
+    if (marked().size) removeMarked();
+    else operate(ops.remove, b => `removed${whole(b)} · struck through until sent · u = undo`);
     setMarked(new Set([...marked()].filter(id => sent().some(b => b.id === id))));
     selectAt(at);
+  }
+  function removeMarked() {
+    const blocks = context().blocks.filter(b => marked().has(b.id));
+    if (!apply(ops.removeAll(blocks))) return;
+    setStatus({ text: `removed ${blocks.length} marked blocks · struck through until sent · u = undo`, tone: 'info' });
+    setMarked(new Set<number>());
   }
   function undo() {
     const result = ops.undo(events());
@@ -589,7 +597,7 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     if (!modes.length) return setStatus({ text: 'the chat template has no thinking switch', tone: 'info' });
     const next = modes[(modes.indexOf(thinking()) + 1) % modes.length]!;
     append({ type: 'ThinkingSet', thinking: next });
-    setStatus({ text: `thinking ${thinkingLabel(next)} · t: ${modes.map(thinkingLabel).join(' → ')}`, tone: 'info' });
+    setStatus({ text: `thinking ${thinkingLabel(next)}`, tone: 'info' });
   }
 
   function renameSession(title: string) {

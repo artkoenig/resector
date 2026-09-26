@@ -35,8 +35,8 @@ export type SessionEvent =
   | { type: 'Move'; id: number; after: number }
   | { type: 'Pin'; id: number; at: Pin }
   | { type: 'Unpin'; id: number }
-  // Removes the whole Tool Pair when `id` is one of its blocks (FR-9).
-  | { type: 'Remove'; id: number }
+  // Removes the whole Tool Pair when `id` is one of its blocks (FR-9); `others`: marked blocks removed with it, undone together.
+  | { type: 'Remove'; id: number; others?: number[] }
   // The Tool Pair of Tool Call `call` becomes Note `id` after the calls and results of its answer (FR-9).
   | { type: 'PairToNote'; id: number; call: number }
   // Accepted Compaction (FR-16): Note `noteId` with `content` replaces `sources` at the first one's place.

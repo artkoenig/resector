@@ -104,7 +104,7 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   Unpin: (state, e) => setPin(state, e.id, null),
   ProfileFallback: (state, e) => void (state.profile = e.profile),
   ThinkingSet: (state, e) => void (state.thinking = e.thinking),
-  Remove: (state, e) => pairIn(state, e.id).forEach(id => (entry(state, id).removed = true)),
+  Remove: (state, e) => [e.id, ...(e.others ?? [])].flatMap(id => pairIn(state, id)).forEach(id => (entry(state, id).removed = true)),
   // The pair is gone at once, not struck through: its Note follows the calls and results of its answer,
   // so the other calls of the answer keep their results right after them.
   PairToNote: (state, e) => {

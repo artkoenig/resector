@@ -333,7 +333,7 @@ test('t cycles thinking off → on → on:<effort>, shown in the header, logged 
 test('t cycles the thinking modes of the chat template (FR-49)', async () => {
   const { events } = await start({ template: "{% if reasoning_effort not in ('xhigh', 'low') %}{% endif %}" });
   await press('t');
-  await frameMatching(ui, f => f.includes('default · thinking on:low') && f.includes('t: on:low → on:xhigh'));
+  await frameMatching(ui, f => f.includes('default · thinking on:low'));
   await press('t');
   await frameMatching(ui, f => f.includes('default · thinking on:xhigh'));
   await press('t');
@@ -346,6 +346,27 @@ test('a chat template without thinking: t says so and logs nothing', async () =>
   await press('t');
   await frameMatching(ui, f => f.includes('the chat template has no thinking switch'));
   expect(events().some(e => e.type === 'ThinkingSet')).toBe(false);
+});
+
+test('with marks only d and c are offered; d removes every marked block, u brings all back', async () => {
+  const { events } = await withUsers('one', 'two', 'three');
+  await press(' ');
+  await press('up');
+  await press('up');
+  await press(' ');
+  let frame = await frameMatching(ui, f => /●\s+3\s+User/.test(f) && f.includes('esc unmark'));
+  expect(frame).not.toContain('edit');
+  await press('e');
+  await press('d');
+  frame = await frameMatching(ui, f => f.includes('removed 2 marked blocks'));
+  expect(line(frame, /one/)).toMatch(/User\s+one\s+removed/);
+  expect(line(frame, /two/)).not.toMatch(/removed/);
+  expect(line(frame, /three/)).toMatch(/User\s+three\s+removed/);
+  expect(frame).not.toMatch(/^[ ┃] ●/m);
+  expect(events().at(-1)).toEqual({ type: 'Remove', id: 3, others: [5] });
+  await press('u');
+  frame = await frameMatching(ui, f => f.includes('undone: remove'));
+  expect(frame).not.toMatch(/removed\s*$/m);
 });
 
 test('d strikes the block through until sent; u brings it back as a counter-event', async () => {
@@ -901,6 +922,8 @@ test('d removes a Tool Pair as a whole; Space marks it as a whole (FR-9)', async
   await press(' ');
   frame = await frameMatching(ui, f => /●\s+5\s+Tool Result/.test(f));
   expect(line(frame, /Tool Call/)).toMatch(/●\s+4\s+Tool Call/);
+  await press(' ');
+  await frameMatching(ui, f => !/^[ ┃] ●/m.test(f));
   await press('d');
   frame = await frameMatching(ui, f => f.includes('(whole Tool Pair)'));
   expect(line(frame, /Tool Call/)).toMatch(/^ {8}Tool Call\s+echo hi\s+removed/);
