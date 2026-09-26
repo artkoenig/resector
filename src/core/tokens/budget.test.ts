@@ -23,6 +23,12 @@ test('the last measured drift counts: an answer without usage (aborted) keeps th
   expect(lastDrift([sent(100), received(null)])).toBeNull();
 });
 
+test('a Model Profile fallback forgets the drift: the new profile counts differently (FR-35)', () => {
+  const fallback: SessionEvent = { type: 'ProfileFallback', profile: 'other' };
+  expect(lastDrift([sent(100), received(112), fallback])).toBeNull();
+  expect(lastDrift([sent(100), received(112), fallback, sent(50), received(53)])).toBe(3);
+});
+
 test('a response without its own request before it measures nothing', () => {
   expect(lastDrift([received(50)])).toBeNull();
   expect(lastDrift([sent(100), received(112), received(150)])).toBe(12);
@@ -47,15 +53,15 @@ test('sending is blocked from a Context as big as the window on: over by what ha
 });
 
 test('an exact tokenizer ignores drift and shows none', () => {
-  expect(budget({ ...exact, drift: 30, total: 980 })).toMatchObject({ tone: 'warn', over: 0, drift: null });
+  expect(budget({ ...exact, drift: 30, total: 980 })).toMatchObject({ tone: 'warn', over: 0, driftLabel: null });
 });
 
 test('an inexact tokenizer subtracts the last drift, either sign, from the window; ±? before the first answer (FR-2, FR-18)', () => {
   const inexact = { window: 1000, exact: false };
-  expect(budget({ ...inexact, drift: null, total: 999 })).toMatchObject({ tone: 'warn', over: 0, drift: '±?' });
-  expect(budget({ ...inexact, drift: 30, total: 969 })).toMatchObject({ tone: 'warn', over: 0, drift: '±30' });
-  expect(budget({ ...inexact, drift: 30, total: 970 })).toMatchObject({ tone: 'over', over: 1, drift: '±30' });
-  expect(budget({ ...inexact, drift: -30, total: 970 })).toMatchObject({ tone: 'over', over: 1, drift: '±30' });
+  expect(budget({ ...inexact, drift: null, total: 999 })).toMatchObject({ tone: 'warn', over: 0, driftLabel: '±?' });
+  expect(budget({ ...inexact, drift: 30, total: 969 })).toMatchObject({ tone: 'warn', over: 0, driftLabel: '±30' });
+  expect(budget({ ...inexact, drift: 30, total: 970 })).toMatchObject({ tone: 'over', over: 1, driftLabel: '±30' });
+  expect(budget({ ...inexact, drift: -30, total: 970 })).toMatchObject({ tone: 'over', over: 1, driftLabel: '±30' });
   // max_tokens stays the window minus the Context: the drift only guards the send.
   expect(budget({ ...inexact, drift: 30, total: 900 }).maxTokens).toBe(100);
 });

@@ -394,9 +394,16 @@ function Header(props: { gate: Gate; width: number }) {
   const total = () => props.gate.split()?.total ?? 0;
   const used = () => (props.gate.split() ? formatTokens(total()) : '…');
   const budget = () => props.gate.budget();
-  // FR-2: ±X drift of an inexact tokenizer; above the window red `over by X`.
-  const window = () => ` / ${formatTokens(props.gate.window())}${budget()?.drift ? ` ${budget()!.drift}` : ''}`;
-  const over = () => (budget()?.over ? ` over by ${formatTokens(budget()!.over)}` : '');
+  // FR-2: ±X drift of an inexact tokenizer, dimmed; above the window red `over by X`.
+  const window = () => ` / ${formatTokens(props.gate.window())}`;
+  const drift = () => {
+    const label = budget()?.driftLabel;
+    return label ? ` ${label}` : '';
+  };
+  const over = () => {
+    const tokens = budget()?.over;
+    return tokens ? ` over by ${formatTokens(tokens)}` : '';
+  };
   const tone = () => ({ ok: undefined, warn: TONE.warn, over: TONE.error })[budget()?.tone ?? 'ok'];
   const profile = () => props.gate.profile();
   return (
@@ -408,10 +415,11 @@ function Header(props: { gate: Gate; width: number }) {
         <>
           <span style={{ fg: tone() ?? TEXT }}>{used()}</span>
           <span style={{ fg: tone() ?? MUTED }}>{window()}</span>
+          <span style={{ fg: MUTED }}>{drift()}</span>
           <span style={{ fg: TONE.error }}>{over()}</span>
         </>
       }
-      rightWidth={used().length + window().length + over().length}
+      rightWidth={used().length + window().length + drift().length + over().length}
       below={
         <text>
           <span>{'  '}</span>

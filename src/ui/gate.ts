@@ -411,7 +411,8 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
   }
 
   // Whether the Context may go: nothing blocks it, it fits, and its references are read. The window is checked
-  // before the references: a blocked send reads nothing (FR-27).
+  // first on the Gate's count, so a Context known to be too big reads no references (FR-27); the count right
+  // before sending checks again (halted).
   function ready(): boolean {
     const blocked = unsendable();
     if (blocked) setStatus(blocked);
