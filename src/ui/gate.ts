@@ -298,6 +298,7 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
   function finish(result: ChatResult) {
     const { events, notRun } = answerBlocks(result, nextId());
     events.forEach(append);
+    held = !!notRun;
     append({ type: 'ResponseReceived', usage: result.usage, cached: result.cached });
     const miss = cacheMiss(result);
     if (ops.nextCall(context())) return advance([notRun && notRunText(notRun), miss && `⚠ ${miss}`].filter((n): n is string => !!n));
@@ -310,8 +311,12 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
   const rules = () => [...approval.permissions().rules, ...sessionAllowed(events())];
   const verdictOf = (call: Block): Verdict => evaluate(call.content, { rules: rules(), split: approval.split, root: approval.root });
 
+  // Whether the answer's calls leave the results for review at the Gate: one was not run (rejected, denied, not a
+  // bash call) or was stopped (killed, timeout). Otherwise, once every call ran, the results are sent (FR-23).
+  let held = false;
+
   // Decides the pending calls in order (FR-24): an allowed one runs, a denied one is answered "denied by rule", the
-  // first to ask for is selected. Then back at the Gate – approval never sends (FR-23). notes: what happened so far.
+  // first to ask for is selected. Then the results are sent, or held at the Gate. notes: what happened so far.
   function advance(notes: string[] = []) {
     for (let call = ops.nextCall(context()); call; call = ops.nextCall(context())) {
       const { action } = verdictOf(call);
@@ -321,9 +326,11 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
         return setStatus({ text: [...notes, `? approve – ${APPROVE}`].join(' · '), tone: 'warn' });
       }
       setSelected(nextId());
+      held = true;
       apply(ops.deny(context(), call, nextId()));
       notes = [...notes, `⚠ denied by rule: ${titleOf(call)}`];
     }
+    if (!held) return void send();
     setStatus({ text: `${notes.join(' · ') || 'tool loop paused'} – review the results, Enter sends`, tone: notes.length ? 'warn' : 'ok' });
   }
 
@@ -339,6 +346,7 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
       setRunning(null);
       setSelected(nextId());
       append(ops.toolResult(call, nextId(), result, runner.timeout));
+      if (result.stopped) held = true;
       advance(result.stopped ? [...notes, `⚠ ${result.stopped}`] : notes);
     } catch (e) {
       setRunning(null);
@@ -361,28 +369,22 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     if (call) void (verdictOf(call).action === 'deny' ? advance() : run(call, []));
   }
 
-  // a: allow the call's command prefixes for the session (FR-23, FR-25), shown first; the same key again saves
-  // them as Session Log events, then the call runs as allowed.
+  // a: allow the call's command prefixes for the session (FR-23, FR-25) – the preview shows them beforehand; they
+  // are saved as Session Log events, then the call runs as allowed.
   function allowForSession() {
     const call = decidable();
     if (!call) return;
     const found = sessionRules(verdictOf(call));
     if ('error' in found) return setStatus({ text: found.error, tone: 'info' });
-    const patterns = quoted(found.patterns);
-    const asked = `allow ${call.id}`;
-    if (confirming() !== asked) {
-      setConfirming(asked);
-      return setStatus({ text: `allow for this session: ${patterns} – press a again to confirm, any other key cancels`, tone: 'warn' });
-    }
-    setConfirming(null);
     for (const pattern of found.patterns) append({ type: 'AllowRuleAdded', pattern });
-    advance([`allowed for session: ${patterns}`]);
+    advance([`allowed for session: ${quoted(found.patterns)}`]);
   }
 
   // n: not run; the result says "rejected by user" (FR-23).
   function reject() {
     const call = decidable();
     if (!call) return;
+    held = true;
     setSelected(nextId());
     if (apply(ops.reject(context(), call, nextId()))) advance();
   }

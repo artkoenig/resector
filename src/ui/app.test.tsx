@@ -523,6 +523,14 @@ async function asked(commands: string[], { text = '', ...options }: { text?: str
   await frameMatching(ui, f => f.includes('? approve –') && !/Tool Call .* … /.test(f));
   return started;
 }
+// The same; y runs the call, its result is sent and answered with `reply`.
+async function ran(command: string, { reply = 'ok', ...options }: { reply?: string; text?: string } & Start = {}) {
+  const started = await asked([command], options);
+  fake.reply({ chunks: [reply] });
+  await press('y');
+  await frameMatching(ui, f => f.includes('answer complete'));
+  return started;
+}
 
 test('the Tools Block (bash) is always sent and fixed (FR-12)', async () => {
   await withUsers('hi');
@@ -538,7 +546,7 @@ test('the Tools Block (bash) is always sent and fixed (FR-12)', async () => {
   await frameMatching(ui, f => f.includes('Tools Block is fixed'));
 });
 
-test('a Tool Call waits at ? approve; y runs it once, its result is a Tool Result block, nothing is sent (FR-23)', async () => {
+test('a Tool Call waits at ? approve; y runs it once, its result is a Tool Result block and is sent (FR-23)', async () => {
   const { events } = await asked(['echo hello'], { text: 'Let me look.' });
   let frame = ui.captureCharFrame();
   expect(line(frame, /Let me look/)).toMatch(/4\s+Assistant\s+Let me look\./);
@@ -546,22 +554,21 @@ test('a Tool Call waits at ? approve; y runs it once, its result is a Tool Resul
   expect(frame).toMatch(/y run once.*n reject/);
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('Tool Calls await approval'));
+  fake.reply({ chunks: ['done'] });
   await press('y');
-  frame = await frameMatching(ui, f => f.includes('tool loop paused'));
+  frame = await frameMatching(ui, f => f.includes('answer complete'));
   expect(line(frame, /Tool Result/)).toMatch(/6\s+Tool Result\s+→ echo hello\s+\d+/);
   expect(line(frame, /Tool Call/)).not.toContain('? approve');
-  expect(frame).toMatch(/^┃ hello\s*$/m);
-  expect(frame).toContain('[exit 0]');
-  expect(fake.chatRequests).toHaveLength(1);
-  expect(events().slice(-4)).toEqual([
+  expect(fake.chatRequests).toHaveLength(2);
+  expect(events().slice(-7)).toEqual([
     { type: 'BlockAdded', id: 4, kind: 'Assistant', origin: 'model', content: 'Let me look.' },
     { type: 'BlockAdded', id: 5, kind: 'Tool Call', origin: 'model', content: 'echo hello' },
     { type: 'ResponseReceived', usage: null, cached: expect.any(Number) },
     { type: 'BlockAdded', id: 6, kind: 'Tool Result', origin: 'tool', content: 'hello\n[exit 0]', call: 5 },
+    { type: 'RequestSent', hash: expect.any(String), tokens: expect.any(Number) },
+    { type: 'BlockAdded', id: 7, kind: 'Assistant', origin: 'model', content: 'done' },
+    { type: 'ResponseReceived', usage: null, cached: expect.any(Number) },
   ]);
-  fake.reply({ chunks: ['done'] });
-  ui.mockInput.pressEnter();
-  await frameMatching(ui, f => f.includes('answer complete'));
   // Assistant text and its Tool Call are one message; the result a tool message.
   expect((fake.chatRequests[1] as Sent).messages.slice(2)).toEqual([
     { role: 'assistant', content: 'Let me look.', tool_calls: [{ id: 'call_0', type: 'function', function: bash('echo hello') }] },
@@ -711,11 +718,10 @@ test('an unchanged save creates no Revision; u undoes an edit', async () => {
 });
 
 test('the Tools Block and executed Tool Calls are not opened in $EDITOR', async () => {
-  await asked(['echo hi']);
-  await press('y');
-  await frameMatching(ui, f => f.includes('tool loop paused'));
+  await ran('echo hi');
   const opened: string[] = [];
   editor = async text => (opened.push(text), 'x');
+  await press('up');
   await press('up');
   await press('e');
   await frameMatching(ui, f => f.includes('executed Tool Calls are immutable'));
@@ -732,16 +738,29 @@ test('a Tool Call awaiting approval is edited; y runs the edited command (FR-22)
   await press('e');
   let frame = await frameMatching(ui, f => f.includes('revision 2'));
   expect(line(frame, /Tool Call/)).toMatch(/4\s+Tool Call\s+echo right\s+\d+\s+[●○]?\s+✎2 \? approve/);
+  fake.reply({ chunks: ['ok'] });
   await press('y');
-  frame = await frameMatching(ui, f => f.includes('tool loop paused'));
-  expect(events().at(-1)).toEqual({ type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'right\n[exit 0]', call: 4 });
+  frame = await frameMatching(ui, f => f.includes('answer complete'));
+  expect(events().find(e => e.kind === 'Tool Result')).toEqual({ type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'right\n[exit 0]', call: 4 });
 });
 
-test('an allowed call runs without asking; the Gate then shows its result, nothing is sent (FR-22, FR-23)', async () => {
-  const { events } = await answered(['ls -d .', 'git status --short | wc -l']);
-  const frame = await frameMatching(ui, f => f.includes('tool loop paused'));
+test('allowed calls run without asking; then their results are sent (FR-22, FR-23)', async () => {
+  const { events } = await start();
+  fake.reply({ chunks: [], calls: [bash('ls -d .'), bash('git status --short | wc -l')] });
+  fake.reply({ chunks: ['ok'] });
+  await write('go');
+  const frame = await frameMatching(ui, f => f.includes('answer complete'));
   expect(frame).not.toContain('? approve');
   expect(events().filter(e => e.kind === 'Tool Result').map(e => [e.call, e.content])).toEqual([[4, '.\n[exit 0]'], [5, expect.stringMatching(/\[exit 0\]$/)]]);
+  expect(fake.chatRequests).toHaveLength(2);
+});
+
+test('a result held back (rejected, denied, killed, timeout) stops the tool loop: Enter sends (FR-23)', async () => {
+  await asked(['echo one', 'echo two']);
+  await press('n');
+  await frameMatching(ui, f => f.includes('? approve –') && /^ask\s+echo two\s/.test(previewed(f)));
+  await press('y');
+  await frameMatching(ui, f => f.includes('tool loop paused – review the results, Enter sends'));
   expect(fake.chatRequests).toHaveLength(1);
 });
 
@@ -761,27 +780,16 @@ test('the preview of a pending call shows each sub-command with the rule decidin
   expect(frame).toContain('┃ a allows "touch *" for this session');
 });
 
-test('a shows the session rule first; a again logs it and runs the call, and every later match runs too (FR-23, FR-25)', async () => {
+test('a logs the session rule the preview shows and runs the call; every later match runs too, then the results are sent (FR-23, FR-25)', async () => {
   const { events } = await asked(['touch one.txt', 'touch two.txt']);
+  expect(ui.captureCharFrame()).toContain('┃ a allows "touch *" for this session');
+  fake.reply({ chunks: ['ok'] });
   await press('a');
-  await frameMatching(ui, f => f.includes('allow for this session: "touch *" – press a again to confirm'));
-  expect(events().some(e => e.type === 'AllowRuleAdded')).toBe(false);
-  await press('a');
-  const frame = await frameMatching(ui, f => f.includes('allowed for session: "touch *" – review the results, Enter sends'));
+  const frame = await frameMatching(ui, f => f.includes('answer complete'));
   expect(frame).not.toContain('? approve');
   expect(events().filter(e => e.type === 'AllowRuleAdded' || e.kind === 'Tool Result').map(e => e.pattern ?? e.content)).toEqual(['touch *', '[exit 0]', '[exit 0]']);
   expect(await Bun.file(join(project, 'two.txt')).exists()).toBe(true);
-  expect(fake.chatRequests).toHaveLength(1);
-});
-
-test('any other key than a again cancels allow for session', async () => {
-  const { events } = await asked(['touch never.txt']);
-  await press('a');
-  await frameMatching(ui, f => f.includes('press a again to confirm'));
-  await press('down');
-  await press('a');
-  await frameMatching(ui, f => f.includes('press a again to confirm'));
-  expect(events().some(e => e.type === 'AllowRuleAdded')).toBe(false);
+  expect(fake.chatRequests).toHaveLength(2);
 });
 
 test('a is not offered where an argument points outside the project', async () => {
@@ -794,9 +802,10 @@ test('a is not offered where an argument points outside the project', async () =
 test('e on a pending call: the new Revision is decided again by the rules (FR-23)', async () => {
   const { events } = await asked(['touch edited.txt']);
   editor = async () => 'ls -d .\n';
+  fake.reply({ chunks: ['ok'] });
   await press('e');
-  await frameMatching(ui, f => f.includes('edited → revision 2 · u = undo – review the results, Enter sends'));
-  expect(events().slice(-2)).toEqual([
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(events().slice(-5, -3)).toEqual([
     { type: 'Edit', id: 4, revision: 2, content: 'ls -d .' },
     { type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: '.\n[exit 0]', call: 4 },
   ]);
@@ -841,9 +850,9 @@ test('text selected with the mouse is copied to the clipboard on release', async
 });
 
 test('d removes a Tool Pair as a whole; Space marks it as a whole (FR-9)', async () => {
-  const { events } = await asked(['echo hi']);
-  await press('y');
-  let frame = await frameMatching(ui, f => f.includes('tool loop paused'));
+  const { events } = await ran('echo hi');
+  await press('up');
+  let frame = await frameMatching(ui, f => /┃ hi\s*$/m.test(f));
   await press(' ');
   frame = await frameMatching(ui, f => /●\s+5\s+Tool Result/.test(f));
   expect(line(frame, /Tool Call/)).toMatch(/●\s+4\s+Tool Call/);
@@ -855,45 +864,44 @@ test('d removes a Tool Pair as a whole; Space marks it as a whole (FR-9)', async
 });
 
 test('⌥↑ on a Tool Pair asks; any other key cancels; the same key again turns it into a Note and moves it (FR-9)', async () => {
-  const { events } = await asked(['echo hi'], { text: 'Look.' });
-  await press('y');
-  await frameMatching(ui, f => f.includes('tool loop paused'));
+  const { events } = await ran('echo hi', { text: 'Look.' });
+  await press('up');
   await press('up', { meta: true });
   await frameMatching(ui, f => f.includes('press ⌥↑ again to confirm'));
   await press('x');
   await press('up', { meta: true });
   await frameMatching(ui, f => f.includes('press ⌥↑ again to confirm'));
-  expect(events().at(-1).type).toBe('BlockAdded');
+  expect(events().at(-1).type).toBe('ResponseReceived');
   await press('up', { meta: true });
   let frame = await frameMatching(ui, f => /4\s+Note\s+⇄ echo hi.*⇄/.test(f));
-  expect(order(frame)).toEqual(['1 System', '2 bash', '3 go', '4 ⇄', '5 Look.']);
+  expect(order(frame)).toEqual(['1 System', '2 bash', '3 go', '4 ⇄', '5 Look.', '6 ok']);
   expect(frame).not.toContain('Tool Result');
-  expect(events().slice(-2)).toEqual([{ type: 'PairToNote', id: 7, call: 5 }, { type: 'Move', id: 7, after: 3 }]);
-  fake.reply({ chunks: ['ok'] });
+  expect(events().slice(-2)).toEqual([{ type: 'PairToNote', id: 8, call: 5 }, { type: 'Move', id: 8, after: 3 }]);
+  fake.reply({ chunks: ['fine'] });
   ui.mockInput.pressEnter();
-  frame = await frameMatching(ui, f => f.includes('answer complete'));
-  expect((fake.chatRequests[1] as Sent).messages.slice(1)).toEqual([
+  frame = await frameMatching(ui, f => f.includes('fine'));
+  expect((fake.chatRequests[2] as Sent).messages.slice(1)).toEqual([
     { role: 'user', content: 'go' },
     { role: 'user', content: '[Tool bash: echo hi]\nhi\n[exit 0]' },
     { role: 'assistant', content: 'Look.' },
+    { role: 'assistant', content: 'ok' },
   ]);
 });
 
 test('p on a Tool Pair asks, p again pins its Note; u brings the pair back', async () => {
-  await asked(['echo hi']);
-  await press('y');
-  await frameMatching(ui, f => f.includes('tool loop paused'));
+  await ran('echo hi');
+  await press('up');
   await press('up');
   await press('p');
   await frameMatching(ui, f => f.includes('press p again to confirm'));
   await press('p');
   let frame = await frameMatching(ui, f => f.includes('pinned ⤒ top'));
-  expect(order(frame)).toEqual(['1 System', '2 bash', '3 ⇄', '4 go']);
+  expect(order(frame)).toEqual(['1 System', '2 bash', '3 ⇄', '4 go', '5 ok']);
   expect(line(frame, /Note/)).toMatch(/⤒/);
   await press('u');
   await press('u');
   frame = await frameMatching(ui, f => f.includes('undone: Tool Pair → Note'));
-  expect(order(frame)).toEqual(['1 System', '2 bash', '3 go', '4 Call', '5 Result']);
+  expect(order(frame)).toEqual(['1 System', '2 bash', '3 go', '4 Call', '5 Result', '6 ok']);
 });
 
 // Compaction (FR-13–FR-17) ------------------------------------------------------------------------------------
