@@ -23,7 +23,7 @@ export function createEditor({ env, suspend, resume, dir = tmpdir() }: EditorOpt
   };
 }
 
-// The editor on a file itself (`e` on an @file reference, FR-27).
+// The editor on a file itself (`e` on an @path reference, FR-27).
 export function createFileEditor({ env, suspend, resume }: Omit<EditorOptions, 'dir'>): (file: string) => Promise<void> {
   // $VISUAL, then $EDITOR, as a shell command line (e.g. `code --wait`).
   const command = env.VISUAL || env.EDITOR || 'vi';

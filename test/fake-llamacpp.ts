@@ -22,7 +22,8 @@ export type Reply = {
   error?: string;
 };
 
-export type FakeOptions = { jinja?: boolean; nCtx?: number; model?: string; slots?: number };
+// template: the Jinja source /props reports as chat_template.
+export type FakeOptions = { jinja?: boolean; nCtx?: number; model?: string; slots?: number; template?: string };
 
 export type ChatMessage = { role: string; content: string; reasoning_content?: string; tool_calls?: { function: { name: string; arguments: string } }[] };
 export type ChatTool = { type?: string; function: { name: string; [key: string]: unknown } };
@@ -72,9 +73,10 @@ export function tokenize(text: string, addSpecial: boolean): number[] {
   return [...(addSpecial ? [1] : []), ...pieces.map(idOf)];
 }
 
-export function startFakeLlamaCpp({ jinja = true, nCtx = 4096, model = 'qwen3-8b-q4_k_m.gguf', slots = 1 }: FakeOptions = {}) {
+export function startFakeLlamaCpp({ jinja = true, nCtx = 4096, model = 'qwen3-8b-q4_k_m.gguf', slots = 1, template }: FakeOptions = {}) {
   const replies: Reply[] = [];
   const chatRequests: unknown[] = [];
+  const templateRequests: Record<string, unknown>[] = [];
   const error = (message: string) => Response.json({ error: { code: 500, message, type: 'server_error' } }, { status: 500 });
   // One slot's prompt cache: the last prompt and its answer. Unless scripted, cache_n is the common
   // prefix with it, less the last prompt token, which llama.cpp always evaluates.
@@ -86,9 +88,10 @@ export function startFakeLlamaCpp({ jinja = true, nCtx = 4096, model = 'qwen3-8b
     async fetch(req) {
       const url = new URL(req.url);
       if (url.pathname === '/v1/models') return Response.json({ object: 'list', data: [{ id: model, object: 'model' }] });
-      if (url.pathname === '/props') return Response.json({ default_generation_settings: { n_ctx: nCtx }, total_slots: slots });
+      if (url.pathname === '/props') return Response.json({ default_generation_settings: { n_ctx: nCtx }, total_slots: slots, ...(template !== undefined && { chat_template: template }) });
       const body = (await req.json()) as Record<string, any>;
       if (url.pathname === '/apply-template') {
+        templateRequests.push(body);
         if (body.tools && !jinja) return error('tools param requires --jinja flag');
         return Response.json({ prompt: applyTemplate(body.messages, body.add_generation_prompt !== false, body.tools) });
       }
@@ -110,6 +113,7 @@ export function startFakeLlamaCpp({ jinja = true, nCtx = 4096, model = 'qwen3-8b
     url: `http://localhost:${server.port}`,
     reply: (r: Reply) => replies.push(r),
     chatRequests,
+    templateRequests,
     stop: () => server.stop(true),
   };
 }

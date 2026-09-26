@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TextAttributes } from '@opentui/core';
@@ -11,7 +11,7 @@ import { createRunner } from '../adapters/bash/runner';
 import { createSplit } from '../adapters/bash/split';
 import { createSessionLog } from '../adapters/store/session-log';
 import { permissionRules, type Permissions, type Split } from '../core/approval/approval';
-import { projectFiles } from '../adapters/fs/project';
+import { listProjectFiles, projectFiles } from '../adapters/fs/project';
 import { newSession, type SessionNotes } from '../core/session/session';
 import { TOOLS } from '../core/toolcall/bash';
 import { App } from './app';
@@ -38,23 +38,25 @@ beforeAll(async () => {
 let editor: (text: string) => Promise<string>;
 // What copy on select put into the clipboard.
 let copied: string[];
-// The environment Note's text as the harness probes it now; the files opened in $EDITOR (`e` on an @file reference).
+// The environment Note's text as the harness probes it now; the files opened in $EDITOR (`e` on an @path reference).
 let environment: string;
 let openedFiles: string[];
 
 // `users`: User blocks already in the Session Log, not yet sent; `global`, `project`: permission rules of the config.
-// `calls`: pending Tool Calls after them, as at a resume. `window`: the server's context size; `exact`: false
-// counts like an inexact tokenizer (Ollama, LM Studio).
-type Start = { window?: number; exact?: boolean; notes?: SessionNotes; timeout?: number; compactor?: GateOptions['compactor']; users?: string[]; calls?: string[]; global?: Permissions; project?: Permissions };
-async function start({ window = 4096, exact = true, notes, timeout = 120, compactor, users = [], calls = [], global, project: own }: Start = {}) {
+// `calls`: pending Tool Calls after them, as at a resume. `template`: the chat template the server reports.
+// `window`: the server's context size; `exact`: false counts like an inexact tokenizer (Ollama, LM Studio).
+type Start = { template?: string; window?: number; exact?: boolean; notes?: SessionNotes; timeout?: number; compactor?: GateOptions['compactor']; users?: string[]; calls?: string[]; global?: Permissions; project?: Permissions };
+async function start({ template, window = 4096, exact = true, notes, timeout = 120, compactor, users = [], calls = [], global, project: own }: Start = {}) {
   editor = async text => text;
   copied = [];
   environment = notes?.environment ?? '';
   openedFiles = [];
-  fake = startFakeLlamaCpp({ nCtx: window });
+  fake = startFakeLlamaCpp({ nCtx: window, template });
   const backend = { ...(await connectLlamaCpp(fake.url)), exact };
   const log = createSessionLog(mkdtempSync(join(tmpdir(), 'resector-')), 'ses_test');
   const runner = createRunner({ cwd: project, timeout });
+  // search without ddgr: the query is echoed back as its result.
+  const searcher = { timeout: 30, run: async (query: string) => ({ output: `results for ${query}\n`, exit: 0, stopped: null }) };
   const first = newSession('default', '', notes).length;
   const initial = [
     ...newSession('default', 'You are an agent.', notes),
@@ -64,9 +66,9 @@ async function start({ window = 4096, exact = true, notes, timeout = 120, compac
   initial.forEach(log.append);
   const opened: string[] = [];
   const approval = { split, root: project, permissions: () => permissionRules(global, own) };
-  const files = { read: projectFiles(project), environment: () => environment, open: async (path: string) => void openedFiles.push(path) };
+  const files = { read: projectFiles(project), list: () => listProjectFiles(project), environment: () => environment, open: async (path: string) => void openedFiles.push(path) };
   ui = await testRender(
-    () => <App backend={backend} runner={runner} approval={approval} editor={text => editor(text)} project={files} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} reconnect={async () => backend} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
+    () => <App backend={backend} runner={runner} searcher={searcher} approval={approval} editor={text => editor(text)} project={files} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} reconnect={async () => backend} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
     { width: 80, height: 20 },
   );
   const size = ` / ${formatTokens(window)}`;
@@ -94,7 +96,7 @@ async function write(text: string) {
 test('the Gate shows every Context Block with its exact tokens and the Template row', async () => {
   const { events } = await start();
   const frame = ui.captureCharFrame();
-  expect(line(frame, /default/)).toMatch(/^ {2}resector {2}default +52 \/ 4k/);
+  expect(line(frame, /default/)).toMatch(/^ {2}resector {2}default · thinking off +52 \/ 4k/);
   expect(frame.split('\n')[1]).toMatch(/^ {2}▀+/);
   expect(line(frame, /Type/)).toMatch(/#\s+Type\s+Content\s+Tokens\s+Cache\s+Flags/);
   expect(line(frame, /System prompt/)).toMatch(/1\s+System\s+System prompt\s+12\b/);
@@ -293,6 +295,29 @@ test('a Thinking block the chat template drops counts 0 tokens, is dimmed and fl
   expect(Array.from(title.fg.buffer.slice(0, 3)).join()).toBe('138,138,138');
 });
 
+test('the preview shows every block muted, Thinking in italics', async () => {
+  await start();
+  fake.reply({ thinking: ['plan it'], chunks: ['hello'] });
+  await write('hi there');
+  await frameMatching(ui, f => f.includes('answer complete'));
+  const fg = (text: string) => {
+    const span = ui.captureSpans().lines.slice(-20).flatMap(l => l.spans).findLast(s => s.text.includes(text))!;
+    return Array.from(span.fg.buffer.slice(0, 3)).join();
+  };
+  const italic = (text: string) => {
+    const spans = ui.captureSpans().lines.flatMap(l => l.spans).filter(s => s.text.includes(text));
+    return spans.length > 1 && spans.every(s => (s.attributes & TextAttributes.ITALIC) !== 0);
+  };
+  await press('up');
+  await frameMatching(ui, f => f.includes('┃ Thinking  #4'));
+  expect(fg('plan it')).toBe('138,138,138');
+  expect(italic('plan it')).toBe(true);
+  await press('up');
+  await frameMatching(ui, f => previewed(f) === 'hi there');
+  expect(fg('hi there')).toBe('138,138,138');
+  expect(ui.captureSpans().lines.flatMap(l => l.spans).filter(s => s.text.includes('hi there')).some(s => (s.attributes & TextAttributes.ITALIC) !== 0)).toBe(false);
+});
+
 test('while the answer streams, ↑↓ select and the preview scrolls; the Context stays as sent', async () => {
   const { events } = await start();
   fake.reply({ chunks: ['Hal'], hang: true });
@@ -370,6 +395,62 @@ test('p cycles pin top → bottom → off; a bottom pin is sent as a user-role m
   expect(events().at(-1)).toEqual({ type: 'Unpin', id: 3 });
 });
 
+test('t cycles thinking off → on → on:<effort>, shown in the header, logged and sent with the next request (FR-49)', async () => {
+  const { events } = await withUsers('question');
+  expect(line(await frameMatching(ui, f => f.includes('default')), /default/)).toContain('default · thinking off');
+  await press('t');
+  await frameMatching(ui, f => f.includes('default · thinking on '));
+  await press('t');
+  const frame = await frameMatching(ui, f => f.includes('default · thinking on:low'));
+  expect(frame).toContain('thinking on:low');
+  expect(events().slice(-2)).toEqual([{ type: 'ThinkingSet', thinking: 'on' }, { type: 'ThinkingSet', thinking: 'low' }]);
+  fake.reply({ chunks: ['ok'] });
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(fake.chatRequests[0]).toMatchObject({ chat_template_kwargs: { enable_thinking: true }, reasoning_effort: 'low' });
+  for (const _ of [1, 2, 3]) await press('t');
+  await frameMatching(ui, f => f.includes('default · thinking off'));
+});
+
+test('t cycles the thinking modes of the chat template (FR-49)', async () => {
+  const { events } = await start({ template: "{% if reasoning_effort not in ('xhigh', 'low') %}{% endif %}" });
+  await press('t');
+  await frameMatching(ui, f => f.includes('default · thinking on:low'));
+  await press('t');
+  await frameMatching(ui, f => f.includes('default · thinking on:xhigh'));
+  await press('t');
+  await frameMatching(ui, f => f.includes('default · thinking on:low'));
+  expect(events().filter(e => e.type === 'ThinkingSet').map(e => e.thinking)).toEqual(['low', 'xhigh', 'low']);
+});
+
+test('a chat template without thinking: t says so and logs nothing', async () => {
+  const { events } = await start({ template: '{{ messages }}' });
+  await press('t');
+  await frameMatching(ui, f => f.includes('the chat template has no thinking switch'));
+  expect(events().some(e => e.type === 'ThinkingSet')).toBe(false);
+});
+
+test('with marks only d and c are offered; d removes every marked block, u brings all back', async () => {
+  const { events } = await withUsers('one', 'two', 'three');
+  await press(' ');
+  await press('up');
+  await press('up');
+  await press(' ');
+  let frame = await frameMatching(ui, f => /●\s+3\s+User/.test(f) && f.includes('esc unmark'));
+  expect(frame).not.toContain('edit');
+  await press('e');
+  await press('d');
+  frame = await frameMatching(ui, f => f.includes('removed 2 marked blocks'));
+  expect(line(frame, /one/)).toMatch(/User\s+one\s+removed/);
+  expect(line(frame, /two/)).not.toMatch(/removed/);
+  expect(line(frame, /three/)).toMatch(/User\s+three\s+removed/);
+  expect(frame).not.toMatch(/^[ ┃] ●/m);
+  expect(events().at(-1)).toEqual({ type: 'Remove', id: 3, others: [5] });
+  await press('u');
+  frame = await frameMatching(ui, f => f.includes('undone: remove'));
+  expect(frame).not.toMatch(/removed\s*$/m);
+});
+
 test('d strikes the block through until sent; u brings it back as a counter-event', async () => {
   const { events } = await withUsers('keep', 'drop');
   await press('d');
@@ -402,23 +483,15 @@ test('Space marks and unmarks the selected block; the selection stays', async ()
   expect(line(frame, /two/)).toMatch(/^[ ┃] {2} +4\s+User/);
 });
 
-test('r renames the block for display only; empty resets', async () => {
+test('@ in the Context starts a file reference in the input line, r does nothing', async () => {
+  writeFileSync(join(project, 'at-key.txt'), 'x\n');
   const { events } = await withUsers('hello there');
   await press('r');
-  await frameMatching(ui, f => f.includes('┃ hello there') && f.includes('display only'));
-  for (let i = 0; i < 'hello there'.length; i++) ui.mockInput.pressBackspace();
-  await ui.mockInput.typeText('greeting');
-  ui.mockInput.pressEnter();
-  let frame = await frameMatching(ui, f => f.includes('renamed (display only'));
-  expect(line(frame, /greeting/)).toMatch(/3\s+User\s+greeting\s+8\b/);
-  expect(line(frame, /default/)).toMatch(/60 \/ 4k/);
-  expect(events().at(-1)).toEqual({ type: 'Rename', id: 3, title: 'greeting' });
-  await press('r');
-  await frameMatching(ui, f => f.includes('┃ greeting') && f.includes('display only'));
-  for (let i = 0; i < 'greeting'.length; i++) ui.mockInput.pressBackspace();
-  ui.mockInput.pressEnter();
-  frame = await frameMatching(ui, f => f.includes('title reset'));
-  expect(line(frame, /hello there/)).toMatch(/3\s+User\s+hello there/);
+  expect(ui.captureCharFrame()).toContain('Tab to write');
+  await ui.mockInput.typeText('@at-k');
+  const frame = await frameMatching(ui, f => f.includes('┃ @at-k') && f.includes('at-key.txt'));
+  expect(frame).toContain('tab/enter complete');
+  expect(events().some(e => e.type === 'Rename')).toBe(false);
 });
 
 test('the header Context bar highlights the selected block', async () => {
@@ -491,16 +564,11 @@ test('a Context changed since the last request can be sent without a new User bl
   expect((fake.chatRequests[1] as { messages: { content: string }[] }).messages.map(m => m.content)).toEqual(['You are an agent.', 'b', 'x']);
 });
 
-test('a rename or an undone change leaves nothing to send', async () => {
+test('an undone change leaves nothing to send', async () => {
   await withUsers('a');
   fake.reply({ chunks: ['x'] });
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('answer complete'));
-  await press('r');
-  await frameMatching(ui, f => f.includes('┃ x') && f.includes('display only'));
-  await ui.mockInput.typeText('!');
-  ui.mockInput.pressEnter();
-  await frameMatching(ui, f => f.includes('renamed (display only'));
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('nothing to send'));
   await press('up');
@@ -531,7 +599,7 @@ test('typing / suggests the commands, filtered while typing; ↑↓ choose, Ente
   await write('/sessions');
   await until(() => opened.length > 0);
   await write('/nope');
-  await frameMatching(ui, f => f.includes('unknown command /nope – /sessions /rename /reload'));
+  await frameMatching(ui, f => f.includes('unknown command /nope – /sessions /rename /reload /tools'));
 });
 
 test('/ in the Context starts a command in the input line', async () => {
@@ -558,6 +626,46 @@ test('Tab completes a command; /rename sets the session title, empty resets it (
   await write('/rename');
   await frameMatching(ui, f => f.includes('session title reset to the first User message'));
   expect(events().at(-1)).toEqual({ type: 'SessionRenamed', title: '' });
+});
+
+test('/tools completes the tool names and switches one off and on; off, it is not sent', async () => {
+  const { events } = await start();
+  ui.mockInput.pressTab();
+  await ui.flush();
+  await ui.mockInput.typeText('/tools b');
+  let frame = await frameMatching(ui, f => /^ {2}bash\s+on → off/m.test(f));
+  ui.mockInput.pressEnter();
+  frame = await frameMatching(ui, f => f.includes('bash off · u = undo'));
+  expect(line(frame, /Tools/)).toMatch(/2\s+Tools\s+no tools/);
+  expect(events().at(-1)).toMatchObject({ type: 'Edit', id: 2, content: '[]' });
+  fake.reply({ chunks: ['ok'] });
+  await write('hi');
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect((fake.chatRequests[0] as Sent).tools).toBeUndefined();
+  await write('/tools bash');
+  frame = await frameMatching(ui, f => f.includes('bash on · u = undo'));
+  expect(line(frame, /Tools/)).toMatch(/2\s+Tools\s+bash/);
+  await write('/tools');
+  await frameMatching(ui, f => f.includes('tools: bash · /tools <tool> switches one'));
+  await write('/tools python');
+  await frameMatching(ui, f => f.includes('unknown tool python – bash search'));
+});
+
+test('search, switched on with /tools, runs without asking; its call and result are sent as search (FR-21)', async () => {
+  const { events } = await start();
+  await write('/tools search');
+  await frameMatching(ui, f => f.includes('search on · u = undo'));
+  fake.reply({ chunks: [], calls: [{ name: 'search', arguments: '{"query":"bun runtime"}' }] });
+  fake.reply({ chunks: ['ok'] });
+  await write('go');
+  const frame = await frameMatching(ui, f => f.includes('answer complete'));
+  expect(frame).not.toContain('? approve');
+  expect(frame).toMatch(/Tool Call\s+search bun runtime/);
+  expect(frame).toMatch(/Tool Result\s+→ search bun runtime/);
+  expect(events().find(e => e.kind === 'Tool Call')).toMatchObject({ tool: 'search', content: 'bun runtime' });
+  expect(events().find(e => e.kind === 'Tool Result')).toMatchObject({ content: 'results for bun runtime\n[exit 0]' });
+  const [call] = (fake.chatRequests[1] as { messages: { tool_calls?: { function: object }[] }[] }).messages.flatMap(m => m.tool_calls ?? []);
+  expect(call!.function).toEqual({ name: 'search', arguments: '{"query":"bun runtime"}' });
 });
 
 // The first line of the Content preview: shows which block is selected.
@@ -603,6 +711,14 @@ async function asked(commands: string[], { text = '', ...options }: { text?: str
   await frameMatching(ui, f => f.includes('? approve –') && !/Tool Call .* … /.test(f));
   return started;
 }
+// The same; y runs the call, its result is sent and answered with `reply`.
+async function ran(command: string, { reply = 'ok', ...options }: { reply?: string; text?: string } & Start = {}) {
+  const started = await asked([command], options);
+  fake.reply({ chunks: [reply] });
+  await press('y');
+  await frameMatching(ui, f => f.includes('answer complete'));
+  return started;
+}
 
 test('the Tools Block (bash) is always sent and fixed (FR-12)', async () => {
   await withUsers('hi');
@@ -618,7 +734,7 @@ test('the Tools Block (bash) is always sent and fixed (FR-12)', async () => {
   await frameMatching(ui, f => f.includes('Tools Block is fixed'));
 });
 
-test('a Tool Call waits at ? approve; y runs it once, its result is a Tool Result block, nothing is sent (FR-23)', async () => {
+test('a Tool Call waits at ? approve; y runs it once, its result is a Tool Result block and is sent (FR-23)', async () => {
   const { events } = await asked(['echo hello'], { text: 'Let me look.' });
   let frame = ui.captureCharFrame();
   expect(line(frame, /Let me look/)).toMatch(/4\s+Assistant\s+Let me look\./);
@@ -626,22 +742,21 @@ test('a Tool Call waits at ? approve; y runs it once, its result is a Tool Resul
   expect(frame).toMatch(/y run once.*n reject/);
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('Tool Calls await approval'));
+  fake.reply({ chunks: ['done'] });
   await press('y');
-  frame = await frameMatching(ui, f => f.includes('tool loop paused'));
+  frame = await frameMatching(ui, f => f.includes('answer complete'));
   expect(line(frame, /Tool Result/)).toMatch(/6\s+Tool Result\s+→ echo hello\s+\d+/);
   expect(line(frame, /Tool Call/)).not.toContain('? approve');
-  expect(frame).toMatch(/^┃ hello\s*$/m);
-  expect(frame).toContain('[exit 0]');
-  expect(fake.chatRequests).toHaveLength(1);
-  expect(events().slice(-4)).toEqual([
+  expect(fake.chatRequests).toHaveLength(2);
+  expect(events().slice(-7)).toEqual([
     { type: 'BlockAdded', id: 4, kind: 'Assistant', origin: 'model', content: 'Let me look.' },
     { type: 'BlockAdded', id: 5, kind: 'Tool Call', origin: 'model', content: 'echo hello' },
     { type: 'ResponseReceived', usage: null, cached: expect.any(Number) },
     { type: 'BlockAdded', id: 6, kind: 'Tool Result', origin: 'tool', content: 'hello\n[exit 0]', call: 5 },
+    { type: 'RequestSent', hash: expect.any(String), tokens: expect.any(Number) },
+    { type: 'BlockAdded', id: 7, kind: 'Assistant', origin: 'model', content: 'done' },
+    { type: 'ResponseReceived', usage: null, cached: expect.any(Number) },
   ]);
-  fake.reply({ chunks: ['done'] });
-  ui.mockInput.pressEnter();
-  await frameMatching(ui, f => f.includes('answer complete'));
   // Assistant text and its Tool Call are one message; the result a tool message.
   expect((fake.chatRequests[1] as Sent).messages.slice(2)).toEqual([
     { role: 'assistant', content: 'Let me look.', tool_calls: [{ id: 'call_0', type: 'function', function: bash('echo hello') }] },
@@ -791,11 +906,10 @@ test('an unchanged save creates no Revision; u undoes an edit', async () => {
 });
 
 test('the Tools Block and executed Tool Calls are not opened in $EDITOR', async () => {
-  await asked(['echo hi']);
-  await press('y');
-  await frameMatching(ui, f => f.includes('tool loop paused'));
+  await ran('echo hi');
   const opened: string[] = [];
   editor = async text => (opened.push(text), 'x');
+  await press('up');
   await press('up');
   await press('e');
   await frameMatching(ui, f => f.includes('executed Tool Calls are immutable'));
@@ -812,16 +926,29 @@ test('a Tool Call awaiting approval is edited; y runs the edited command (FR-22)
   await press('e');
   let frame = await frameMatching(ui, f => f.includes('revision 2'));
   expect(line(frame, /Tool Call/)).toMatch(/4\s+Tool Call\s+echo right\s+\d+\s+[●○]?\s+✎2 \? approve/);
+  fake.reply({ chunks: ['ok'] });
   await press('y');
-  frame = await frameMatching(ui, f => f.includes('tool loop paused'));
-  expect(events().at(-1)).toEqual({ type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'right\n[exit 0]', call: 4 });
+  frame = await frameMatching(ui, f => f.includes('answer complete'));
+  expect(events().find(e => e.kind === 'Tool Result')).toEqual({ type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'right\n[exit 0]', call: 4 });
 });
 
-test('an allowed call runs without asking; the Gate then shows its result, nothing is sent (FR-22, FR-23)', async () => {
-  const { events } = await answered(['ls -d .', 'git status --short | wc -l']);
-  const frame = await frameMatching(ui, f => f.includes('tool loop paused'));
+test('allowed calls run without asking; then their results are sent (FR-22, FR-23)', async () => {
+  const { events } = await start();
+  fake.reply({ chunks: [], calls: [bash('ls -d .'), bash('git status --short | wc -l')] });
+  fake.reply({ chunks: ['ok'] });
+  await write('go');
+  const frame = await frameMatching(ui, f => f.includes('answer complete'));
   expect(frame).not.toContain('? approve');
   expect(events().filter(e => e.kind === 'Tool Result').map(e => [e.call, e.content])).toEqual([[4, '.\n[exit 0]'], [5, expect.stringMatching(/\[exit 0\]$/)]]);
+  expect(fake.chatRequests).toHaveLength(2);
+});
+
+test('a result held back (rejected, denied, killed, timeout) stops the tool loop: Enter sends (FR-23)', async () => {
+  await asked(['echo one', 'echo two']);
+  await press('n');
+  await frameMatching(ui, f => f.includes('? approve –') && /^ask\s+echo two\s/.test(previewed(f)));
+  await press('y');
+  await frameMatching(ui, f => f.includes('tool loop paused – review the results, Enter sends'));
   expect(fake.chatRequests).toHaveLength(1);
 });
 
@@ -841,27 +968,16 @@ test('the preview of a pending call shows each sub-command with the rule decidin
   expect(frame).toContain('┃ a allows "touch *" for this session');
 });
 
-test('a shows the session rule first; a again logs it and runs the call, and every later match runs too (FR-23, FR-25)', async () => {
+test('a logs the session rule the preview shows and runs the call; every later match runs too, then the results are sent (FR-23, FR-25)', async () => {
   const { events } = await asked(['touch one.txt', 'touch two.txt']);
+  expect(ui.captureCharFrame()).toContain('┃ a allows "touch *" for this session');
+  fake.reply({ chunks: ['ok'] });
   await press('a');
-  await frameMatching(ui, f => f.includes('allow for this session: "touch *" – press a again to confirm'));
-  expect(events().some(e => e.type === 'AllowRuleAdded')).toBe(false);
-  await press('a');
-  const frame = await frameMatching(ui, f => f.includes('allowed for session: "touch *" – review the results, Enter sends'));
+  const frame = await frameMatching(ui, f => f.includes('answer complete'));
   expect(frame).not.toContain('? approve');
   expect(events().filter(e => e.type === 'AllowRuleAdded' || e.kind === 'Tool Result').map(e => e.pattern ?? e.content)).toEqual(['touch *', '[exit 0]', '[exit 0]']);
   expect(await Bun.file(join(project, 'two.txt')).exists()).toBe(true);
-  expect(fake.chatRequests).toHaveLength(1);
-});
-
-test('any other key than a again cancels allow for session', async () => {
-  const { events } = await asked(['touch never.txt']);
-  await press('a');
-  await frameMatching(ui, f => f.includes('press a again to confirm'));
-  await press('down');
-  await press('a');
-  await frameMatching(ui, f => f.includes('press a again to confirm'));
-  expect(events().some(e => e.type === 'AllowRuleAdded')).toBe(false);
+  expect(fake.chatRequests).toHaveLength(2);
 });
 
 test('a is not offered where an argument points outside the project', async () => {
@@ -874,9 +990,10 @@ test('a is not offered where an argument points outside the project', async () =
 test('e on a pending call: the new Revision is decided again by the rules (FR-23)', async () => {
   const { events } = await asked(['touch edited.txt']);
   editor = async () => 'ls -d .\n';
+  fake.reply({ chunks: ['ok'] });
   await press('e');
-  await frameMatching(ui, f => f.includes('edited → revision 2 · u = undo – review the results, Enter sends'));
-  expect(events().slice(-2)).toEqual([
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(events().slice(-5, -3)).toEqual([
     { type: 'Edit', id: 4, revision: 2, content: 'ls -d .' },
     { type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: '.\n[exit 0]', call: 4 },
   ]);
@@ -921,12 +1038,14 @@ test('text selected with the mouse is copied to the clipboard on release', async
 });
 
 test('d removes a Tool Pair as a whole; Space marks it as a whole (FR-9)', async () => {
-  const { events } = await asked(['echo hi']);
-  await press('y');
-  let frame = await frameMatching(ui, f => f.includes('tool loop paused'));
+  const { events } = await ran('echo hi');
+  await press('up');
+  let frame = await frameMatching(ui, f => /┃ hi\s*$/m.test(f));
   await press(' ');
   frame = await frameMatching(ui, f => /●\s+5\s+Tool Result/.test(f));
   expect(line(frame, /Tool Call/)).toMatch(/●\s+4\s+Tool Call/);
+  await press(' ');
+  await frameMatching(ui, f => !/^[ ┃] ●/m.test(f));
   await press('d');
   frame = await frameMatching(ui, f => f.includes('(whole Tool Pair)'));
   expect(line(frame, /Tool Call/)).toMatch(/^ {8}Tool Call\s+echo hi\s+removed/);
@@ -935,45 +1054,44 @@ test('d removes a Tool Pair as a whole; Space marks it as a whole (FR-9)', async
 });
 
 test('⌥↑ on a Tool Pair asks; any other key cancels; the same key again turns it into a Note and moves it (FR-9)', async () => {
-  const { events } = await asked(['echo hi'], { text: 'Look.' });
-  await press('y');
-  await frameMatching(ui, f => f.includes('tool loop paused'));
+  const { events } = await ran('echo hi', { text: 'Look.' });
+  await press('up');
   await press('up', { meta: true });
   await frameMatching(ui, f => f.includes('press ⌥↑ again to confirm'));
   await press('x');
   await press('up', { meta: true });
   await frameMatching(ui, f => f.includes('press ⌥↑ again to confirm'));
-  expect(events().at(-1).type).toBe('BlockAdded');
+  expect(events().at(-1).type).toBe('ResponseReceived');
   await press('up', { meta: true });
   let frame = await frameMatching(ui, f => /4\s+Note\s+⇄ echo hi.*⇄/.test(f));
-  expect(order(frame)).toEqual(['1 System', '2 bash', '3 go', '4 ⇄', '5 Look.']);
+  expect(order(frame)).toEqual(['1 System', '2 bash', '3 go', '4 ⇄', '5 Look.', '6 ok']);
   expect(frame).not.toContain('Tool Result');
-  expect(events().slice(-2)).toEqual([{ type: 'PairToNote', id: 7, call: 5 }, { type: 'Move', id: 7, after: 3 }]);
-  fake.reply({ chunks: ['ok'] });
+  expect(events().slice(-2)).toEqual([{ type: 'PairToNote', id: 8, call: 5 }, { type: 'Move', id: 8, after: 3 }]);
+  fake.reply({ chunks: ['fine'] });
   ui.mockInput.pressEnter();
-  frame = await frameMatching(ui, f => f.includes('answer complete'));
-  expect((fake.chatRequests[1] as Sent).messages.slice(1)).toEqual([
+  frame = await frameMatching(ui, f => f.includes('fine'));
+  expect((fake.chatRequests[2] as Sent).messages.slice(1)).toEqual([
     { role: 'user', content: 'go' },
     { role: 'user', content: '[Tool bash: echo hi]\nhi\n[exit 0]' },
     { role: 'assistant', content: 'Look.' },
+    { role: 'assistant', content: 'ok' },
   ]);
 });
 
 test('p on a Tool Pair asks, p again pins its Note; u brings the pair back', async () => {
-  await asked(['echo hi']);
-  await press('y');
-  await frameMatching(ui, f => f.includes('tool loop paused'));
+  await ran('echo hi');
+  await press('up');
   await press('up');
   await press('p');
   await frameMatching(ui, f => f.includes('press p again to confirm'));
   await press('p');
   let frame = await frameMatching(ui, f => f.includes('pinned ⤒ top'));
-  expect(order(frame)).toEqual(['1 System', '2 bash', '3 ⇄', '4 go']);
+  expect(order(frame)).toEqual(['1 System', '2 bash', '3 ⇄', '4 go', '5 ok']);
   expect(line(frame, /Note/)).toMatch(/⤒/);
   await press('u');
   await press('u');
   frame = await frameMatching(ui, f => f.includes('undone: Tool Pair → Note'));
-  expect(order(frame)).toEqual(['1 System', '2 bash', '3 go', '4 Call', '5 Result']);
+  expect(order(frame)).toEqual(['1 System', '2 bash', '3 go', '4 Call', '5 Result', '6 ok']);
 });
 
 // Compaction (FR-13–FR-17) ------------------------------------------------------------------------------------
@@ -1106,13 +1224,13 @@ test('a request too big for the compaction window is blocked; Compaction runs on
 // Files, environment and project instructions (FR-27–FR-29) ---------------------------------------------------------
 const messages = (i: number) => (fake.chatRequests[i] as { messages: { role: string; content: string }[] }).messages;
 
-test('@file adds a reference row, not sent; e opens the file; on send it becomes a snapshot Note (FR-27)', async () => {
+test('@adds a reference row, not sent; e opens the file; on send it becomes a snapshot Note (FR-27)', async () => {
   writeFileSync(join(project, 'notes.txt'), 'one\ntwo\nthree\n');
   const { events } = await start();
-  await write('@file notes.txt:2-3');
-  let frame = await frameMatching(ui, f => f.includes('1 file reference added') && f.includes('@file reference – read at send'));
-  expect(line(frame, /@file notes/)).toMatch(/3\s+Note\s+@file notes\.txt:2-3\s+.*@ read at send/);
-  expect(frame).toContain('@file reference – read at send');
+  await write('@notes.txt:2-3');
+  let frame = await frameMatching(ui, f => f.includes('1 file reference added') && f.includes('@path reference – read at send'));
+  expect(line(frame, /@notes/)).toMatch(/3\s+Note\s+@notes\.txt:2-3\s+.*@ read at send/);
+  expect(frame).toContain('@path reference – read at send');
   expect(frame).toContain('[notes.txt:2-3]');
   expect(fake.chatRequests).toEqual([]);
   expect(events().at(-1)).toEqual({ type: 'FileReferenced', id: 3, file: 'notes.txt:2-3' });
@@ -1123,7 +1241,7 @@ test('@file adds a reference row, not sent; e opens the file; on send it becomes
   fake.reply({ chunks: ['ok'] });
   await write('explain');
   frame = await frameMatching(ui, f => f.includes('answer complete'));
-  expect(line(frame, /@file notes/)).not.toContain('@ read at send');
+  expect(line(frame, /@notes/)).not.toContain('@ read at send');
   expect(events().slice(4, 6)).toEqual([
     { type: 'BlockAdded', id: 4, kind: 'User', origin: 'user', content: 'explain' },
     { type: 'FileRead', id: 3, content: '[notes.txt:2-3]\n2: TWO\n3: three' },
@@ -1134,11 +1252,30 @@ test('@file adds a reference row, not sent; e opens the file; on send it becomes
   ]);
 });
 
+test('an @path is completed from the project files: ↑↓ choose, Tab or Enter complete (FR-27)', async () => {
+  mkdirSync(join(project, 'docs'), { recursive: true });
+  writeFileSync(join(project, 'docs/complete-me.md'), 'x\n');
+  writeFileSync(join(project, 'complete-too.txt'), 'y\n');
+  const { events } = await start();
+  ui.mockInput.pressTab();
+  await ui.flush();
+  await ui.mockInput.typeText('@compl');
+  let frame = await frameMatching(ui, f => f.includes('docs/complete-me.md') && f.includes('complete-too.txt'));
+  expect(frame).toContain('↑↓ choose  tab/enter complete  esc back');
+  await press('down');
+  ui.mockInput.pressEnter();
+  frame = await frameMatching(ui, f => f.includes('┃ @docs/complete-me.md ') && !f.includes('complete-too.txt'));
+  expect(events().some(e => e.type === 'FileReferenced')).toBe(false);
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('1 file reference added'));
+  expect(events().at(-1)).toEqual({ type: 'FileReferenced', id: 3, file: 'docs/complete-me.md' });
+});
+
 test('a referenced file missing at send aborts sending (FR-27)', async () => {
   const { events } = await start();
-  await write('@file gone.txt what is in it?');
+  await write('@gone.txt what is in it?');
   const frame = await frameMatching(ui, f => f.includes('✗ file not found') && f.includes('gone.txt – sending aborted'));
-  expect(line(frame, /@file gone/)).toMatch(/3\s+Note\s+@file gone\.txt\s+.*⚠ not found/);
+  expect(line(frame, /@gone/)).toMatch(/3\s+Note\s+@gone\.txt\s+.*⚠ not found/);
   expect(fake.chatRequests).toEqual([]);
   expect(events().map(e => e.type)).not.toContain('RequestSent');
 });
@@ -1162,13 +1299,13 @@ test('the environment Note is pinned top; a changed environment is a new Revisio
 test('the project instructions are a pinned-top Note after the environment (FR-29)', async () => {
   await start({ notes: { environment: 'cwd: /p', instructions: { file: 'AGENTS.md', content: '# Rules' } } });
   const frame = ui.captureCharFrame();
-  expect(line(frame, /AGENTS/)).toMatch(/4\s+Note\s+@file AGENTS\.md\s+\d+/);
+  expect(line(frame, /AGENTS/)).toMatch(/4\s+Note\s+@AGENTS\.md\s+\d+/);
 });
 
 test('a file reference alone is sent with Enter, the file as the last user message (FR-27)', async () => {
   writeFileSync(join(project, 'alone.txt'), 'content');
   await start();
-  await write('@file alone.txt');
+  await write('@alone.txt');
   await frameMatching(ui, f => f.includes('1 file reference added'));
   fake.reply({ chunks: ['ok'] });
   ui.mockInput.pressEnter();

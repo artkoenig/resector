@@ -2,28 +2,30 @@
 import { createEffect, createMemo, createSignal } from 'solid-js';
 import type { Clipboard } from '../adapters/clipboard/clipboard';
 import type { Backend, ChatResult, Counted } from '../core/backend';
-import { evaluate, quoted, sessionAllowed, sessionRules, type Rule, type Split, type Verdict } from '../core/approval/approval';
+import { quoted, sessionAllowed, sessionRules, verdictOf as decide, type Rule, type Split, type Verdict } from '../core/approval/approval';
 import { warmRows } from '../core/cache/cache';
 import * as compaction from '../core/compaction/compaction';
 import * as ops from '../core/context/operations';
-import type { Kind, SessionEvent, SessionLog } from '../core/log/events';
+import type { Kind, SessionEvent, SessionLog, Thinking } from '../core/log/events';
 import { afterCalls, fold, pairOf, type Block } from '../core/log/fold';
 import { refreshEnvironment } from '../core/notes/environment';
 import { parseReference, peekReferences, readReferences, references, type ReadFile } from '../core/notes/files';
 import { renderNative, renderPrefixes, sentBlocks, type Request } from '../core/render/native';
+import { DEFAULT_MODES } from '../core/render/template';
 import { budget, lastDrift, type Budget } from '../core/tokens/budget';
 import { answerBlocks } from '../core/toolcall/answer';
-import type { Runner } from '../core/toolcall/bash';
-import { count, errorText, formatTokens, titleOf } from './format';
+import { toolsIn, type Runner } from '../core/toolcall/bash';
+import { count, errorText, formatTokens, thinkingLabel, titleOf } from './format';
 
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
 // events: the Session Log so far (new or resumed); reconnect: re-reads the config and opens the session's
 // Model Profile again (/reload, FR-44); openSessions: shows /sessions; notice: initial status line.
-// runner: runs approved bash calls (FR-21); approval: decides which may run (FR-22); editor: $EDITOR for `e` (FR-8);
+// runner: runs approved bash calls, searcher: search calls (FR-21); approval: decides which may run (FR-22); editor: $EDITOR for `e` (FR-8);
 // clipboard: copy on select.
 export type GateOptions = {
   backend: Backend;
   runner: Runner;
+  searcher: Runner;
   approval: Approval;
   editor: ops.Editor;
   clipboard: Clipboard;
@@ -38,9 +40,9 @@ export type GateOptions = {
   compactor?: () => Promise<Compactor | null>;
 };
 export type Compactor = { profile: string; backend: Backend };
-// The project on disk: files for @file references (FR-27), the environment Note's text now (FR-28), and $EDITOR on
-// a file of the project (`e` on a reference).
-export type Project = { read: ReadFile; environment: () => string; open: (path: string) => Promise<void> };
+// The project on disk: files for @path references and their completion (FR-27), the environment Note's text now
+// (FR-28), and $EDITOR on a file of the project (`e` on a reference).
+export type Project = { read: ReadFile; list: () => string[]; environment: () => string; open: (path: string) => Promise<void> };
 // Tool Approval (FR-22, FR-25): the splitter, the project root arguments must stay in, and the config's rules as read
 // at open and on /reload (ignored: project allow patterns).
 export type Approval = { split: Split; root: string; permissions: () => { rules: Rule[]; ignored: string[] } };
@@ -50,12 +52,13 @@ export const COMMANDS = [
   { name: '/sessions', arg: '', description: 'list, resume, rename, delete sessions' },
   { name: '/rename', arg: '<title>', description: 'rename session' },
   { name: '/reload', arg: '', description: 're-read config' },
+  { name: '/tools', arg: '<tool>', description: 'switch a tool on or off' },
 ] as const;
 type CommandName = (typeof COMMANDS)[number]['name'];
 // In-flight answer, its reasoning apart; never persisted until complete or aborted (FR-37).
 export type Streaming = { thinking: string; text: string; abort: AbortController };
-// Approved Tool Call running; its output so far is shown, the result is logged when it ends.
-export type Running = { call: Block; output: string; started: number; abort: AbortController };
+// Approved Tool Call running; its output so far is shown, the result is logged when it ends. timeout: its tool's.
+export type Running = { call: Block; output: string; started: number; timeout: number; abort: AbortController };
 // The row of an answer or result not in the Context yet, shown before the block `before` (null: at the end).
 // A proposal has its own title, heading and, once counted, tokens.
 export type Live = { id: number; kind: Kind; content: string; before: number | null; title?: string; heading?: string; tokens?: number };
@@ -87,7 +90,7 @@ const APPROVE = 'y run once · a allow for session · n reject · e edit';
 const cacheMiss = ({ predicted, cached }: ChatResult) =>
   predicted !== null && cached !== null && cached < predicted ? `cache: predicted ${predicted} · server reused ${cached}` : null;
 
-export function createGate({ log, reconnect, openSessions, runner, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, ...options }: GateOptions) {
+export function createGate({ log, reconnect, openSessions, runner, searcher, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, ...options }: GateOptions) {
   const [events, setEvents] = createSignal(options.events);
   const [counted, setCounted] = createSignal<{ prefixes: Request[]; split: Counted } | null>(null);
   const [streaming, setStreaming] = createSignal<Streaming | null>(null);
@@ -109,7 +112,7 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     log.append(event);
     setEvents([...events(), event]);
   };
-  // Unread @file references show the file as it would be read now; only sending reads them (FR-27).
+  // Unread @path references show the file as it would be read now; only sending reads them (FR-27).
   const context = createMemo(() => {
     reread();
     return peekReferences(fold(events()), project.read);
@@ -233,11 +236,19 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
   const pinned = ({ pin }: Block) => (pin ? PINNED[pin] : 'unpinned');
   const pin = () => viaNote('pin', 'p', () => operate(ops.pin, b => pinned(blockOf(b.id))));
   const whole = (b: Block) => (ops.inPair(b) ? ' (whole Tool Pair)' : '');
+  // d: the marked blocks, else the selected one.
   function remove() {
     const at = rows().indexOf(selected());
-    operate(ops.remove, b => `removed${whole(b)} · struck through until sent · u = undo`);
+    if (marked().size) removeMarked();
+    else operate(ops.remove, b => `removed${whole(b)} · struck through until sent · u = undo`);
     setMarked(new Set([...marked()].filter(id => sent().some(b => b.id === id))));
     selectAt(at);
+  }
+  function removeMarked() {
+    const blocks = context().blocks.filter(b => marked().has(b.id));
+    if (!apply(ops.removeAll(blocks))) return;
+    setStatus({ text: `removed ${blocks.length} marked blocks · struck through until sent · u = undo`, tone: 'info' });
+    setMarked(new Set<number>());
   }
   function undo() {
     const result = ops.undo(events());
@@ -247,8 +258,6 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     keepSelection();
     setStatus({ text: `undone: ${UNDONE[type] ?? type.toLowerCase()} (counter-event in Session Log)`, tone: 'info' });
   }
-  const rename = (title: string) =>
-    operate(b => ops.rename(b, title), () => (title.trim() ? 'renamed (display only – Context and cache unchanged)' : 'title reset'));
   const edited = (b: Block) => `edited → revision ${b.revision} · u = undo`;
   // e: the selected block in $EDITOR; a changed save becomes a new Revision (FR-8). Checked first: a
   // block that cannot be edited is not opened.
@@ -265,9 +274,9 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
       setStatus({ text: `editor failed: ${errorText(e)} – unchanged`, tone: 'error' });
     }
   }
-  // On an unread @file reference, e opens the file itself (FR-27).
+  // On an unread @path reference, e opens the file itself (FR-27).
   const edit = () => (selectedBlock()?.unread ? openReference(selectedBlock()!) : editBlock());
-  // The file of an unread @file reference in $EDITOR; it is read on send.
+  // The file of an unread @path reference in $EDITOR; it is read on send.
   async function openReference(block: Block) {
     const { path } = parseReference(block.file!);
     try {
@@ -300,8 +309,9 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
 
   // The answer's text and Tool Calls become blocks; its calls are decided by the rules.
   function finish(result: ChatResult) {
-    const { events, notRun } = answerBlocks(result, nextId());
+    const { events, notRun } = answerBlocks(result, nextId(), toolsOn());
     events.forEach(append);
+    held = !!notRun;
     append({ type: 'ResponseReceived', usage: result.usage, cached: result.cached });
     const miss = cacheMiss(result);
     if (ops.nextCall(context())) return advance([notRun && notRunText(notRun), miss && `⚠ ${miss}`].filter((n): n is string => !!n));
@@ -312,10 +322,14 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
   // Tool Approval (FR-22–FR-25) ----------------------------------------------------------------------------
   // The rules for a call: built-in, global and project rules, then the ones allowed for this session; last match wins.
   const rules = () => [...approval.permissions().rules, ...sessionAllowed(events())];
-  const verdictOf = (call: Block): Verdict => evaluate(call.content, { rules: rules(), split: approval.split, root: approval.root });
+  const verdictOf = (call: Block): Verdict => decide(call, { rules: rules(), split: approval.split, root: approval.root });
+
+  // Whether the answer's calls leave the results for review at the Gate: one was not run (rejected, denied, not a
+  // bash call) or was stopped (killed, timeout). Otherwise, once every call ran, the results are sent (FR-23).
+  let held = false;
 
   // Decides the pending calls in order (FR-24): an allowed one runs, a denied one is answered "denied by rule", the
-  // first to ask for is selected. Then back at the Gate – approval never sends (FR-23). notes: what happened so far.
+  // first to ask for is selected. Then the results are sent, or held at the Gate. notes: what happened so far.
   function advance(notes: string[] = []) {
     for (let call = ops.nextCall(context()); call; call = ops.nextCall(context())) {
       const { action } = verdictOf(call);
@@ -325,29 +339,33 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
         return setStatus({ text: [...notes, `? approve – ${APPROVE}`].join(' · '), tone: 'warn' });
       }
       setSelected(nextId());
+      held = true;
       apply(ops.deny(context(), call, nextId()));
       notes = [...notes, `⚠ denied by rule: ${titleOf(call)}`];
     }
+    if (!held) return void send();
     setStatus({ text: `${notes.join(' · ') || 'tool loop paused'} – review the results, Enter sends`, tone: notes.length ? 'warn' : 'ok' });
   }
 
-  // Runs the call (FR-21); its output streams into a live Tool Result row, then the next call is decided.
+  // Runs the call with its tool's runner (FR-21); its output streams into a live Tool Result row, then the next call is decided.
   async function run(call: Block, notes: string[]) {
     const abort = new AbortController();
-    setRunning({ call, output: '', started: Date.now(), abort });
+    const tool = call.tool === 'search' ? searcher : runner;
+    setRunning({ call, output: '', started: Date.now(), timeout: tool.timeout, abort });
     setSelected(nextId());
     setStatus(null);
     try {
       const onOutput = (text: string) => setRunning({ ...running()!, output: running()!.output + text });
-      const result = await runner.run(call.content, { signal: abort.signal, onOutput });
+      const result = await tool.run(call.content, { signal: abort.signal, onOutput });
       setRunning(null);
       setSelected(nextId());
-      append(ops.toolResult(call, nextId(), result, runner.timeout));
+      append(ops.toolResult(call, nextId(), result, tool.timeout));
+      if (result.stopped) held = true;
       advance(result.stopped ? [...notes, `⚠ ${result.stopped}`] : notes);
     } catch (e) {
       setRunning(null);
       setSelected(call.id);
-      setStatus({ text: `bash failed: ${errorText(e)}`, tone: 'error' });
+      setStatus({ text: `${call.tool ?? 'bash'} failed: ${errorText(e)}`, tone: 'error' });
     }
   }
 
@@ -365,28 +383,22 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     if (call) void (verdictOf(call).action === 'deny' ? advance() : run(call, []));
   }
 
-  // a: allow the call's command prefixes for the session (FR-23, FR-25), shown first; the same key again saves
-  // them as Session Log events, then the call runs as allowed.
+  // a: allow the call's command prefixes for the session (FR-23, FR-25) – the preview shows them beforehand; they
+  // are saved as Session Log events, then the call runs as allowed.
   function allowForSession() {
     const call = decidable();
     if (!call) return;
     const found = sessionRules(verdictOf(call));
     if ('error' in found) return setStatus({ text: found.error, tone: 'info' });
-    const patterns = quoted(found.patterns);
-    const asked = `allow ${call.id}`;
-    if (confirming() !== asked) {
-      setConfirming(asked);
-      return setStatus({ text: `allow for this session: ${patterns} – press a again to confirm, any other key cancels`, tone: 'warn' });
-    }
-    setConfirming(null);
     for (const pattern of found.patterns) append({ type: 'AllowRuleAdded', pattern });
-    advance([`allowed for session: ${patterns}`]);
+    advance([`allowed for session: ${quoted(found.patterns)}`]);
   }
 
   // n: not run; the result says "rejected by user" (FR-23).
   function reject() {
     const call = decidable();
     if (!call) return;
+    held = true;
     setSelected(nextId());
     if (apply(ops.reject(context(), call, nextId()))) advance();
   }
@@ -398,7 +410,7 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     if (pending) setSelected(pending.id);
     if (pending) return { text: `Tool Calls await approval – ${APPROVE} on the ? approve row`, tone: 'warn' };
     const changed = lastAnswer() !== null && !same(lastAnswer(), request());
-    // The last unpinned block: a User message, a Tool Result or a Note (e.g. an @file reference) asks for an answer.
+    // The last unpinned block: a User message, a Tool Result or a Note (e.g. an @path reference) asks for an answer.
     const last = sent().filter(b => !b.pin).at(-1)?.kind;
     return changed || last === 'User' || last === 'Tool Result' || last === 'Note' ? null : { text: 'nothing to send – Tab to write', tone: 'info' };
   }
@@ -599,12 +611,34 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     }
   }
 
+  // Thinking for the following requests (FR-49): the one set at the Gate, else the Model Profile's.
+  const thinking = (): Thinking => context().thinking ?? backend().thinking ?? 'off';
+  // The modes of the model's chat template, as the backend read them when it connected (setup, /reload).
+  const thinkingModes = () => backend().thinkingModes ?? DEFAULT_MODES;
+  function cycleThinking() {
+    const modes = thinkingModes();
+    if (!modes.length) return setStatus({ text: 'the chat template has no thinking switch', tone: 'info' });
+    const next = modes[(modes.indexOf(thinking()) + 1) % modes.length]!;
+    append({ type: 'ThinkingSet', thinking: next });
+    setStatus({ text: `thinking ${thinkingLabel(next)}`, tone: 'info' });
+  }
+
   function renameSession(title: string) {
     append({ type: 'SessionRenamed', title });
     setStatus({ text: title ? `session renamed: ${title}` : 'session title reset to the first User message', tone: 'info' });
   }
 
-  const commands: Record<CommandName, (arg: string) => void> = { '/sessions': openSessions, '/rename': renameSession, '/reload': () => void reload() };
+  // The tools in the Tools Block, switched on or off with /tools.
+  const toolsOn = () => toolsIn(context().blocks.find(b => b.kind === 'Tools')?.content ?? '[]');
+  function toggleTool(name: string) {
+    if (!name) return setStatus({ text: `tools: ${toolsOn().join(', ') || 'none'} · /tools <tool> switches one`, tone: 'info' });
+    if (!apply(ops.toggleTool(events(), context(), name))) return;
+    setStatus({ text: `${name} ${toolsOn().includes(name) ? 'on' : 'off'} · u = undo`, tone: 'info' });
+  }
+
+  const commands: Record<CommandName, (arg: string) => void> = {
+    '/sessions': openSessions, '/rename': renameSession, '/reload': () => void reload(), '/tools': toggleTool,
+  };
   // Input text: a known command runs with the rest as argument; an unknown `/word` is an error; anything else becomes
   // a User block and is sent right away – if sending is blocked, the block stays and the status says why (FR-6).
   function submit(text: string) {
@@ -613,7 +647,7 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     else if (/^\/\w+$/.test(name)) setStatus({ text: `unknown command ${name} – ${COMMANDS.map(c => c.name).join(' ')}`, tone: 'error' });
     else if (text.trim()) addInput(text);
   }
-  // `@file` references become rows of their own before the text; only a text is sent right away (FR-27).
+  // `@path` references become rows of their own before the text; only a text is sent right away (FR-27).
   function addInput(input: string) {
     const { files, text } = references(input);
     for (const file of files) {
@@ -640,7 +674,6 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     // Streaming or running: only Esc (abort, kill) acts.
     nextCall: () => ops.nextCall(context()),
     busy: () => streaming() !== null || running() !== null || compacting()?.phase === 'running',
-    timeout: runner.timeout,
     status,
     rows,
     selected,
@@ -652,6 +685,8 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     // Whether a sent block is still cached; null while counting.
     warm: (id: number) => warm()?.[sent().findIndex(b => b.id === id)] ?? null,
     profile: () => context().profile,
+    thinking,
+    cycleThinking,
     submit,
     send,
     abort: () => (streaming() ?? running() ?? compacting())?.abort?.abort(),
@@ -677,10 +712,10 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     pin,
     remove,
     undo,
-    rename,
     edit: () => void edit(),
     copy: (text: string) => void copy(text),
     toggleMark,
+    toolsOn,
     // Any other key than the one asked for cancels the confirmation.
     cancelConfirm: () => {
       if (confirming()) setStatus(null);

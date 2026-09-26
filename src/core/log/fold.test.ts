@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from './events';
-import { fold, undone } from './fold';
+import { callText, fold, undone } from './fold';
 
 test('Context holds the session profile and the added blocks in order', () => {
   const context = fold([
@@ -14,6 +14,7 @@ test('Context holds the session profile and the added blocks in order', () => {
   expect(context).toEqual({
     profile: 'default',
     protocol: 'native',
+    thinking: null,
     blocks: [
       { id: 1, kind: 'System', origin: 'config', content: 'You are an agent.', cutOff: false, title: null, pin: null, removed: false, moved: false, pinChanged: false, revision: 1, revised: false },
       { id: 2, kind: 'User', origin: 'user', content: 'hi', cutOff: false, title: null, pin: null, removed: false, moved: false, pinChanged: false, revision: 1, revised: false },
@@ -196,6 +197,19 @@ test('PairToNote turns the Tool Pair into a Note after the calls and results of 
   expect(fold(events).nextId).toBe(8);
 });
 
+test('a search call keeps its tool; its pair becomes a Note `[Tool search: <query>]`, titled by tool and query', () => {
+  const search: SessionEvent = { type: 'BlockAdded', id: 3, kind: 'Tool Call', origin: 'model', content: 'bun', tool: 'search' };
+  expect(block(session(1, search), 3)).toMatchObject({ kind: 'Tool Call', tool: 'search', content: 'bun', pending: true });
+  expect(block(session(1, call(3, 'ls')), 3)).not.toHaveProperty('tool');
+  expect(block(session(1, search, result(4, 3), toNote(5, 3)), 5)).toMatchObject({ content: '[Tool search: bun]\nout 3', source: 'search bun' });
+});
+
+test('callText: the bash command as is, another tool by name and query', () => {
+  expect(callText({ content: 'ls' })).toBe('ls');
+  expect(callText({ tool: 'bash', content: 'ls' })).toBe('ls');
+  expect(callText({ tool: 'search', content: 'bun' })).toBe('search bun');
+});
+
 test('a Tool Result edited in place stays the result of its call', () => {
   const events = session(1, call(3, 'ls'), result(4, 3), edit(4, 2, 'short'));
   expect(block(events, 4)).toMatchObject({ kind: 'Tool Result', call: 3, content: 'short' });
@@ -288,4 +302,10 @@ test('a file reference is an unread Note until the file is read, then a plain sn
   const read = block([...referenced, { type: 'FileRead', id: 3, content: '[a.ts:1-2]\n1: x' }], 3);
   expect(read).toMatchObject({ file: 'a.ts:1-2', content: '[a.ts:1-2]\n1: x', revision: 1, revised: false });
   expect(read.unread).toBeUndefined();
+});
+
+test('ThinkingSet sets the thinking of the following requests; the last one wins (FR-49)', () => {
+  const created = { type: 'SessionCreated', profile: 'default', protocol: 'native' } as const;
+  expect(fold([created]).thinking).toBeNull();
+  expect(fold([created, { type: 'ThinkingSet', thinking: 'on' }, { type: 'ThinkingSet', thinking: 'high' }]).thinking).toBe('high');
 });

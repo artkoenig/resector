@@ -1,9 +1,11 @@
 // oMLX server backend (MLX on Apple Silicon): exact token counts via the Anthropic-format
 // /v1/messages/count_tokens, which applies the model's chat template with the generation prompt.
+import { join } from 'node:path';
 import type { Backend, CacheHit } from '../../core/backend';
 import { commonPrefix } from '../../core/cache/cache';
-import type { Thinking } from '../../core/config/config';
+import type { Thinking } from '../../core/log/events';
 import { EMPTY_REQUEST as EMPTY, type AssistantMessage, type Message, type Request } from '../../core/render/native';
+import { thinkingModes } from '../../core/render/template';
 import { thinkingShares } from '../../core/tokens/thinking';
 import { splitTokens } from '../../core/tokens/split';
 import { answerMessage, httpClient, streamChat, thinkingParams } from './openai';
@@ -56,8 +58,26 @@ function anthropic({ messages, tools }: Request) {
 }
 
 type ModelList = { data: { id: string; max_model_len?: number | null }[] };
+type AdminModels = { models: { id: string; model_path?: string }[] };
 
-// Model Profile values that shape requests; the window defaults to the model's max_model_len.
+// The model's chat template from its directory, which the admin API names: chat_template.jinja, else the
+// tokenizer config's (a string, or named templates). null where the admin API is locked or the files are elsewhere.
+async function chatTemplate(request: (path: string) => Promise<Response>, model: string): Promise<string | null> {
+  try {
+    const { models } = (await (await request('/admin/api/models')).json()) as AdminModels;
+    const dir = models.find(m => m.id === model)?.model_path;
+    if (!dir) return null;
+    const jinja = Bun.file(join(dir, 'chat_template.jinja'));
+    if (await jinja.exists()) return await jinja.text();
+    const { chat_template } = (await Bun.file(join(dir, 'tokenizer_config.json')).json()) as { chat_template?: string | { name: string; template: string }[] };
+    return typeof chat_template === 'string' ? chat_template : (chat_template?.find(t => t.name === 'default')?.template ?? null);
+  } catch {
+    return null;
+  }
+}
+
+// Model Profile values that shape requests; the window defaults to the model's max_model_len; thinking:
+// unless a request sets its own.
 export type OmlxOptions = { window?: number; model?: string; sampling?: Record<string, number>; thinking?: Thinking };
 
 export async function connectOmlx(endpoint: string, { window, model, sampling, thinking }: OmlxOptions): Promise<Backend> {
@@ -69,6 +89,7 @@ export async function connectOmlx(endpoint: string, { window, model, sampling, t
   if (!served) throw new Error(`oMLX does not serve model "${model}" (models: ${data.map(m => m.id).join(', ')})`);
   const size = window ?? served.max_model_len;
   if (!size) throw new Error(`oMLX reports no max_model_len for ${model}: set window in the Model Profile`);
+  const template = await chatTemplate(request, model);
 
   // Every count includes the generation prompt. Counted prefixes end in an empty user turn, since
   // some templates (Qwen3-2507) cannot render a prompt without user message and oMLX then silently
@@ -109,6 +130,8 @@ export async function connectOmlx(endpoint: string, { window, model, sampling, t
 
   return {
     window: size,
+    thinking,
+    thinkingModes: template === null ? null : thinkingModes(template),
     exact: true,
 
     async count(requests) {
@@ -126,7 +149,7 @@ export async function connectOmlx(endpoint: string, { window, model, sampling, t
 
     async chat(chat, options) {
       const predicted = last?.key === JSON.stringify(chat) && last.cached.exact ? last.cached.tokens : null;
-      const result = await streamChat({ name: 'oMLX', request }, { model, ...sampling, ...thinkingParams(thinking) }, chat, options);
+      const result = await streamChat({ name: 'oMLX', request }, { model, ...sampling, ...thinkingParams(chat.thinking ?? thinking) }, chat, options);
       lastRequest = chat;
       lastExchange = { ...chat, messages: [...chat.messages, answerMessage(result)] };
       return { ...result, predicted };

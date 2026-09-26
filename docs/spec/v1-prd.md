@@ -14,7 +14,7 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 
 - One developer, one machine, local OpenAI-compatible backends: llama.cpp server, Ollama, LM Studio, oMLX.
 - Platforms: macOS and Linux (arm64, x64). No Windows.
-- **Out of scope v1:** automatic placement rules / auto-compaction, MCP, LSP, web tools, cloud-provider optimisation, bash sandboxing, forking sessions, file snapshots/restore, auto-update, tools other than `bash`.
+- **Out of scope v1:** automatic placement rules / auto-compaction, MCP, LSP, web tools other than `search`, cloud-provider optimisation, bash sandboxing, forking sessions, file snapshots/restore, auto-update, tools other than `bash` and `search`.
 
 ## 4. Functional requirements
 
@@ -23,9 +23,9 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 - **FR-1** One screen. Header line · block table · preview of selected block · input line · status line. No separate chat screen; the block table *is* the conversation.
 - **FR-2** Header: Model Profile name · Context bar · tokens / window. The bar shows one segment per block in Context order (plus Template), width proportional to tokens, coloured by kind; the selected block's segment is highlighted; free space is shaded. Over the window the bar is scaled to the Context and marks the window edge. Tokens yellow ≥ 90 %, red with `over by X` above the window. With inexact tokenizer: `±X` drift. Nothing else (no backend, protocol, state tag, cache summary or per-kind totals); cache state is visible per row (FR-3).
 - **FR-3** Table columns: `# · Kind · Title · Tokens · Cache ●/○ · Flags`. Kinds written out (System, Tools, User, Thinking, Assistant, Tool Call, Tool Result, Note). Last row `Template` (BOS, generation prompt overhead), not selectable. Sum of all rows = exact request size.
-- **FR-4** Title is a display label only, never sent. Default = first non-empty line of content; origin titles: `System prompt`, tool names, the call, `→ <call>`, `@file <path>`, `⇄ <call>`, `◇ N blocks compacted`. `r` renames (empty = reset); rename is a log event without Context/cache effect.
+- **FR-4** Title is a display label only, never sent. Default = first non-empty line of content; origin titles: `System prompt`, tool names, the call, `→ <call>`, `@<path>`, `⇄ <call>`, `◇ N blocks compacted`.
 - **FR-5** Flags show only changes since the last request and reset after sending: `✎n` new Revision, `⤒`/`⤓` pin set/changed, `⇄` moved by user. Status flags persist: `✂ template` (FR-48), `⚠ cut off`, `⚠ malformed`, `? approve`, `⚠ killed`, `⚠ timeout`.
-- **FR-6** Two modes, `Tab` toggles. **Context mode** (default): list focused; `Enter` sends the Context. **Input mode**: `Enter` with text adds a User block, returns to Context mode and sends the Context (if sending is blocked, e.g. by Tool Calls awaiting approval, the block stays and the status line says why); `Tab`/`Esc` return without adding; `⌥⌫` deletes a word. Typing `/` shows command suggestions above the input (name, argument, description), filtered while typing: `↑↓` choose, `Tab` complete, `Enter` run. v1 commands: `/sessions`, `/rename`, `/reload`.
+- **FR-6** Two modes, `Tab` toggles. **Context mode** (default): list focused; `Enter` sends the Context. **Input mode**: `Enter` with text adds a User block, returns to Context mode and sends the Context (if sending is blocked, e.g. by Tool Calls awaiting approval, the block stays and the status line says why); `Tab`/`Esc` return without adding; `⌥⌫` deletes a word. `/` or `@` in Context mode opens Input mode with it typed. Typing `/` shows command suggestions above the input (name, argument, description), filtered while typing: `↑↓` choose, `Tab` complete, `Enter` run. v1 commands: `/sessions`, `/rename`, `/reload`, `/tools <tool>` (switches a tool on or off in the Tools Block, a new Revision, `u` undoes it; the tool names are suggested; a call of a tool switched off is not run).
 - **FR-7** Streaming: the answer appears live as a new row (spinner in Tokens column); afterwards back to the Gate. `Esc` aborts; the partial answer is kept with `⚠ cut off`.
 
 ### 4.2 Context operations (Context mode)
@@ -35,16 +35,16 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 | `↑` `↓` | select |
 | `⌥↑` `⌥↓` | move block |
 | `e` | edit block in `$EDITOR` (new Revision) |
-| `r` | rename |
 | `d` | remove (struck through until sent, then hidden; undoable) |
 | `p` | pin cycle: top → bottom → off |
 | `Space` | mark / unmark (selection stays) |
 | `c` | compact marked blocks (or current) |
+| `t` | thinking: cycle the chat template's modes, `off → on → on:<effort>` (FR-49) |
 | `u` | undo |
 | `q` | quit |
 
 - **FR-8** Editable: all kinds except Tools Block and executed Tool Calls. A Tool Call awaiting approval is editable (FR-22). Edit keeps the kind.
-- **FR-9** Tool Pair: removed/compacted only as a whole; editing the result in place keeps the pair; moving or pinning it asks for confirmation (same key again) and turns it into a Note `[Tool bash: <cmd>]` + result.
+- **FR-9** Tool Pair: removed/compacted only as a whole; editing the result in place keeps the pair; moving or pinning it asks for confirmation (same key again) and turns it into a Note `[Tool <tool>: <cmd or query>]` + result.
 - **FR-10** Pin top = right after System + Tools Block (+ environment/project Notes); pin bottom = very end, sent as user-role Note. Pinned blocks keep their order and can be reordered among themselves.
 - **FR-11** *Dropped:* no trash view; removed blocks come back only via undo (`u`).
 - **FR-12** The Tools Block (`bash`) is always sent and never edited; no tool toggle.
@@ -65,22 +65,22 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 
 ### 4.5 Tool execution & Tool Approval
 
-- **FR-21** Only tool: `bash`. Timeout 120 s (configurable); stdin `/dev/null`; `Esc` kills a running command → partial output + `⚠ killed`; timeout → `⚠ timeout`.
+- **FR-21** Tools: `bash` and `search`. A new session's Tools Block offers `bash` only; `/tools search` switches search on. `search {query}` runs `ddgr --json -n 5` (DuckDuckGo), is always allowed (no permission rule), timeout 30 s; its Tool Call's title is `search <query>`. `bash`: timeout 120 s (configurable); stdin `/dev/null`; `Esc` kills a running command → partial output + `⚠ killed`; timeout → `⚠ timeout`.
 - **FR-22** Permission rules `{pattern: allow|ask|deny}`, last match wins, default `ask`. Built-in `allow`: `ls`, `cat`, `head`, `tail`, `wc`, `grep`, `rg`, `find`, `sed -n`, `git status|diff|log|show`. Compound commands (`&&`, `;`, `|`, `$(…)`) are split with tree-sitter-bash; every sub-command must be allowed; unparseable → `ask`. Arguments pointing outside the project (absolute paths, `..`) → `ask`.
-- **FR-23** Allowed call runs immediately; the Gate then shows the result; `Enter` sends. `ask` → the Tool Call row shows `? approve` and sending is blocked. On the selected pending row: `y` run once, `a` allow for session (prefix + ` *`, shown before saving), `n` reject → result `rejected by user`, `e` edit command → new Revision, re-evaluated. Approval never auto-sends. `deny` → result `denied by rule`.
+- **FR-23** Allowed call runs immediately. `ask` → the Tool Call row shows `? approve` and sending is blocked. On the selected pending row: `y` run once, `a` allow for session (prefix + ` *`, shown in the preview before pressing, saved at once), `n` reject → result `rejected by user`, `e` edit command → new Revision, re-evaluated. `deny` → result `denied by rule`. Once all calls of an answer are decided: if every one ran (allowed, `y`, `a`) and none was stopped, the results are sent automatically; otherwise (rejected, denied, killed, timeout, not run) the Gate shows the results and `Enter` sends.
 - **FR-24** Several calls in one answer are approved one by one in order; results keep call order.
 - **FR-25** "Allow for session" is a Session Log event (survives resume). Permanent rules only via config. Project config may only tighten (`ask`/`deny`); project `allow` entries are ignored with a Gate hint.
 - **FR-26** Malformed tool call (parse error) stays an Assistant block `⚠ malformed`, is not executed; user edits/removes it or sends, which appends an error Note.
 
 ### 4.6 Files & Notes
 
-- **FR-27** `@file <path>[:a-b]` in the input adds a file reference row. Before sending, `e` on it opens the file itself in `$EDITOR`. On send the file (or line range) is read and becomes a Note with origin `@file <path>`; from then on a plain snapshot, never tracked, refreshed or marked stale. Missing file at send → sending aborts with `file not found: <path>`.
+- **FR-27** `@<path>[:a-b]` in the input adds a file reference row. While the path is typed, project files (git: tracked + untracked, not ignored) matching it are suggested above the input, file name matches first: `↑↓` choose, `Tab`/`Enter` complete. Before sending, `e` on it opens the file itself in `$EDITOR`. On send the file (or line range) is read and becomes a Note with origin `@<path>`; from then on a plain snapshot, never tracked, refreshed or marked stale. Missing file at send → sending aborts with `file not found: <path>`.
 - **FR-28** Environment Note (origin `environment`, pinned top): cwd, OS/shell, date (no time), git branch. Regenerated before each request; replaced only when changed (new Revision, `✎`).
-- **FR-29** Project instructions (`AGENTS.md`, else `CLAUDE.md`) are read once when a session is created → Note (origin file), pinned top. Snapshot like `@file`; not re-read on resume.
+- **FR-29** Project instructions (`AGENTS.md`, else `CLAUDE.md`) are read once when a session is created → Note (origin file), pinned top. Snapshot like `@path`; not re-read on resume.
 
 ### 4.7 System prompt
 
-- **FR-30** Shipped default ≤ ~400 tokens, English: role (local coding agent), style "Be extremely concise. Sacrifice grammar for the sake of concision.", bash conventions (`sed -n 'a,bp'`, `grep -n`, `rg`, `find`/`ls`, `| head`/`| tail`, heredoc for new files, `sed -i` for small edits, whole-file heredoc only for small files, no `patch`). No few-shot examples. No environment inside.
+- **FR-30** Shipped default ≤ ~400 tokens, English: role (local coding agent), style "Be extremely concise. Sacrifice grammar for the sake of concision.". Nothing about tools or bash. No few-shot examples. No environment inside.
 - **FR-31** Overridable globally (`system.md`) and per Model Profile (`systemPrompt` path). Editing at the Gate is session-local.
 
 ### 4.8 Sessions
@@ -111,7 +111,7 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 - **FR-46** Model reasoning (`reasoning_content` or `<think>…</think>`) becomes its own Thinking block before the Assistant block of the same answer; own row, own token count; edited, moved, removed and compacted like any block.
 - **FR-47** Thinking blocks stay in the Context and are sent with every request until the user removes them.
 - **FR-48** If the model's chat template drops a Thinking block (e.g. Qwen3 strips thinking before the last user message), its token count is what actually gets rendered (0), the row is dimmed and flagged `✂ template`. Resector does not bypass the template. Exact on llama.cpp, best effort on Ollama/LM Studio.
-- **FR-49** Thinking is set per Model Profile only: `thinking: off | on | low | medium | high`, restricted to what the model supports (e.g. Qwen3 on/off, gpt-oss low/medium/high). No runtime switch; start a new session with another profile.
+- **FR-49** Thinking: `off`, `on` or an effort level (e.g. `low`, `xhigh`). The modes are read from the model's chat template on connect (start, setup, `/reload`): `off`/`on` if it reads `enable_thinking`, plus the efforts it accepts for `reasoning_effort` (llama.cpp: `/props`; oMLX: the model directory the admin API names). Template unknown → `off, on, low, medium, high`. The Model Profile sets it at session start; `t` at the Gate cycles the modes (`off → on → on:<effort> …`) for the following requests. Shown in the header next to the Model Profile, logged (`ThinkingSet`), kept on resume.
 - **FR-50** While the model thinks, the status line shows `thinking` and the preview streams the thinking dimmed.
 
 ## 5. Non-functional requirements
@@ -135,4 +135,4 @@ Where earlier decisions conflicted, the later or more specific one wins:
 | Removed blocks always visible (Gate UI) vs. until sent (Compaction flow) | Struck through until sent. |
 | `n` = new Note vs. `n` = reject | `n` only rejects (on a selected `? approve` row); free-text Notes dropped (complete prototype). |
 | Changed AGENTS.md on resume → stale-content ticket vs. no staleness at all | Read once at session creation; snapshot. |
-| read/edit/grep/glob tools (charting) vs. only `bash` | Only `bash`. |
+| read/edit/grep/glob tools (charting) vs. only `bash` | Only `bash`; later `search` (web search, FR-21). |

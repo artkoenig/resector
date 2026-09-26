@@ -80,6 +80,13 @@ test('a Tool Call without Assistant text, or after a Tool Result, starts its own
   ]);
 });
 
+test('a search call is sent as search with its query', () => {
+  const search: SessionEvent = { type: 'BlockAdded', id: 2, kind: 'Tool Call', origin: 'model', content: 'bun', tool: 'search' };
+  expect(renderNative(fold([created, add(1, 'User', 'go'), search])).messages[1]).toEqual({
+    role: 'assistant', content: '', tool_calls: [{ id: 'call_0', type: 'function', function: { name: 'search', arguments: '{"query":"bun"}' } }],
+  });
+});
+
 test('an Assistant block after a Tool Call starts a new message; a bottom-pinned Tool Call is a user-role Note', () => {
   const context = fold([created, add(1, 'Tool Call', 'ls'), add(2, 'Assistant', 'done'), add(3, 'Tool Call', 'pwd'), { type: 'Pin', id: 3, at: 'bottom' }]);
   expect(renderNative(context).messages).toEqual([
@@ -161,4 +168,11 @@ test('an Assistant block after anything but its Thinking block starts its own me
     { role: 'assistant', content: '', reasoning_content: 'call', tool_calls: [{ id: 'call_0', type: 'function', function: { name: 'bash', arguments: '{"command":"ls"}' } }] },
     { role: 'assistant', content: 'after call' },
   ]);
+});
+
+test('thinking set at the Gate goes into every prefix; without it the backend sends the profile thinking (FR-49)', () => {
+  const events: SessionEvent[] = [created, add(1, 'System', 'sys'), add(2, 'User', 'hi')];
+  expect(renderPrefixes(fold(events)).map(r => r.thinking)).toEqual([undefined, undefined]);
+  const set = renderPrefixes(fold([...events, { type: 'ThinkingSet', thinking: 'medium' }]));
+  expect(set.map(r => r.thinking)).toEqual(['medium', 'medium']);
 });

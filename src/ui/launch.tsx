@@ -4,10 +4,11 @@ import { createSignal, onMount, Show } from 'solid-js';
 import { connect } from '../adapters/backend/connect';
 import { discover, LOCAL_SERVERS, type DiscoveredModel, type LocalServer } from '../adapters/backend/discover';
 import { createRunner } from '../adapters/bash/runner';
+import { createSearcher } from '../adapters/search/ddgr';
 import { createSplit } from '../adapters/bash/split';
 import type { Clipboard } from '../adapters/clipboard/clipboard';
 import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
-import { probeEnvironment, projectFiles, projectInstructions } from '../adapters/fs/project';
+import { listProjectFiles, probeEnvironment, projectFiles, projectInstructions } from '../adapters/fs/project';
 import type { OpenSession, SessionStore } from '../adapters/store/sessions';
 import type { Split } from '../core/approval/approval';
 import type { Editor } from '../core/context/operations';
@@ -27,7 +28,7 @@ export type LaunchOptions = {
   store: SessionStore;
   // Project root: where bash runs (FR-21); default the working directory.
   cwd?: string;
-  // $EDITOR for `e` (FR-8), and on a file itself (`e` on an @file reference, FR-27).
+  // $EDITOR for `e` (FR-8), and on a file itself (`e` on an @path reference, FR-27).
   editor: Editor;
   openFile: (file: string) => Promise<void>;
   // Copy on select.
@@ -41,6 +42,8 @@ export type LaunchOptions = {
 type Loaded = NonNullable<ReturnType<typeof loadConfig>>;
 
 const DEFAULT_TIMEOUT = 120;
+// A search runs into this timeout (seconds).
+const SEARCH_TIMEOUT = 30;
 
 export function Launch(props: LaunchOptions) {
   const [found, setFound] = createSignal<DiscoveredModel[] | null>(null);
@@ -52,7 +55,7 @@ export function Launch(props: LaunchOptions) {
   const [current, setCurrent] = createSignal('');
   const root = props.cwd ?? process.cwd();
   const environment = () => environmentText(probeEnvironment(root));
-  const project = { read: projectFiles(root), environment, open: (path: string) => props.openFile(resolve(root, path)) };
+  const project = { read: projectFiles(root), list: () => listProjectFiles(root), environment, open: (path: string) => props.openFile(resolve(root, path)) };
 
   const load = () => {
     const loaded = loadConfig(props.paths);
@@ -115,9 +118,10 @@ export function Launch(props: LaunchOptions) {
     setCurrent(opened.id);
     setFound(null);
     const runner = createRunner({ cwd: root, timeout: loaded.config.bash?.timeout ?? DEFAULT_TIMEOUT });
+    const searcher = createSearcher({ cwd: root, timeout: SEARCH_TIMEOUT });
     const approval = { split, root, permissions: () => config.permissions };
     const instruction = () => config.compactionInstruction();
-    setGate({ backend, runner, approval, editor: props.editor, clipboard: props.clipboard, log: opened.log, events, project, notice, reconnect: reconnect(profile, opened.id), openSessions: () => setView('sessions'), instruction, compactor: compactor(profile, opened.id) });
+    setGate({ backend, runner, searcher, approval, editor: props.editor, clipboard: props.clipboard, log: opened.log, events, project, notice, reconnect: reconnect(profile, opened.id), openSessions: () => setView('sessions'), instruction, compactor: compactor(profile, opened.id) });
   }
 
   // /sessions (FR-33): switching sessions reconnects; the Gate comes back with the session's logged events.

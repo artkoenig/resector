@@ -1,4 +1,6 @@
+import type { Thinking } from '../log/events';
 import type { Block, Context } from '../log/fold';
+import { callArguments } from '../toolcall/bash';
 
 export type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
 export type AssistantMessage = { role: 'assistant'; content: string; reasoning_content?: string; tool_calls?: ToolCall[] };
@@ -7,8 +9,9 @@ export type Message =
   | AssistantMessage
   | { role: 'tool'; tool_call_id: string; content: string };
 export type ToolDefinition = { type: 'function'; function: { name: string; description: string; parameters: unknown } };
-// A chat request as the backend receives it: messages plus the tools field.
-export type Request = { messages: Message[]; tools: ToolDefinition[] };
+// A chat request as the backend receives it: messages plus the tools field; thinking: set at the Gate,
+// else the backend sends the Model Profile's (FR-49).
+export type Request = { messages: Message[]; tools: ToolDefinition[]; thinking?: Thinking };
 
 // What goes into the next request: removed blocks are only struck through at the Gate.
 export const sentBlocks = (context: Context): Block[] => context.blocks.filter(b => !b.removed);
@@ -28,7 +31,7 @@ function addCall({ messages }: Request, ids: Map<number, string>, b: Block) {
   const last = messages.at(-1);
   const joined = last?.role === 'assistant' ? last : null;
   const earlier = joined?.tool_calls ?? [];
-  const call: ToolCall = { id: callId(earlier.length), type: 'function', function: { name: 'bash', arguments: JSON.stringify({ command: b.content }) } };
+  const call: ToolCall = { id: callId(earlier.length), type: 'function', function: { name: b.tool ?? 'bash', arguments: callArguments(b.tool ?? 'bash', b.content) } };
   ids.set(b.id, call.id);
   const message = { ...joined, role: 'assistant' as const, content: joined?.content ?? '', tool_calls: [...earlier, call] };
   if (joined) messages[messages.length - 1] = message;
@@ -67,9 +70,10 @@ function addBlock(request: Request, ids: Map<number, string>, b: Block) {
 export function renderPrefixes(context: Context): Request[] {
   const request: Request = { messages: [], tools: [] };
   const ids = new Map<number, string>();
+  const thinking = context.thinking && { thinking: context.thinking };
   return sentBlocks(context).map(b => {
     addBlock(request, ids, b);
-    return { messages: [...request.messages], tools: request.tools };
+    return { messages: [...request.messages], tools: request.tools, ...thinking };
   });
 }
 

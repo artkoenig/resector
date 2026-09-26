@@ -1,4 +1,4 @@
-import type { Kind, Origin, Pin, SessionEvent, Stopped, ToolProtocol } from './events';
+import type { Kind, Origin, Pin, SessionEvent, Stopped, Thinking, Tool, ToolProtocol } from './events';
 
 export type Block = {
   id: number;
@@ -6,14 +6,16 @@ export type Block = {
   origin: Origin;
   content: string;
   cutOff: boolean;
+  // Tool Call only: its tool, absent for bash.
+  tool?: Tool;
   // Tool Result only: its Tool Call, and how the run stopped early.
   call?: number;
   stopped?: Stopped;
-  // Note from a Tool Pair only: the pair's command, for its title.
+  // Note from a Tool Pair only: the pair's call (callText), for its title.
   source?: string;
   // Note from a Compaction only: the blocks it replaced and the instruction (FR-16).
   compacted?: { sources: number[]; instruction: string };
-  // Note from a file only: the file (FR-27, FR-29); unread: an @file reference not read yet.
+  // Note from a file only: the file (FR-27, FR-29); unread: an @path reference not read yet.
   file?: string;
   unread?: true;
   // An unread reference whose file cannot be read now (set at the Gate, never logged).
@@ -31,11 +33,12 @@ export type Block = {
   revision: number;
   revised: boolean;
 };
-export type Context = { profile: string; protocol: ToolProtocol; blocks: Block[]; nextId: number };
+// thinking: set at the Gate (FR-49); null = the Model Profile's.
+export type Context = { profile: string; protocol: ToolProtocol; thinking: Thinking | null; blocks: Block[]; nextId: number };
 
 type Entry = Omit<Block, 'revised'> & { hidden: boolean; sentPin: Pin | null; sentRevision: number };
 // unsent: indices of events logged since the last request.
-type State = { profile: string; entries: Map<number, Entry>; order: number[]; events: SessionEvent[]; unsent: Set<number> };
+type State = { profile: string; thinking: Thinking | null; entries: Map<number, Entry>; order: number[]; events: SessionEvent[]; unsent: Set<number> };
 type Apply<T extends SessionEvent['type']> = (state: State, event: Extract<SessionEvent, { type: T }>) => void;
 
 const entry = (state: State, id: number) => state.entries.get(id)!;
@@ -64,6 +67,9 @@ export function pairOf(blocks: Pick<Block, 'id' | 'kind' | 'call'>[], id: number
   return result ? [id, result.id] : [id];
 }
 
+// A Tool Call as the user reads it: the bash command, or the tool name and its query.
+export const callText = ({ tool, content }: Pick<Block, 'tool' | 'content'>): string => (tool && tool !== 'bash' ? `${tool} ${content}` : content);
+
 const NEW_ENTRY = { title: null, removed: false, moved: false, pinChanged: false, revision: 1, hidden: false, sentPin: null, sentRevision: 1 };
 
 function setPin(state: State, id: number, pin: Pin | null) {
@@ -78,7 +84,7 @@ const pairIn = (state: State, id: number) => pairOf([...state.entries.values()],
 
 const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   BlockAdded: (state, e) => {
-    const block = { id: e.id, kind: e.kind, origin: e.origin, content: e.content, cutOff: e.cutOff === true,
+    const block = { id: e.id, kind: e.kind, origin: e.origin, content: e.content, cutOff: e.cutOff === true, ...(e.tool && { tool: e.tool }),
       ...(e.call !== undefined && { call: e.call }), ...(e.stopped && { stopped: e.stopped }), ...(e.file && { file: e.file }) };
     const pin = e.pin ?? null;
     state.entries.set(e.id, { ...block, ...NEW_ENTRY, pin, sentPin: pin });
@@ -102,13 +108,14 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   Pin: (state, e) => setPin(state, e.id, e.at),
   Unpin: (state, e) => setPin(state, e.id, null),
   ProfileFallback: (state, e) => void (state.profile = e.profile),
-  Remove: (state, e) => pairIn(state, e.id).forEach(id => (entry(state, id).removed = true)),
+  ThinkingSet: (state, e) => void (state.thinking = e.thinking),
+  Remove: (state, e) => [e.id, ...(e.others ?? [])].flatMap(id => pairIn(state, id)).forEach(id => (entry(state, id).removed = true)),
   // The pair is gone at once, not struck through: its Note follows the calls and results of its answer,
   // so the other calls of the answer keep their results right after them.
   PairToNote: (state, e) => {
     const [call, result] = pairIn(state, e.call).map(id => entry(state, id));
-    const content = `[Tool bash: ${call!.content}]\n${result!.content}`;
-    state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'tool', content, source: call!.content, cutOff: false, ...NEW_ENTRY, pin: call!.pin });
+    const content = `[Tool ${call!.tool ?? 'bash'}: ${call!.content}]\n${result!.content}`;
+    state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'tool', content, source: callText(call!), cutOff: false, ...NEW_ENTRY, pin: call!.pin });
     insert(state, afterCalls(state.order.map(id => entry(state, id)), e.call), e.id);
     for (const b of [call!, result!]) Object.assign(b, { removed: true, hidden: true });
   },
@@ -145,7 +152,7 @@ export function fold(events: SessionEvent[]): Context {
   const [first] = events;
   if (first?.type !== 'SessionCreated') throw new Error('Session Log must start with SessionCreated');
   const skip = undone(events);
-  const state: State = { profile: first.profile, entries: new Map(), order: [], events, unsent: new Set() };
+  const state: State = { profile: first.profile, thinking: null, entries: new Map(), order: [], events, unsent: new Set() };
   events.forEach((e, i) => {
     state.unsent.add(i);
     if (skip.has(i)) return;
@@ -157,5 +164,5 @@ export function fold(events: SessionEvent[]): Context {
     .filter(e => !e.hidden)
     .map(({ hidden, sentPin, sentRevision, ...block }) => ({ ...block, revised: block.revision !== sentRevision }))
     .map(block => (block.kind === 'Tool Call' ? { ...block, pending: !answered.has(block.id) } : block));
-  return { profile: state.profile, protocol: first.protocol, blocks, nextId: Math.max(0, ...state.entries.keys()) + 1 };
+  return { profile: state.profile, protocol: first.protocol, thinking: state.thinking, blocks, nextId: Math.max(0, ...state.entries.keys()) + 1 };
 }

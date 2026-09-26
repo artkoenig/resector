@@ -70,15 +70,8 @@
           },
           "thinking": {
             "default": "off",
-            "description": "Reasoning: off/on (enable_thinking) or an effort level (reasoning_effort), as the model supports",
-            "type": "string",
-            "enum": [
-              "off",
-              "on",
-              "low",
-              "medium",
-              "high"
-            ]
+            "description": "Reasoning at session start: off, on (enable_thinking) or an effort level (reasoning_effort) the chat template accepts; `t` at the Gate switches it",
+            "type": "string"
           },
           "compactionProfile": {
             "description": "Model Profile used for Compaction; default: this one",

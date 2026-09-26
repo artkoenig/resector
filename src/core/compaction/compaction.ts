@@ -10,7 +10,7 @@ export const COMPACTION_SYSTEM = 'Rewrite the given context blocks into one comp
 // Used when the user sends an empty instruction and no `compaction.md` exists (FR-13).
 export const DEFAULT_INSTRUCTION = 'Keep file paths, line numbers, decisions, errors and open todos. Drop passing output and code already fixed.';
 
-const NOTHING = { error: 'nothing to compact (System, Tools and pending Tool Calls, unread @file references are excluded)' };
+const NOTHING = { error: 'nothing to compact (System, Tools and pending Tool Calls, unread @path references are excluded)' };
 
 // The blocks to compact, in Context order: the marked ones, else the selected block (a Tool Pair as a whole, FR-9).
 export function sourcesOf(context: Context, marked: ReadonlySet<number>, selected: number): { sources: number[] } | { error: string } {

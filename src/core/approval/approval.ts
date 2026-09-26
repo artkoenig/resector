@@ -1,6 +1,7 @@
 // Tool Approval (FR-22–FR-25, architecture §5): permission rules decide each sub-command of a bash call.
 import { posix } from 'node:path';
 import type { SessionEvent } from '../log/events';
+import type { Block } from '../log/fold';
 
 export type Action = 'allow' | 'ask' | 'deny';
 // Where a rule comes from; project config may only tighten (FR-25), session rules come from `a` (FR-23).
@@ -84,6 +85,11 @@ export function evaluate(command: string, input: ApprovalInput): Verdict {
   const action = checks.some(c => c.action === 'deny') ? 'deny' : checks.some(c => c.action === 'ask') ? 'ask' : 'allow';
   return { action, checks };
 }
+
+// search only reads the web: always allowed, no rule decides it (FR-21).
+const SEARCH: Verdict = { action: 'allow', checks: [] };
+export const verdictOf = (call: Pick<Block, 'tool' | 'content'>, input: ApprovalInput): Verdict =>
+  call.tool === 'search' ? SEARCH : evaluate(call.content, input);
 
 // Words of a command's prefix for "allow for session", by its first words (architecture §5).
 const ARITY: Record<string, number> = {

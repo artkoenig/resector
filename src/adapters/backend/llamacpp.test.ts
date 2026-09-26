@@ -249,17 +249,38 @@ test('reasoning streams apart from the answer, as reasoning_content or inline <t
   }
 });
 
-test('the profile thinking goes into every request: on/off through the chat template, else the effort (FR-49)', async () => {
+test('the profile thinking goes into every request: on/off through the chat template, an effort also as reasoning_effort (FR-49)', async () => {
   fake = startFakeLlamaCpp();
   for (const thinking of ['off', 'on', 'high'] as const) {
     fake.reply({ chunks: ['ok'] });
     await send(await connectLlamaCpp(fake.url, { thinking }), [USER]);
   }
-  expect(fake.chatRequests.map(r => (r as Record<string, unknown>).chat_template_kwargs ?? (r as Record<string, unknown>).reasoning_effort)).toEqual([
-    { enable_thinking: false },
-    { enable_thinking: true },
-    'high',
+  const fields = ({ chat_template_kwargs, reasoning_effort }: Record<string, unknown>) => ({ chat_template_kwargs, reasoning_effort });
+  expect(fake.chatRequests.map(r => fields(r as Record<string, unknown>))).toEqual([
+    { chat_template_kwargs: { enable_thinking: false }, reasoning_effort: undefined },
+    { chat_template_kwargs: { enable_thinking: true }, reasoning_effort: undefined },
+    { chat_template_kwargs: { enable_thinking: true, reasoning_effort: 'high' }, reasoning_effort: 'high' },
   ]);
+});
+
+test('a request with its own thinking overrides the profile, also in the counted chat template (FR-49)', async () => {
+  fake = startFakeLlamaCpp();
+  const backend = await connectLlamaCpp(fake.url, { thinking: 'off' });
+  fake.reply({ chunks: ['ok'] });
+  await backend.chat({ ...request([USER]), thinking: 'low' }, { signal: new AbortController().signal, onDelta: () => {} });
+  expect(fake.chatRequests[0]).toMatchObject({ chat_template_kwargs: { enable_thinking: true }, reasoning_effort: 'low' });
+  expect(backend.thinking).toBe('off');
+  fake.templateRequests.length = 0;
+  await backend.count(prefixes([SYSTEM, USER]).map(r => ({ ...r, thinking: 'low' as const })));
+  expect(new Set(fake.templateRequests.map(r => r.reasoning_effort))).toEqual(new Set(['low']));
+});
+
+test('the thinking modes are those of the chat template /props reports; unknown without one (FR-49)', async () => {
+  fake = startFakeLlamaCpp({ template: "{% if enable_thinking %}{% endif %}{% if reasoning_effort not in ('high', 'low') %}{% endif %}" });
+  expect((await connectLlamaCpp(fake.url)).thinkingModes).toEqual(['off', 'on', 'low', 'high']);
+  fake.stop();
+  fake = startFakeLlamaCpp();
+  expect((await connectLlamaCpp(fake.url)).thinkingModes).toBeNull();
 });
 
 const THOUGHT = { role: 'assistant', content: '', reasoning_content: 'plan it' } as const;

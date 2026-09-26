@@ -1,4 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { chatml, tokenize } from '../../../test/fake-llamacpp';
 import { startFakeOmlx, type FakeOmlxOptions } from '../../../test/fake-omlx';
 import type { Message } from '../../core/render/native';
@@ -230,6 +233,24 @@ test('the profile thinking goes into every request (FR-49)', async () => {
   fake.reply({ chunks: ['ok'] });
   await chatOnce(backend);
   expect(fake.chatRequests[0]).toMatchObject({ chat_template_kwargs: { enable_thinking: true } });
+});
+
+test('the thinking modes come from the chat template in the model directory the admin API names (FR-49)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'resector-model-'));
+  writeFileSync(join(dir, 'tokenizer_config.json'), JSON.stringify({ chat_template: "{% if enable_thinking %}{% endif %}{% if reasoning_effort == 'max' %}{% endif %}" }));
+  expect((await open({}, { models: [{ id: MODEL, maxModelLen: 57344, path: dir }] })).thinkingModes).toEqual(['off', 'on', 'max']);
+  fake.stop();
+  writeFileSync(join(dir, 'chat_template.jinja'), "{% if reasoning_effort in ['low', 'xhigh'] %}{% endif %}");
+  expect((await open({}, { models: [{ id: MODEL, maxModelLen: 57344, path: dir }] })).thinkingModes).toEqual(['low', 'xhigh']);
+  fake.stop();
+  expect((await open()).thinkingModes).toBeNull();
+});
+
+test('a request with its own thinking overrides the profile (FR-49)', async () => {
+  const backend = await open({ thinking: 'off' });
+  fake.reply({ chunks: ['ok'] });
+  await backend.chat({ messages: [{ role: 'user', content: 'hi' }], tools: [], thinking: 'high' }, { signal: new AbortController().signal, onDelta: () => {} });
+  expect(fake.chatRequests[0]).toMatchObject({ chat_template_kwargs: { enable_thinking: true }, reasoning_effort: 'high' });
 });
 
 test('reasoning is counted inline; before the last user message the chat template drops it (FR-48)', async () => {

@@ -1,27 +1,39 @@
 // Display helpers for the Gate: token numbers, titles, fixed-width cells.
-import type { Block } from '../core/log/fold';
+import type { Thinking } from '../core/log/events';
+import { callText, type Block } from '../core/log/fold';
 import { toolNames } from '../core/toolcall/bash';
 
 export const formatTokens = (t: number): string =>
   t >= 1024 && t % 1024 === 0 ? `${t / 1024}k` : t >= 1000 ? `${(t / 1000).toFixed(1)}k` : String(t);
 
-type Titled = Pick<Block, 'kind' | 'content'> & Partial<Pick<Block, 'title' | 'call' | 'source' | 'compacted' | 'file' | 'origin'>>;
+// FR-49: `off`, `on`, or `on:<effort>`.
+export const thinkingLabel = (thinking: Thinking) => (thinking === 'off' || thinking === 'on' ? thinking : `on:${thinking}`);
+
+type Titled = Pick<Block, 'kind' | 'content'> & Partial<Pick<Block, 'title' | 'call' | 'source' | 'compacted' | 'file' | 'origin' | 'tool'>>;
+type Called = Pick<Block, 'id' | 'content'> & Partial<Pick<Block, 'tool'>>;
 const firstLine = (text: string) => (text.split('\n').find(l => l.trim()) ?? '').trim();
 
 // FR-4: display label only, never sent. A rename wins; default = first non-empty line of the content;
 // origin titles: `System prompt`, the tool names, `→ <call>` (the call from `blocks`), `⇄ <call>` (a Note from a Tool Pair),
-// `◇ N blocks compacted` (a Note from a Compaction, FR-16), `@file <path>` (FR-27, FR-29), `Environment` (FR-28).
-export function titleOf(block: Titled, blocks: readonly Pick<Block, 'id' | 'content'>[] = []): string {
+// `◇ N blocks compacted` (a Note from a Compaction, FR-16), `@<path>` (FR-27, FR-29), `Environment` (FR-28).
+export function titleOf(block: Titled, blocks: readonly Called[] = []): string {
   if (block.title) return block.title;
   if (block.kind === 'System') return 'System prompt';
   if (block.kind === 'Tools') return toolNames(block.content);
   // Only whitespace (e.g. the text before a model's tool calls): nothing to read, the template may drop it.
   return originTitle(block, blocks) ?? (firstLine(block.content) || '(empty)');
 }
-function originTitle(block: Titled, blocks: readonly Pick<Block, 'id' | 'content'>[]): string | null {
-  if (block.kind === 'Tool Result') return `→ ${firstLine(blocks.find(b => b.id === block.call)?.content ?? '')}`;
+// A Tool Result by its call; a Tool Call of another tool than bash by tool name and query.
+function toolTitle(block: Titled, blocks: readonly Called[]): string | null {
+  if (block.kind !== 'Tool Result') return block.tool ? firstLine(callText(block)) : null;
+  const call = blocks.find(b => b.id === block.call);
+  return `→ ${firstLine(call ? callText(call) : '')}`;
+}
+function originTitle(block: Titled, blocks: readonly Called[]): string | null {
+  const tool = toolTitle(block, blocks);
+  if (tool !== null) return tool;
   if (block.source !== undefined) return `⇄ ${firstLine(block.source)}`;
-  if (block.file !== undefined) return `@file ${block.file}`;
+  if (block.file !== undefined) return `@${block.file}`;
   if (block.origin === 'environment') return 'Environment';
   return block.compacted ? `◇ ${count(block.compacted.sources.length, 'block')} compacted` : null;
 }

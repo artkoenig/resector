@@ -1,18 +1,38 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
-import { fileNote, parseReference, peekReferences, readReferences, references, snapshot } from './files';
+import { fileCompletions, fileNote, parseReference, peekReferences, readReferences, references, snapshot } from './files';
 
-test('@file references are taken from the input; the rest is the User text (FR-27)', () => {
-  expect(references('@file src/a.ts explain this')).toEqual({ files: ['src/a.ts'], text: 'explain this' });
-  expect(references('compare @file a.ts:3-5 and\n@file b.ts')).toEqual({ files: ['a.ts:3-5', 'b.ts'], text: 'compare and' });
-  expect(references('@file a.ts')).toEqual({ files: ['a.ts'], text: '' });
+test('@path references are taken from the input; the rest is the User text (FR-27)', () => {
+  expect(references('@src/a.ts explain this')).toEqual({ files: ['src/a.ts'], text: 'explain this' });
+  expect(references('compare @a.ts:3-5 and\n@b.ts')).toEqual({ files: ['a.ts:3-5', 'b.ts'], text: 'compare and' });
+  expect(references('@a.ts')).toEqual({ files: ['a.ts'], text: '' });
   expect(references('mail me@file.io')).toEqual({ files: [], text: 'mail me@file.io' });
-  expect(references('@files x')).toEqual({ files: [], text: '@files x' });
   expect(references('  hi  ')).toEqual({ files: [], text: 'hi' });
-  expect(references('@file  a.ts')).toEqual({ files: ['a.ts'], text: '' });
-  expect(references('see @file a.ts:3-5, then @file b.ts).')).toEqual({ files: ['a.ts:3-5', 'b.ts'], text: 'see then' });
-  expect(references('@file a.ts\nline one\nline two')).toEqual({ files: ['a.ts'], text: 'line one\nline two' });
+  expect(references('a @ b.ts')).toEqual({ files: [], text: 'a @ b.ts' });
+  expect(references('see @a.ts:3-5, then @b.ts).')).toEqual({ files: ['a.ts:3-5', 'b.ts'], text: 'see then' });
+  expect(references('@a.ts\nline one\nline two')).toEqual({ files: ['a.ts'], text: 'line one\nline two' });
+});
+
+const FILES = ['src/ui/gate.ts', 'src/ui/app.tsx', 'docs/gate.md', 'src/core/notes/files.ts', 'package.json'];
+
+test('the @path being typed is completed from the project files, file name matches first (FR-27)', () => {
+  expect(fileCompletions('see @', FILES, 3)).toEqual({ at: 5, paths: ['docs/gate.md', 'package.json', 'src/ui/app.tsx'] });
+  expect(fileCompletions('@GA', FILES)).toEqual({ at: 1, paths: ['docs/gate.md', 'src/ui/gate.ts'] });
+  expect(fileCompletions('@src/', FILES)?.paths).toEqual(['src/ui/app.tsx', 'src/ui/gate.ts', 'src/core/notes/files.ts']);
+  expect(fileCompletions('@notes', FILES)?.paths).toEqual(['src/core/notes/files.ts']);
+});
+
+test('a file name starting with the typed path beats a path starting with it, which beats one containing it', () => {
+  expect(fileCompletions('@s', ['sa/b.ts', 'x/y/sb.ts'])?.paths).toEqual(['x/y/sb.ts', 'sa/b.ts']);
+  expect(fileCompletions('@sa', ['usa.md', 'sa/b.ts'])?.paths).toEqual(['sa/b.ts', 'usa.md']);
+});
+
+test('no completion once the path is complete, ended or not being typed', () => {
+  expect(fileCompletions('@src/ui/gate.ts', FILES)?.paths).toEqual([]);
+  expect(fileCompletions('@src/ui/gate.ts ', FILES)).toBeNull();
+  expect(fileCompletions('mail@x', FILES)).toBeNull();
+  expect(fileCompletions('hello', FILES)).toBeNull();
 });
 
 test('a reference is a path with an optional line or line range', () => {

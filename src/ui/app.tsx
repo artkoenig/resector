@@ -1,12 +1,14 @@
 // The one screen (FR-1): header band · block table · preview · prompt band · footer.
-import type { MouseEvent, ScrollBoxRenderable } from '@opentui/core';
+import { type MouseEvent, type ScrollBoxRenderable, TextAttributes } from '@opentui/core';
 import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/solid';
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import { quoted, sessionRules, type Action, type Verdict } from '../core/approval/approval';
 import type { Kind } from '../core/log/events';
 import type { Block } from '../core/log/fold';
+import { fileCompletions } from '../core/notes/files';
+import { TOOL_NAMES } from '../core/toolcall/bash';
 import { COMMANDS, type Compaction, createGate, type Gate, type GateOptions, type Status } from './gate';
-import { around, cell, count, flagsOf, formatTokens, right, titleOf } from './format';
+import { around, cell, count, flagsOf, formatTokens, right, thinkingLabel, titleOf } from './format';
 import { Band, ErrorBand, errorBandLines, Footer, footerLines, HeaderBand, type Hint, PROMPT_LINES, PromptBand } from './parts';
 import { ACCENT, BG, BORDER, FAINT, KIND_COLOR, MUTED, PANEL_BG, SELECTED_BG, TEXT, TONE } from './theme';
 
@@ -16,9 +18,11 @@ const FIXED_COLUMNS = 52;
 const FLAGS_WIDTH = 14;
 const CACHE_COLOR: Record<string, string> = { '●': TONE.ok, '○': FAINT, '': FAINT };
 
-type Mode = 'context' | 'input' | 'rename';
+type Mode = 'context' | 'input';
 // A row per visible block; removed ones are struck through, unnumbered and not selectable until sent.
 // dropped: a Thinking block the chat template drops (FR-48), dimmed.
+// A line above the input: Tab puts `draft` into it; Enter runs `run`, or (null) completes as Tab does.
+type Suggestion = { label: string; description: string; draft: string; run: string | null };
 type Row = { id: number; heading?: string; n: string; kind: Kind; title: string; content: string; tokens: string; cache: string; flags: string; live: boolean; removed: boolean; dropped?: boolean };
 
 export function App(props: GateOptions & { onQuit: () => void }) {
@@ -61,27 +65,43 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     return done;
   };
 
-  // FR-6: command suggestions while the input is a single `/word`.
-  const suggestions = () => (mode() === 'input' && /^\/\S*$/.test(draft()) ? COMMANDS.filter(c => c.name.startsWith(draft())) : []);
-  const suggestion = () => suggestions()[Math.min(suggested(), suggestions().length - 1)];
+  // The project's files, listed when the input opens: @path completion (FR-27).
+  const [files, setFiles] = createSignal<string[]>([]);
+  createEffect(on(mode, m => m === 'input' && setFiles(props.project.list())));
+  // Suggestions above the input: commands while it is a single `/word` (FR-6), the tools after `/tools `, project files while an @path
+  // is typed at its end (FR-27). Tab completes; Enter runs a command taking no argument, else completes too.
+  const suggestions = createMemo((): Suggestion[] => {
+    if (mode() !== 'input') return [];
+    if (/^\/\S*$/.test(draft())) {
+      return COMMANDS.filter(c => c.name.startsWith(draft())).map(c => ({
+        label: `${c.name} ${c.arg}`, description: c.description, draft: c.name + (c.arg ? ' ' : ''), run: c.arg && draft() !== c.name ? null : c.name,
+      }));
+    }
+    const tool = /^\/tools (\S*)$/.exec(draft());
+    if (tool) {
+      return TOOL_NAMES.filter(name => name.startsWith(tool[1]!)).map(name => ({
+        label: name, description: gate.toolsOn().includes(name) ? 'on → off' : 'off → on', draft: `/tools ${name}`, run: `/tools ${name}`,
+      }));
+    }
+    const found = fileCompletions(draft(), files());
+    return found ? found.paths.map(path => ({ label: path, description: '', draft: `${draft().slice(0, found.at)}${path} `, run: null })) : [];
+  });
+  const chosen = () => Math.min(suggested(), suggestions().length - 1);
+  const suggestion = () => suggestions()[chosen()];
   const editDraft = (text: string) => {
     setDraft(text);
     setSuggested(0);
   };
-  const complete = (c: (typeof COMMANDS)[number]) => editDraft(c.name + (c.arg ? ' ' : ''));
-  // Enter on a suggestion: one taking an argument is completed, any other runs.
   const choose = () => {
-    const c = suggestion()!;
-    if (c.arg && draft() !== c.name) complete(c);
-    else {
-      gate.submit(c.name);
-      leaveInput();
-    }
+    const { draft: completed, run } = suggestion()!;
+    if (run === null) return editDraft(completed);
+    gate.submit(run);
+    leaveInput();
   };
   const suggestionKeys: Record<string, () => void> = {
     up: () => setSuggested((suggested() + suggestions().length - 1) % suggestions().length),
     down: () => setSuggested((suggested() + 1) % suggestions().length),
-    tab: () => complete(suggestion()!),
+    tab: () => editDraft(suggestion()!.draft),
     return: choose,
   };
 
@@ -90,15 +110,13 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     setMode('context');
   };
   const submit = () => {
-    if (mode() === 'rename') gate.rename(draft());
-    else gate.submit(draft());
+    gate.submit(draft());
     leaveInput();
   };
-  const startRename = () => {
-    const block = gate.selectedBlock();
-    if (!block) return;
-    setDraft(titleOf(block));
-    setMode('rename');
+  // `/` and `@` in the Context start a command or a file reference in the input line.
+  const startInput = (text: string) => () => {
+    editDraft(text);
+    setMode('input');
   };
   // The preview scrolls on its own; a newly selected block starts at its top.
   let preview: ScrollBoxRenderable | undefined;
@@ -138,10 +156,9 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   };
   const contextKeys: Record<string, () => void> = {
     tab: () => setMode('input'),
-    '/': () => {
-      editDraft('/');
-      setMode('input');
-    },
+    '/': startInput('/'),
+    '@': startInput('@'),
+    'shift+@': startInput('@'),
     return: () => void gate.send(),
     up: () => gate.select(-1),
     down: () => gate.select(1),
@@ -157,10 +174,10 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     p: gate.pin,
     d: gate.remove,
     u: gate.undo,
-    r: startRename,
     e: gate.edit,
     space: gate.toggleMark,
     c: gate.startCompaction,
+    t: gate.cycleThinking,
     escape: () => (gate.status()?.tone === 'error' ? gate.dismiss() : gate.clearMarks()),
     q: props.onQuit,
   };
@@ -170,6 +187,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   function contextAction(name: string) {
     if (name !== lastKey) gate.cancelConfirm();
     lastKey = name;
+    if (gate.marked().size && SINGLE_KEYS.has(name)) return undefined;
     if (!gate.busy()) return contextKeys[name];
     return name === 'escape' ? gate.abort : BUSY_KEYS.has(name) ? contextKeys[name] : undefined;
   }
@@ -183,7 +201,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   }
   useKeyboard(key => {
     const action = actionOf(key.name, modifierOf(key) + key.name);
-    // Handled here only: `r`, `i` must not also type into the input they focus, Tab not reach it.
+    // Handled here only: `/`, `@`, `i` must not also type into the input they focus, Tab not reach it.
     if (action) key.preventDefault();
     action?.();
   });
@@ -199,7 +217,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   // An error has its own band; the footer then shows only the hints.
   const error = () => (status()?.tone === 'error' ? status()!.text : null);
   const footerStatus = () => (error() === null ? status() : null);
-  const keys = () => keysOf(gate, suggestion() ? 'suggest' : (phase() ?? mode()), error() !== null);
+  const keys = () => keysOf(gate, suggestion() ? (suggestion()!.run === null ? 'complete' : 'suggest') : (phase() ?? mode()), error() !== null);
   const errorLines = () => (error() === null ? 0 : errorBandLines(error()!, width()) + 1);
   // Block rows that fit: the screen less header band, column header, Template, preview band, error band, suggestions,
   // prompt band and footer. Preview and error band have a blank line above, the prompt band too. Lines never shrink, so rows cannot overlap.
@@ -229,19 +247,22 @@ export function App(props: GateOptions & { onQuit: () => void }) {
       <text fg={MUTED} flexShrink={0}>{`     #  ${'Type'.padEnd(11)}  ${cell('Content', titleWidth())}  Tokens  Cache  Flags`}</text>
       <box flexDirection="column" flexGrow={1} overflow="hidden" onMouseScroll={wheel}>
         <For each={visibleRows()}>
-          {row => (
-            <text flexShrink={0} bg={isSelected(row) ? SELECTED_BG : undefined} fg={rowFg(row).text}>
-              <span style={{ fg: ACCENT }}>{`${isSelected(row) ? '┃' : ' '} ${gate.marked().has(row.id) ? '●' : ' '}`}</span>
-              <span style={{ fg: isSelected(row) ? TEXT : MUTED }}>{`${right(row.n, 3)}  `}</span>
-              <span style={{ fg: rowFg(row).kind, strikethrough: row.removed }}>{row.kind.padEnd(11)}</span>
-              <span>{'  '}</span>
-              <span style={{ strikethrough: row.removed }}>{cell(row.title, titleWidth())}</span>
-              <span>{'  '}</span>
-              <span style={{ fg: rowFg(row).tokens }}>{right(row.tokens, 6)}</span>
-              <span style={{ fg: CACHE_COLOR[row.cache] }}>{`    ${row.cache.padEnd(1)}    `}</span>
-              <span style={{ fg: rowFg(row).flags }}>{cell(row.flags, FLAGS_WIDTH).trimEnd()}</span>
-            </text>
-          )}
+          {row => {
+            const fg = () => columnFg(row, isSelected(row));
+            return (
+              <text flexShrink={0} bg={isSelected(row) ? SELECTED_BG : undefined} fg={fg().text}>
+                <span style={{ fg: ACCENT }}>{`${isSelected(row) ? '┃' : ' '} ${gate.marked().has(row.id) ? '●' : ' '}`}</span>
+                <span style={{ fg: fg().muted }}>{`${right(row.n, 3)}  `}</span>
+                <span style={{ fg: fg().kind, strikethrough: row.removed }}>{row.kind.padEnd(11)}</span>
+                <span>{'  '}</span>
+                <span style={{ fg: fg().muted, strikethrough: row.removed, italic: row.kind === 'Thinking' }}>{cell(row.title, titleWidth())}</span>
+                <span>{'  '}</span>
+                <span style={{ fg: fg().tokens }}>{right(row.tokens, 6)}</span>
+                <span style={{ fg: CACHE_COLOR[row.cache] }}>{`    ${row.cache.padEnd(1)}    `}</span>
+                <span style={{ fg: fg().flags }}>{cell(row.flags, FLAGS_WIDTH).trimEnd()}</span>
+              </text>
+            );
+          }}
         </For>
         <text fg={MUTED} flexShrink={0}>
           {`        ${'Template'.padEnd(11)}  ${cell('BOS · generation prompt', titleWidth())}  ${right(gate.split() ? String(gate.split()!.template) : '…', 6)}`}
@@ -267,7 +288,12 @@ export function App(props: GateOptions & { onQuit: () => void }) {
                     {(verdict: () => Verdict) => <Checks verdict={verdict()} />}
                   </Show>
                   <ReferenceHint block={row().live ? undefined : gate.context().blocks.find(b => b.id === row().id)} />
-                  <text fg={row().kind === 'Thinking' ? MUTED : TEXT}>{row().content}</text>
+                  {/* Two elements: opentui keeps italic once set on a span. */}
+                  <Show when={row().kind === 'Thinking'} fallback={<text fg={MUTED}>{row().content}</text>}>
+                    <text fg={MUTED} attributes={TextAttributes.ITALIC}>
+                      {row().content}
+                    </text>
+                  </Show>
                 </scrollbox>
               </Band>
             </>
@@ -284,10 +310,10 @@ export function App(props: GateOptions & { onQuit: () => void }) {
       </Show>
       <text flexShrink={0}> </text>
       <For each={suggestions()}>
-        {c => (
-          <text flexShrink={0} bg={c === suggestion() ? SELECTED_BG : undefined}>
-            <span style={{ fg: c === suggestion() ? ACCENT : TEXT }}>{`  ${`${c.name} ${c.arg}`.padEnd(22)} `}</span>
-            <span style={{ fg: MUTED }}>{c.description}</span>
+        {(s, i) => (
+          <text flexShrink={0} bg={i() === chosen() ? SELECTED_BG : undefined}>
+            <span style={{ fg: i() === chosen() ? ACCENT : TEXT }}>{`  ${s.label.padEnd(22)} `}</span>
+            <span style={{ fg: MUTED }}>{s.description}</span>
           </text>
         )}
       </For>
@@ -349,11 +375,11 @@ function Checks(props: { verdict: Verdict }) {
   );
 }
 
-// An unread @file reference in the preview: when it is read, or why it cannot be (FR-27).
+// An unread @path reference in the preview: when it is read, or why it cannot be (FR-27).
 function ReferenceHint(props: { block: Block | undefined }) {
   return (
     <Show when={props.block?.unread}>
-      <text fg={props.block!.missing ? TONE.warn : MUTED}>{props.block!.missing ?? '@file reference – read at send, a snapshot from then on · e opens the file'}</text>
+      <text fg={props.block!.missing ? TONE.warn : MUTED}>{props.block!.missing ?? '@path reference – read at send, a snapshot from then on · e opens the file'}</text>
     </Show>
   );
 }
@@ -362,8 +388,8 @@ function ReferenceHint(props: { block: Block | undefined }) {
 function PromptMeta(props: { mode: Mode }) {
   return (
     <Show when={props.mode !== 'context'}>
-      <span style={{ fg: props.mode === 'rename' ? ACCENT : KIND_COLOR.User }}>{props.mode === 'rename' ? 'title' : 'User'}</span>
-      <span style={{ fg: MUTED }}>{props.mode === 'rename' ? '  display only, never sent · empty resets' : '  adds a block and sends the Context · @file path[:a-b] adds a file'}</span>
+      <span style={{ fg: KIND_COLOR.User }}>User</span>
+      <span style={{ fg: MUTED }}>  adds a block and sends the Context · @path[:a-b] adds a file</span>
     </Show>
   );
 }
@@ -406,11 +432,12 @@ function Header(props: { gate: Gate; width: number }) {
   };
   const tone = () => ({ ok: undefined, warn: TONE.warn, over: TONE.error })[budget()?.tone ?? 'ok'];
   const profile = () => props.gate.profile();
+  const thinking = () => ` · thinking ${thinkingLabel(props.gate.thinking())}`;
   return (
     <HeaderBand
       width={props.width}
-      title={<span style={{ fg: MUTED }}>{profile()}</span>}
-      titleWidth={profile().length}
+      title={<span style={{ fg: MUTED }}>{profile() + thinking()}</span>}
+      titleWidth={profile().length + thinking().length}
       right={
         <>
           <span style={{ fg: tone() ?? TEXT }}>{used()}</span>
@@ -458,6 +485,8 @@ function contextBar(gate: Gate, width: number): { char: string; color: string }[
   return cells;
 }
 
+// Keys acting on the selected block only: off while blocks are marked.
+const SINGLE_KEYS = new Set(['alt+up', 'alt+down', 'y', 'a', 'n', 'p', 'e']);
 const BUSY_KEYS = new Set(['up', 'down', 'shift+up', 'shift+down', 'pageup', 'pagedown', 'q']);
 const WHEEL: Record<string, number> = { up: -1, down: 1 };
 
@@ -465,18 +494,25 @@ const modifierOf = (key: { option?: boolean; meta: boolean; shift: boolean }) =>
   key.option || key.meta ? 'alt+' : key.shift ? 'shift+' : '';
 
 const LOOK_KEYS: Hint[] = [['q', 'quit']];
-const KEYS: Hint[] = [['⌥↑↓', 'move'], ['e', 'edit'], ['r', 'rename'], ['d', 'remove'], ['p', 'pin'], ['space', 'mark'], ['c', 'compact'], ['u', 'undo'], ['q', 'quit']];
+// With marks only what acts on all marked blocks.
+const MARKED_KEYS: Hint[] = [['d', 'remove'], ['c', 'compact'], ['space', 'mark'], ['esc', 'unmark'], ['q', 'quit']];
+const KEYS: Hint[] = [['⌥↑↓', 'move'], ['e', 'edit'], ['d', 'remove'], ['p', 'pin'], ['space', 'mark'], ['c', 'compact'], ['t', 'thinking'], ['u', 'undo'], ['q', 'quit']];
 
 // Colours of a row: a removed one is muted throughout, one the chat template drops all but its flags.
 const rowFg = (row: Row) =>
   row.removed || row.dropped
-    ? { text: MUTED, kind: MUTED, tokens: MUTED, flags: row.dropped ? TONE.warn : MUTED }
-    : { text: TEXT, kind: KIND_COLOR[row.kind], tokens: row.live ? TONE.warn : MUTED, flags: TONE.warn };
+    ? { text: MUTED, kind: MUTED, flags: row.dropped ? TONE.warn : MUTED }
+    : { text: TEXT, kind: KIND_COLOR[row.kind], flags: TONE.warn };
+// A row's column colours: # and Content muted unless selected; Tokens yellow while live (not yet in the Context).
+const columnFg = (row: Row, selected: boolean) => {
+  const muted = selected ? TEXT : MUTED;
+  return { ...rowFg(row), muted, tokens: row.live && !row.removed ? TONE.warn : muted };
+};
 
 // Status line: a running command, the streaming answer (both with the row's spinner), else the last action.
 function statusOf(gate: Gate, spin: string): Status | null {
   const r = gate.running();
-  if (r) return { text: `${spin} running: ${cell(titleOf(r.call), 50).trimEnd()} · ${Math.round((Date.now() - r.started) / 1000)}s / ${gate.timeout}s`, tone: 'warn' };
+  if (r) return { text: `${spin} running: ${cell(titleOf(r.call), 50).trimEnd()} · ${Math.round((Date.now() - r.started) / 1000)}s / ${r.timeout}s`, tone: 'warn' };
   if (gate.compacting()?.phase === 'running') return { text: `${spin} compacting with ${gate.compacting()!.profile}`, tone: 'warn' };
   const s = gate.streaming();
   if (!s) return gate.status();
@@ -484,7 +520,7 @@ function statusOf(gate: Gate, spin: string): Status | null {
 }
 
 // Key hints right of the status; they stay visible. An error band adds how to dismiss it.
-type KeyMode = Mode | 'suggest' | Compaction['phase'];
+type KeyMode = Mode | 'suggest' | 'complete' | Compaction['phase'];
 function keysOf(gate: Gate, mode: KeyMode, error: boolean): Hint[] {
   const keys = modeKeys(gate, mode);
   return error && mode === 'context' ? [...keys.slice(0, -1), ['esc', 'dismiss'], keys.at(-1)!] : keys;
@@ -495,13 +531,14 @@ const MODE_KEYS: Partial<Record<KeyMode, Hint[]>> = {
   review: [['enter', 'accept'], ['x', 'discard'], ['i', 'instruction'], ['e', 'edit'], ...LOOK_KEYS],
   instruction: [['enter', 'compact'], ['tab', 'default'], ['esc', 'back']],
   suggest: [['↑↓', 'choose'], ['tab', 'complete'], ['enter', 'run'], ['esc', 'back']],
+  complete: [['↑↓', 'choose'], ['tab/enter', 'complete'], ['esc', 'back']],
   input: [['enter', 'send'], ['tab/esc', 'back']],
-  rename: [['enter', 'set title'], ['tab/esc', 'cancel']],
 };
 function modeKeys(gate: Gate, mode: KeyMode): Hint[] {
   const own = MODE_KEYS[mode];
   if (own) return own;
   if (gate.running()) return [['esc', 'kill'], ...LOOK_KEYS];
   if (gate.streaming()) return [['esc', 'abort'], ...LOOK_KEYS];
+  if (gate.marked().size) return MARKED_KEYS;
   return gate.selectedBlock()?.pending ? [['y', 'run once'], ['a', 'allow for session'], ['n', 'reject'], ...KEYS] : KEYS;
 }

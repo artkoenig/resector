@@ -1,6 +1,6 @@
 // HTTP and OpenAI-compatible chat streaming shared by the backends that speak /v1/chat/completions.
 import type { ChatOptions, ChatResult } from '../../core/backend';
-import type { Thinking } from '../../core/config/config';
+import type { Thinking } from '../../core/log/events';
 import { callId, type Message, type Request } from '../../core/render/native';
 import { splitThinking } from '../../core/toolcall/thinking';
 
@@ -44,11 +44,12 @@ function reason(body: string): string {
 // Without the content type fetch sends text/plain, which FastAPI servers (oMLX) reject.
 const jsonPost = (body: unknown): RequestInit => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
-// Request fields for the profile's thinking (FR-49): on/off through the chat template, else the effort.
+// Request fields for the thinking (FR-49): on/off through the chat template; an effort also as reasoning_effort,
+// as a field and for the chat template, since servers pass either one on.
 export function thinkingParams(thinking: Thinking | undefined): Record<string, unknown> {
   if (thinking === undefined) return {};
   if (thinking === 'off' || thinking === 'on') return { chat_template_kwargs: { enable_thinking: thinking === 'on' } };
-  return { reasoning_effort: thinking };
+  return { chat_template_kwargs: { enable_thinking: true, reasoning_effort: thinking }, reasoning_effort: thinking };
 }
 
 // Request body fields of a Request: the tools field only when there are tools.

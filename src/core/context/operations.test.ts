@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
-import { approvable, deny, edit, isFixed, inPair, move, nextCall, pin, reject, remove, rename, toNote, toolResult, undo } from './operations';
+import { TOOLS } from '../toolcall/bash';
+import { approvable, deny, edit, isFixed, inPair, move, nextCall, pin, reject, remove, removeAll, toggleTool, toNote, toolResult, undo } from './operations';
 
 const session = (...then: SessionEvent[]): SessionEvent[] => [
   { type: 'SessionCreated', profile: 'default', protocol: 'native' },
@@ -59,9 +60,12 @@ test('remove any block but System', () => {
   expect(remove(at(session(), 1)[1])).toEqual({ error: 'System prompt cannot be removed' });
 });
 
-test('rename trims the title; empty resets', () => {
-  expect(rename(at(session(), 2)[1], '  greeting ')).toEqual({ event: { type: 'Rename', id: 2, title: 'greeting' } });
-  expect(rename(at(session(), 2)[1], '  ')).toEqual({ event: { type: 'Rename', id: 2, title: '' } });
+test('d with marks removes every marked block in one event; nothing marked, nothing removed', () => {
+  const [context] = at(session(), 1);
+  const blocks = (...ids: number[]) => ids.map(id => context.blocks.find(b => b.id === id)!);
+  expect(removeAll(blocks(2, 4, 3))).toEqual({ event: { type: 'Remove', id: 2, others: [4, 3] } });
+  expect(removeAll(blocks(2, 1))).toEqual({ error: 'System prompt cannot be removed' });
+  expect(removeAll([])).toEqual({ error: 'nothing marked' });
 });
 
 test('undo names the latest Context operation not yet undone', () => {
@@ -89,6 +93,15 @@ test('the Tools Block is fixed like System (FR-12)', () => {
   expect(pin(block)).toEqual({ error: 'Tools Block is fixed' });
   expect(remove(block)).toEqual({ error: 'Tools Block cannot be removed' });
   expect(isFixed(at(session(), 2)[1])).toBe(false);
+});
+
+test('/tools switches a tool in the Tools Block as its next Revision; unknown tools and a missing block are errors', () => {
+  const on = { type: 'BlockAdded', id: 5, kind: 'Tools', origin: 'config', content: TOOLS } as const;
+  const events = session(on);
+  const [context] = at(events, 5);
+  expect(toggleTool(events, context, 'search')).toEqual({ event: { type: 'Edit', id: 5, revision: 2, content: expect.stringContaining('"search"') } });
+  expect(toggleTool(events, context, 'python')).toEqual({ error: 'unknown tool python – bash search' });
+  expect(toggleTool(session(), fold(session()), 'search')).toEqual({ error: 'no Tools Block' });
 });
 
 test('a Tool Call awaiting approval is not moved, pinned or removed', () => {

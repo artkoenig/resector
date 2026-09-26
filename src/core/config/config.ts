@@ -16,8 +16,6 @@ export const DEFAULT_ENDPOINTS: Record<BackendKind, string> = {
   omlx: 'http://localhost:1234',
 };
 
-const ThinkingSchema = z.enum(['off', 'on', 'low', 'medium', 'high']);
-export type Thinking = z.infer<typeof ThinkingSchema>;
 
 const ProfileSchema = z.strictObject({
   backend: BackendKindSchema,
@@ -28,7 +26,7 @@ const ProfileSchema = z.strictObject({
   toolProtocol: z.enum(['native', 'text-xml']).default('native'),
   resultFormat: z.enum(['native', 'toon']).default('native'),
   sampling: z.record(z.string(), z.number()).default({}).describe('Sampling parameters sent with every request, e.g. temperature'),
-  thinking: ThinkingSchema.default('off').describe('Reasoning: off/on (enable_thinking) or an effort level (reasoning_effort), as the model supports'),
+  thinking: z.string().default('off').describe('Reasoning at session start: off, on (enable_thinking) or an effort level (reasoning_effort) the chat template accepts; `t` at the Gate switches it'),
   compactionProfile: z.string().optional().describe('Model Profile used for Compaction; default: this one'),
   systemPrompt: z.string().optional().describe('System prompt file, relative to this config file'),
 });

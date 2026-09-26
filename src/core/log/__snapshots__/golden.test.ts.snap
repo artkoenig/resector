@@ -36,6 +36,7 @@ exports[`fixture profile-fallback.jsonl replays to its Context and request 1`] =
     "nextId": 3,
     "profile": "local",
     "protocol": "native",
+    "thinking": null,
   },
   "request": {
     "messages": [
@@ -134,6 +135,7 @@ exports[`fixture context-operations.jsonl replays to its Context and request 1`]
     "nextId": 7,
     "profile": "qwen3-8b",
     "protocol": "native",
+    "thinking": null,
   },
   "request": {
     "messages": [
@@ -361,6 +363,7 @@ exports[`fixture tool-loop.jsonl replays to its Context and request 1`] = `
     "nextId": 12,
     "profile": "local",
     "protocol": "native",
+    "thinking": null,
   },
   "request": {
     "messages": [
@@ -552,6 +555,7 @@ exports[`fixture edit-revisions.jsonl replays to its Context and request 1`] = `
     "nextId": 6,
     "profile": "qwen3-8b",
     "protocol": "native",
+    "thinking": null,
   },
   "request": {
     "messages": [
@@ -729,6 +733,7 @@ README.md src
     "nextId": 10,
     "profile": "local",
     "protocol": "native",
+    "thinking": null,
   },
   "request": {
     "messages": [
@@ -870,6 +875,7 @@ exports[`fixture compaction.jsonl replays to its Context and request 1`] = `
     "nextId": 9,
     "profile": "local",
     "protocol": "native",
+    "thinking": null,
   },
   "request": {
     "messages": [
@@ -1025,6 +1031,7 @@ git branch: main"
     "nextId": 9,
     "profile": "default",
     "protocol": "native",
+    "thinking": null,
   },
   "request": {
     "messages": [

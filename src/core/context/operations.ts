@@ -1,6 +1,7 @@
 // Context operations at the Review Gate (FR-4, FR-10, NFR-3): each yields the event to append, or why not.
 import type { SessionEvent } from '../log/events';
 import { undone, type Block, type Context } from '../log/fold';
+import * as bash from '../toolcall/bash';
 import { resultText, type RunResult } from '../toolcall/bash';
 
 export type Outcome<E extends SessionEvent = SessionEvent> = { event: E } | { error: string };
@@ -50,6 +51,16 @@ export function remove(block: Block): Outcome {
   return { event: { type: 'Remove', id: block.id } };
 }
 
+// d with marks: every marked block in one event, undone together.
+export function removeAll(blocks: Block[]): Outcome {
+  for (const block of blocks) {
+    const outcome = remove(block);
+    if ('error' in outcome) return outcome;
+  }
+  const [first, ...others] = blocks.map(b => b.id);
+  return first === undefined ? { error: 'nothing marked' } : { event: { type: 'Remove', id: first, others } };
+}
+
 // Editor port (adapters/editor): the user edits a text; resolves to the saved text.
 export type Editor = (text: string) => Promise<string>;
 
@@ -80,10 +91,17 @@ export function edit(events: SessionEvent[], block: Block, edited: string): Outc
   return { event: { type: 'Edit', id: block.id, revision: nextRevision(events, block.id), content } };
 }
 
+// /tools <name>: the Tools Block with the tool switched on or off, as a new Revision.
+export function toggleTool(events: SessionEvent[], { blocks }: Context, name: string): Outcome {
+  const tools = blocks.find(b => b.kind === 'Tools');
+  if (!tools) return { error: 'no Tools Block' };
+  const toggled = bash.toggleTool(tools.content, name);
+  if ('error' in toggled) return toggled;
+  return { event: { type: 'Edit', id: tools.id, revision: nextRevision(events, tools.id), content: toggled.content } };
+}
+
 export const nextRevision = (events: SessionEvent[], id: number) =>
   FIRST_REVISION + events.filter(e => e.type === 'Edit' && e.id === id).length + 1;
-
-export const rename = (block: Block, title: string): Outcome => ({ event: { type: 'Rename', id: block.id, title: title.trim() } });
 
 // Undo cancels the latest Context operation not yet undone, by a counter-event.
 export function undo(events: SessionEvent[]): Outcome<Undo> {
