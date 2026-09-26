@@ -482,12 +482,16 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
   }
 
   const commands: Record<CommandName, (arg: string) => void> = { '/sessions': openSessions, '/rename': renameSession, '/reload': () => void reload() };
-  // Input text: a known command runs with the rest as argument; an unknown `/word` is an error; anything else becomes a User block.
+  // Input text: a known command runs with the rest as argument; an unknown `/word` is an error; anything else becomes
+  // a User block and is sent right away – if sending is blocked, the block stays and the status says why (FR-6).
   function submit(text: string) {
     const name = text.trim().split(/\s/)[0]!;
     if (name in commands) commands[name as CommandName](text.trim().slice(name.length).trim());
     else if (/^\/\w+$/.test(name)) setStatus({ text: `unknown command ${name} – ${COMMANDS.map(c => c.name).join(' ')}`, tone: 'error' });
-    else if (text.trim()) addUser(text);
+    else if (text.trim()) {
+      addUser(text);
+      void send();
+    }
   }
 
   return {
