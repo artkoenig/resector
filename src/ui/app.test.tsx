@@ -595,7 +595,7 @@ test('several calls are decided one by one in order; results keep call order (FR
   await press('up');
   await press('y');
   frame = await frameMatching(ui, f => f.includes('? approve –') && /^ask\s+echo two\s/.test(previewed(f)));
-  expect(frame).toMatch(/^┃ echo two/m);
+  expect(frame).toContain('┃ a allows "echo *" for this session');
   await press('n');
   frame = await frameMatching(ui, f => f.includes('tool loop paused'));
   expect(frame).toMatch(/4\s+Tool Call\s+echo one[^]*5\s+Tool Call\s+echo two[^]*6\s+Tool Result\s+→ echo one[^]*7\s+Tool Result\s+→ echo two/);
@@ -750,6 +750,7 @@ test('the preview of a pending call shows each sub-command with the rule decidin
   const frame = ui.captureCharFrame();
   expect(frame).toMatch(/┃ allow\s+ls\s+built-in rule "ls \*"/);
   expect(frame).toMatch(/┃ ask\s+touch x\.txt\s+no rule → default ask/);
+  expect(frame).toContain('┃ a allows "touch *" for this session');
 });
 
 test('a shows the session rule first; a again logs it and runs the call, and every later match runs too (FR-23, FR-25)', async () => {

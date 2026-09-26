@@ -115,7 +115,7 @@ test('permission rules: built-in, then global, then project; project allow entri
     { source: 'project', project: true, text: '{ "permission": { "make *": "deny", "git commit *": "allow" } }' },
   ]);
   expect(permissions).toEqual({
-    rules: [...BUILTIN_ALLOW, { pattern: 'git push *', action: 'ask', source: 'config' }, { pattern: 'make *', action: 'allow', source: 'config' }, { pattern: 'make *', action: 'deny', source: 'project' }],
+    rules: [...BUILTIN_ALLOW, { pattern: 'git push *', action: 'ask', source: 'global' }, { pattern: 'make *', action: 'allow', source: 'global' }, { pattern: 'make *', action: 'deny', source: 'project' }],
     ignored: ['git commit *'],
   });
   expect(readConfig([{ source: 'global', text: '{}' }]).permissions).toEqual({ rules: BUILTIN_ALLOW, ignored: [] });

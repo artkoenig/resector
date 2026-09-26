@@ -1,10 +1,10 @@
 import { expect, test } from 'bun:test';
-import { BUILTIN_ALLOW, evaluate, matches, permissionRules, prefixRule, sessionAllowed, sessionRules, type Command, type Rule, type Split } from './approval';
+import { BUILTIN_ALLOW, evaluate, matches, permissionRules, prefixRule, quoted, sessionAllowed, sessionRules, type Command, type Rule, type Split } from './approval';
 
 const ROOT = '/work/project';
 // A split that treats `&&` as the only separator and every word after the first as a literal argument.
 const words: Split = command => (command.includes('"') ? null : command.split('&&').map(text => ({ text: text.trim(), args: text.trim().split(/\s+/).slice(1), writes: [] })));
-const rule = (pattern: string, action: Rule['action'], source: Rule['source'] = 'config'): Rule => ({ pattern, action, source });
+const rule = (pattern: string, action: Rule['action'], source: Rule['source'] = 'global'): Rule => ({ pattern, action, source });
 const verdict = (command: string, rules: Rule[] = BUILTIN_ALLOW, split: Split = words) => evaluate(command, { rules, split, root: ROOT });
 const only = (command: Command) => () => [command];
 
@@ -37,13 +37,13 @@ test('the built-in allow list: read-only commands (FR-22)', () => {
 });
 
 test('no rule matching: ask', () => {
-  expect(verdict('make')).toEqual({ action: 'ask', checks: [{ text: 'make', action: 'ask', why: 'no rule → default ask', fixed: false }] });
+  expect(verdict('make')).toEqual({ action: 'ask', checks: [{ text: 'make', action: 'ask', why: 'no rule → default ask', unallowable: false }] });
 });
 
 test('the last matching rule wins', () => {
   const rules = [rule('git *', 'deny'), rule('git status *', 'allow'), rule('npm *', 'allow'), rule('npm publish *', 'ask')];
-  expect(verdict('git status', rules).checks[0]).toEqual({ text: 'git status', action: 'allow', why: 'config rule "git status *"', fixed: false });
-  expect(verdict('git push', rules).checks[0]).toEqual({ text: 'git push', action: 'deny', why: 'config rule "git *"', fixed: false });
+  expect(verdict('git status', rules).checks[0]).toEqual({ text: 'git status', action: 'allow', why: 'global rule "git status *"', unallowable: false });
+  expect(verdict('git push', rules).checks[0]).toEqual({ text: 'git push', action: 'deny', why: 'global rule "git *"', unallowable: false });
   expect(verdict('npm publish', rules).action).toBe('ask');
 });
 
@@ -53,24 +53,24 @@ test('every sub-command must be allowed: one ask makes the call ask, one deny de
   expect(verdict('ls && make', rules)).toEqual({
     action: 'ask',
     checks: [
-      { text: 'ls', action: 'allow', why: 'built-in rule "ls *"', fixed: false },
-      { text: 'make', action: 'ask', why: 'no rule → default ask', fixed: false },
+      { text: 'ls', action: 'allow', why: 'built-in rule "ls *"', unallowable: false },
+      { text: 'make', action: 'ask', why: 'no rule → default ask', unallowable: false },
     ],
   });
   expect(verdict('make && rm a && ls', rules).action).toBe('deny');
 });
 
 test('a command that does not parse: ask, and no session rule can allow it', () => {
-  expect(verdict('echo "open')).toEqual({ action: 'ask', checks: [{ text: 'echo "open', action: 'ask', why: 'unparseable', fixed: true }] });
+  expect(verdict('echo "open')).toEqual({ action: 'ask', checks: [{ text: 'echo "open', action: 'ask', why: 'unparseable', unallowable: true }] });
 });
 
 test('a command with nothing to run: ask', () => {
-  expect(verdict('# only a comment', BUILTIN_ALLOW, () => [])).toEqual({ action: 'ask', checks: [{ text: '# only a comment', action: 'ask', why: 'no command', fixed: true }] });
+  expect(verdict('# only a comment', BUILTIN_ALLOW, () => [])).toEqual({ action: 'ask', checks: [{ text: '# only a comment', action: 'ask', why: 'no command', unallowable: true }] });
 });
 
 test('an argument outside the project turns allow into ask, which no session rule changes (FR-22)', () => {
   const outside = (arg: string) => verdict('cat', BUILTIN_ALLOW, only({ text: `cat ${arg}`, args: [arg], writes: [] })).checks[0]!;
-  expect(outside('/etc/passwd')).toEqual({ text: 'cat /etc/passwd', action: 'ask', why: 'argument outside project: /etc/passwd', fixed: true });
+  expect(outside('/etc/passwd')).toEqual({ text: 'cat /etc/passwd', action: 'ask', why: 'argument outside project: /etc/passwd', unallowable: true });
   expect(outside('../secret').why).toBe('argument outside project: ../secret');
   expect(outside('src/../../x').action).toBe('ask');
   expect(outside('~/.ssh/id_rsa').action).toBe('ask');
@@ -78,11 +78,14 @@ test('an argument outside the project turns allow into ask, which no session rul
   expect(outside('--file=/etc/passwd').why).toBe('argument outside project: --file=/etc/passwd');
   expect(outside('/work/project-other/x').action).toBe('ask');
   expect(outside('-f=/etc/passwd').action).toBe('ask');
+  expect(outside('-f/etc/shadow').why).toBe('argument outside project: -f/etc/shadow');
+  expect(outside('-I../include').action).toBe('ask');
+  expect(outside('-I~/x').action).toBe('ask');
 });
 
 test('arguments inside the project, flags and the null devices are fine', () => {
   const inside = (arg: string) => verdict('cat', BUILTIN_ALLOW, only({ text: `cat ${arg}`, args: [arg], writes: [] })).action;
-  for (const arg of ['a.txt', 'src/../lib/x', './x', '/work/project', '/work/project/src/a.ts', '-n', '--lines=5', '/dev/null', '/dev/stdin', '/dev/stdout', '/dev/stderr', 'a~b', '-', '.--b=./x']) expect(inside(arg), arg).toBe('allow');
+  for (const arg of ['a.txt', 'src/../lib/x', './x', '/work/project', '/work/project/src/a.ts', '-n', '--lines=5', '/dev/null', '/dev/stdin', '/dev/stdout', '/dev/stderr', 'a~b', '-', '.--b=./x', '-n5', '-Isrc', '-I./src', 'x-f/etc', '.-f./x']) expect(inside(arg), arg).toBe('allow');
 });
 
 test('any argument outside the project asks, not only the first', () => {
@@ -91,7 +94,7 @@ test('any argument outside the project asks, not only the first', () => {
 
 test('an argument that is not literal ($VAR, $(…)) could point anywhere: ask', () => {
   const check = verdict('cat', BUILTIN_ALLOW, only({ text: 'cat $HOME/x', args: [null], writes: [] })).checks[0];
-  expect(check).toEqual({ text: 'cat $HOME/x', action: 'ask', why: 'argument not literal', fixed: true });
+  expect(check).toEqual({ text: 'cat $HOME/x', action: 'ask', why: 'argument not literal', unallowable: true });
 });
 
 test('a denied command stays denied whatever its arguments', () => {
@@ -102,16 +105,26 @@ test('a denied command stays denied whatever its arguments', () => {
 
 test('a redirect target outside the project: ask', () => {
   const check = verdict('ls', BUILTIN_ALLOW, only({ text: 'ls', args: [], writes: ['/tmp/out'] })).checks[0];
-  expect(check).toEqual({ text: 'ls', action: 'ask', why: 'argument outside project: /tmp/out', fixed: true });
+  expect(check).toEqual({ text: 'ls', action: 'ask', why: 'argument outside project: /tmp/out', unallowable: true });
   expect(verdict('ls', BUILTIN_ALLOW, only({ text: 'ls', args: [], writes: [null] })).checks[0]!.why).toBe('argument not literal');
 });
 
 test('a built-in read-only command writing a file asks; a rule of the user allows it', () => {
   const writes = only({ text: 'cat a', args: ['a'], writes: ['b'] });
-  expect(verdict('cat', BUILTIN_ALLOW, writes).checks[0]).toEqual({ text: 'cat a', action: 'ask', why: 'writes b', fixed: false });
+  expect(verdict('cat', BUILTIN_ALLOW, writes).checks[0]).toEqual({ text: 'cat a', action: 'ask', why: 'writes b', unallowable: false });
   expect(verdict('ls', BUILTIN_ALLOW, only({ text: 'ls', args: [], writes: ['/dev/null'] })).action).toBe('allow');
   expect(verdict('cat', [...BUILTIN_ALLOW, rule('cat *', 'allow', 'session')], writes).action).toBe('allow');
   expect(verdict('make', [rule('make *', 'allow')], only({ text: 'make', args: [], writes: ['log'] })).action).toBe('allow');
+});
+
+test('options making a built-in read-only command write or run something ask (FR-22)', () => {
+  const asks = (command: string) => verdict(command).checks[0]!;
+  expect(asks('find . -delete')).toEqual({ text: 'find . -delete', action: 'ask', why: 'may write: -delete', unallowable: false });
+  for (const command of ['find . -exec rm {} +', 'find . -execdir x', 'find . -ok x', 'find . -okdir x', 'find . -fprint f', 'find . -fprint0 f', 'find . -fprintf f %p', 'find . -fls f']) expect(asks(command).action, command).toBe('ask');
+  for (const command of ['sed -n -i s/a/b/ f', 'sed -n -Ei p f', 'sed -n --in-place s/a/b/ f', 'git diff --output=x', 'git log --output x', 'rg --pre=cat x', 'rg --pre cat x']) expect(asks(command).action, command).toBe('ask');
+  for (const command of ['find . -name x', 'find . -executable', 'sed -n -E p f', 'git diff --output-indicator-new=x', 'rg --pretty x', 'grep -delete x', 'find . -name x-delete', 'sed -n s/a-i/b/ f', 'git log --x--output', 'rg a--pre']) expect(asks(command).action, command).toBe('allow');
+  expect(verdict('find . -delete', [...BUILTIN_ALLOW, rule('find *', 'allow')]).action).toBe('allow');
+  expect(verdict('find', BUILTIN_ALLOW, only({ text: ' find . -delete', args: ['.', '-delete'], writes: [] })).action).toBe('ask');
 });
 
 test('allow for session: the command prefix by the arity table, then " *" (architecture §5)', () => {
@@ -123,6 +136,10 @@ test('allow for session: the command prefix by the arity table, then " *" (archi
   expect(prefixRule('rm -rf dist')).toBe('rm *');
   expect(prefixRule('git')).toBe('git *');
   expect(prefixRule('git   checkout  x')).toBe('git checkout *');
+  expect(prefixRule('FOO=1 BAR=2 make build x')).toBe('FOO=1 BAR=2 make build *');
+  expect(prefixRule('FOO=1 rm x')).toBe('FOO=1 rm *');
+  expect(prefixRule('FOO=1')).toBe('FOO=1 *');
+  expect(prefixRule('a.b=c x')).toBe('a.b=c *');
   expect(prefixRule('  python3   -m pytest')).toBe('python3 *');
 });
 
@@ -152,4 +169,8 @@ test('the session rules are the AllowRuleAdded events of the Session Log (FR-25)
     { type: 'AllowRuleAdded', pattern: 'bun test *' },
   ]);
   expect(rules).toEqual([rule('make *', 'allow', 'session'), rule('bun test *', 'allow', 'session')]);
+});
+
+test('patterns are shown quoted', () => {
+  expect(quoted(['make *', 'rm *'])).toBe('"make *", "rm *"');
 });

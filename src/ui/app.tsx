@@ -2,7 +2,7 @@
 import type { MouseEvent, ScrollBoxRenderable } from '@opentui/core';
 import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/solid';
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from 'solid-js';
-import type { Action, Verdict } from '../core/approval/approval';
+import { quoted, sessionRules, type Action, type Verdict } from '../core/approval/approval';
 import type { Kind } from '../core/log/events';
 import { COMMANDS, type Compaction, createGate, type Gate, type GateOptions, type Status } from './gate';
 import { around, cell, count, flagsOf, formatTokens, right, titleOf } from './format';
@@ -322,9 +322,14 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   );
 }
 
-// Why the rules ask for the pending call: each sub-command with its decision and reason (FR-22).
 const ACTION_COLOR: Record<Action, string> = { allow: TONE.ok, ask: TONE.warn, deny: TONE.error };
+// Why the rules ask for the pending call: each sub-command with its decision and reason (FR-22), then what `a`
+// would allow for the session, before anything is saved (FR-23).
 function Checks(props: { verdict: Verdict }) {
+  const session = () => {
+    const found = sessionRules(props.verdict);
+    return 'error' in found ? found.error : `a allows ${quoted(found.patterns)} for this session`;
+  };
   return (
     <>
       <For each={props.verdict.checks}>
@@ -336,6 +341,7 @@ function Checks(props: { verdict: Verdict }) {
           </text>
         )}
       </For>
+      <text fg={MUTED}>{session()}</text>
       <text> </text>
     </>
   );

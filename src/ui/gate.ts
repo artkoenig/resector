@@ -2,7 +2,7 @@
 import { createEffect, createMemo, createSignal } from 'solid-js';
 import type { Clipboard } from '../adapters/clipboard/clipboard';
 import type { Backend, ChatResult, Counted } from '../core/backend';
-import { evaluate, sessionAllowed, sessionRules, type Rule, type Split, type Verdict } from '../core/approval/approval';
+import { evaluate, quoted, sessionAllowed, sessionRules, type Rule, type Split, type Verdict } from '../core/approval/approval';
 import { warmRows } from '../core/cache/cache';
 import * as compaction from '../core/compaction/compaction';
 import * as ops from '../core/context/operations';
@@ -245,7 +245,7 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     const whileThinking = result.content || result.calls.length || !result.thinking ? '' : ' while thinking';
     if (result.finish === 'aborted') return { text: `⚠ aborted${whileThinking} – partial answer kept (cut off)`, tone: 'warn' };
     if (result.finish === 'length') return { text: `⚠ cut off at max_tokens${whileThinking}`, tone: 'warn' };
-    if (notRun) return { text: `⚠ tool call not run: ${notRun}`, tone: 'warn' };
+    if (notRun) return { text: notRunText(notRun), tone: 'warn' };
     return { text: 'answer complete', tone: 'ok' };
   }
 
@@ -255,13 +255,13 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     events.forEach(append);
     append({ type: 'ResponseReceived', usage: result.usage, cached: result.cached });
     const miss = cacheMiss(result);
-    if (ops.nextCall(context())) return advance([notRun && `⚠ tool call not run: ${notRun}`, miss && `⚠ ${miss}`].filter((n): n is string => !!n));
+    if (ops.nextCall(context())) return advance([notRun && notRunText(notRun), miss && `⚠ ${miss}`].filter((n): n is string => !!n));
     const status = answerStatus(result, notRun);
     setStatus(miss ? { text: `${status.text} · ⚠ ${miss}`, tone: 'warn' } : status);
   }
 
   // Tool Approval (FR-22–FR-25) ----------------------------------------------------------------------------
-  // The rules for a call: built-in and config rules, then the ones allowed for this session; last match wins.
+  // The rules for a call: built-in, global and project rules, then the ones allowed for this session; last match wins.
   const rules = () => [...approval.permissions().rules, ...sessionAllowed(events())];
   const verdictOf = (call: Block): Verdict => evaluate(call.content, { rules: rules(), split: approval.split, root: approval.root });
 
@@ -323,7 +323,7 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     if (!call) return;
     const found = sessionRules(verdictOf(call));
     if ('error' in found) return setStatus({ text: found.error, tone: 'info' });
-    const patterns = found.patterns.map(p => `"${p}"`).join(', ');
+    const patterns = quoted(found.patterns);
     const asked = `allow ${call.id}`;
     if (confirming() !== asked) {
       setConfirming(asked);
@@ -337,9 +337,9 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
   // n: not run; the result says "rejected by user" (FR-23).
   function reject() {
     const call = decidable();
-    if (!call || !apply(ops.reject(context(), call, nextId()))) return;
-    setSelected(nextId() - 1);
-    advance();
+    if (!call) return;
+    setSelected(nextId());
+    if (apply(ops.reject(context(), call, nextId()))) advance();
   }
 
   // Why the Context cannot be sent now, or null: calls await approval, or the model has answered
@@ -617,7 +617,8 @@ export type Gate = ReturnType<typeof createGate>;
 // Project config may only tighten: its allow entries are ignored, and the Gate says so (FR-25).
 function ignoredHint(approval: Approval): string | null {
   const { ignored } = approval.permissions();
-  return ignored.length ? `project config: allow ${ignored.map(p => `"${p}"`).join(', ')} ignored (project config may only tighten)` : null;
+  return ignored.length ? `project config: allow ${quoted(ignored)} ignored (project config may only tighten)` : null;
 }
+const notRunText = (why: string) => `⚠ tool call not run: ${why}`;
 const withHint = (status: Status | null, hint: string | null): Status | null =>
   hint ? { text: status ? `${status.text} · ${hint}` : hint, tone: 'warn' } : status;

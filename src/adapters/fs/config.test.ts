@@ -30,7 +30,7 @@ test('the project config may only tighten permissions: its allow entries are ign
   put(join(home, '.config/resector/config.jsonc'), '{ "permission": { "make *": "allow" } }');
   put(join(cwd, '.resector/config.jsonc'), '{ "permission": { "curl *": "deny", "git commit *": "allow" } }');
   const { permissions } = loadConfig(configPaths({ home, cwd, env: {} }))!;
-  expect(permissions.rules.filter(r => r.source !== 'built-in').map(r => [r.pattern, r.source])).toEqual([['make *', 'config'], ['curl *', 'project']]);
+  expect(permissions.rules.filter(r => r.source !== 'built-in').map(r => [r.pattern, r.source])).toEqual([['make *', 'global'], ['curl *', 'project']]);
   expect(permissions.ignored).toEqual(['git commit *']);
 });
 
