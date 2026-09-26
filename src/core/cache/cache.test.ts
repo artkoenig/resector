@@ -36,4 +36,5 @@ test('a row after a cold row is cold even if it has no tokens', () => {
 test('a row of 0 tokens (dropped by the chat template) is warm when the row after it is (FR-48)', () => {
   expect(warmRows([10, 0, 5, 0], 12)).toEqual([true, false, false, false]);
   expect(warmRows([10, 0, 5, 0, 3], 15)).toEqual([true, true, true, false, false]);
+  expect(warmRows([0, 5], 3)).toEqual([false, false]);
 });

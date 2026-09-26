@@ -54,6 +54,7 @@ test('cut off while thinking: the Thinking block is cut off, no Assistant block 
       events: [{ type: 'BlockAdded', id: 3, kind: 'Thinking', origin: 'model', content: 'Hmm, the', cutOff: true }],
       notRun: null,
     });
+  expect(answerBlocks(result({ finish: 'aborted' }), 3).events).toEqual([{ type: 'BlockAdded', id: 3, kind: 'Assistant', origin: 'model', content: '', cutOff: true }]);
   expect(answerBlocks(result({ thinking: 'Done.', content: 'Ans', finish: 'length' }), 3).events).toEqual([
     { type: 'BlockAdded', id: 3, kind: 'Thinking', origin: 'model', content: 'Done.' },
     { type: 'BlockAdded', id: 4, kind: 'Assistant', origin: 'model', content: 'Ans', cutOff: true },

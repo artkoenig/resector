@@ -15,19 +15,19 @@ test('without blocks the whole request is Template', () => {
   expect(splitTokens({ empty: 1, prefixes: [], total: 3 })).toEqual({ blocks: [], template: 3, total: 3 });
 });
 
-// reasoning: per Thinking block, what its reasoning adds to its counted prefix and to the request.
+// thinking: per Thinking block, what it adds to its counted prefix and to the request.
 test('a Thinking block owns the reasoning as the request renders it, not as its prefix does', () => {
-  const split = splitTokens({ empty: 1, prefixes: [11, 16, 30], total: 41, reasoning: [{ step: 1, prefix: 0, request: 8, joined: true }] });
-  expect(split).toEqual({ blocks: [10, 13, 14], template: 4, total: 41 });
+  const split = splitTokens({ empty: 1, prefixes: [11, 16, 30], total: 41, thinking: [{ step: 1, prefix: 2, request: 8, joined: true }] });
+  expect(split).toEqual({ blocks: [10, 11, 14], template: 6, total: 41 });
 });
 
 test('reasoning the template drops: the Thinking block owns nothing; its role markers go to its message (FR-48)', () => {
-  expect(splitTokens({ empty: 1, prefixes: [11, 16, 30], total: 33, reasoning: [{ step: 1, prefix: 3, request: 0, joined: true }] })).toEqual({
+  expect(splitTokens({ empty: 1, prefixes: [11, 16, 30], total: 33, thinking: [{ step: 1, prefix: 3, request: 0, joined: true }] })).toEqual({
     blocks: [10, 0, 16],
     template: 7,
     total: 33,
   });
-  expect(splitTokens({ empty: 1, prefixes: [11, 16, 30], total: 33, reasoning: [{ step: 1, prefix: 0, request: 0, joined: false }] })).toEqual({
+  expect(splitTokens({ empty: 1, prefixes: [11, 16, 30], total: 33, thinking: [{ step: 1, prefix: 0, request: 0, joined: false }] })).toEqual({
     blocks: [10, 0, 14],
     template: 9,
     total: 33,

@@ -1,5 +1,6 @@
 // HTTP and OpenAI-compatible chat streaming shared by the backends that speak /v1/chat/completions.
 import type { ChatOptions, ChatResult } from '../../core/backend';
+import type { Thinking } from '../../core/config/config';
 import { callId, type Message, type Request } from '../../core/render/native';
 import { splitThinking } from '../../core/toolcall/thinking';
 
@@ -43,6 +44,13 @@ function reason(body: string): string {
 // Without the content type fetch sends text/plain, which FastAPI servers (oMLX) reject.
 const jsonPost = (body: unknown): RequestInit => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
+// Request fields for the profile's thinking (FR-49): on/off through the chat template, else the effort.
+export function thinkingParams(thinking: Thinking | undefined): Record<string, unknown> {
+  if (thinking === undefined) return {};
+  if (thinking === 'off' || thinking === 'on') return { chat_template_kwargs: { enable_thinking: thinking === 'on' } };
+  return { reasoning_effort: thinking };
+}
+
 // Request body fields of a Request: the tools field only when there are tools.
 export const chatFields = ({ messages, tools }: Request) => ({ messages, ...(tools.length && { tools }) });
 
@@ -62,7 +70,7 @@ export async function streamChat(
   chat: Request,
   { signal, onDelta, onThinking = () => {} }: ChatOptions,
 ): Promise<ChatResult> {
-  const answer: Answer = { result: { thinking: '', content: '', calls: [], finish: 'aborted', usage: null, cached: null, predicted: null }, parsed: '', text: '', inline: '' };
+  const answer: Answer = { result: { thinking: '', content: '', calls: [], finish: 'aborted', usage: null, cached: null, predicted: null }, fromField: '', text: '', inline: '' };
   const emit = { onDelta, onThinking };
   try {
     const body = { ...params, ...chatFields(chat), stream: true, stream_options: { include_usage: true } };
@@ -77,9 +85,9 @@ export async function streamChat(
   return settle(answer);
 }
 
-// The answer so far. Reasoning comes as its own delta field (parsed) or inline as <think>…</think> at the
+// The answer so far. Reasoning comes as its own delta field (fromField) or inline as <think>…</think> at the
 // start of the content (inline); `text`: all content streamed.
-type Answer = { result: ChatResult; parsed: string; text: string; inline: string };
+type Answer = { result: ChatResult; fromField: string; text: string; inline: string };
 type Emit = Pick<ChatOptions, 'onDelta'> & { onThinking: (text: string) => void };
 
 // Streams what is new of the reasoning and the answer text since the last event.
@@ -96,13 +104,14 @@ function streamText(answer: Answer, { onDelta, onThinking }: Emit, done = false)
 // The complete answer: text held back as a possible <think> is text after all.
 function settle(answer: Answer): ChatResult {
   streamText(answer, { onDelta: () => {}, onThinking: () => {} }, true);
-  answer.result.thinking = answer.parsed || answer.inline;
+  answer.result.thinking = answer.fromField || answer.inline;
   return answer.result;
 }
 
-function addDelta(answer: Answer, { reasoning_content, reasoning = reasoning_content, content }: Delta, emit: Emit) {
+function addDelta(answer: Answer, { reasoning_content, reasoning: named, content }: Delta, emit: Emit) {
+  const reasoning = reasoning_content || named;
   if (reasoning) {
-    answer.parsed += reasoning;
+    answer.fromField += reasoning;
     emit.onThinking(reasoning);
   }
   if (content) {

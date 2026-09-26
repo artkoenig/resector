@@ -229,7 +229,8 @@ test('reasoning streams apart from the answer, as reasoning_content or inline <t
   const backend = await connectLlamaCpp(fake.url);
   fake.reply({ thinking: ['Let me ', 'think.'], chunks: ['Hel', 'lo'] });
   fake.reply({ chunks: ['<thi', 'nk>\nLet me ', 'think.\n</think>\n\nHel', 'lo'] });
-  for (const _ of [1, 2]) {
+  fake.reply({ thinking: ['Let me think.'], chunks: ['Hello'], reasoningNull: true });
+  for (const _ of [1, 2, 3]) {
     const deltas: string[] = [];
     const thoughts: string[] = [];
     const result = await backend.chat(request([USER]), { signal: new AbortController().signal, onDelta: d => deltas.push(d), onThinking: t => thoughts.push(t) });

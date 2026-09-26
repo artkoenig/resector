@@ -7,6 +7,8 @@ import { commonPrefix } from '../src/core/cache/cache';
 export type Reply = {
   // Reasoning streamed as reasoning_content before the chunks.
   thinking?: string[];
+  // Also sends `reasoning: null` next to reasoning_content, as some servers do.
+  reasoningNull?: boolean;
   chunks: string[];
   // Tool calls streamed after the chunks; finish then defaults to tool_calls.
   calls?: { name: string; arguments: string }[];
@@ -118,7 +120,8 @@ export function stream(reply: Reply, signal: AbortSignal, final: unknown): Reada
   const data = (o: unknown) => enc.encode(`data: ${JSON.stringify(o)}\n\n`);
   return new ReadableStream({
     async start(ctrl) {
-      for (const reasoning_content of reply.thinking ?? []) ctrl.enqueue(data({ choices: [{ index: 0, delta: { reasoning_content } }] }));
+      for (const reasoning_content of reply.thinking ?? [])
+        ctrl.enqueue(data({ choices: [{ index: 0, delta: { reasoning_content, ...(reply.reasoningNull && { reasoning: null }) } }] }));
       for (const content of reply.chunks) ctrl.enqueue(data({ choices: [{ index: 0, delta: { content } }] }));
       // Like llama.cpp: id and name first, then the arguments in two pieces.
       reply.calls?.forEach(({ name, arguments: args }, index) => {

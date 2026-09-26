@@ -1,9 +1,10 @@
 import type { Block, Context } from '../log/fold';
 
 export type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
+export type AssistantMessage = { role: 'assistant'; content: string; reasoning_content?: string; tool_calls?: ToolCall[] };
 export type Message =
   | { role: 'system' | 'user'; content: string }
-  | { role: 'assistant'; content: string; reasoning_content?: string; tool_calls?: ToolCall[] }
+  | AssistantMessage
   | { role: 'tool'; tool_call_id: string; content: string };
 export type ToolDefinition = { type: 'function'; function: { name: string; description: string; parameters: unknown } };
 // A chat request as the backend receives it: messages plus the tools field.
@@ -16,6 +17,11 @@ export const sentBlocks = (context: Context): Block[] => context.blocks.filter(b
 // answer and its rendering in the next request are the same tokens (prefix cache).
 export const callId = (index: number) => `call_${index}`;
 export const EMPTY_REQUEST: Request = { messages: [], tools: [] };
+
+// The message without its Thinking block: what it renders as when the chat template drops it.
+export function withoutThinking({ reasoning_content: _, ...message }: AssistantMessage): AssistantMessage {
+  return message;
+}
 
 // A Tool Call joins the assistant message right before it: its text or earlier calls of the same answer.
 function addCall({ messages }: Request, ids: Map<number, string>, b: Block) {
@@ -32,7 +38,7 @@ function addCall({ messages }: Request, ids: Map<number, string>, b: Block) {
 // Assistant text joins the message of the Thinking block right before it: one answer, one message.
 function addText({ messages }: Request, _: Map<number, string>, b: Block) {
   const last = messages.at(-1);
-  if (last?.role === 'assistant' && last.reasoning_content !== undefined && !last.content && !last.tool_calls) messages[messages.length - 1] = { ...last, content: b.content };
+  if (last && 'reasoning_content' in last && !last.content && !last.tool_calls) messages[messages.length - 1] = { ...last, content: b.content };
   else messages.push({ role: 'assistant', content: b.content });
 }
 

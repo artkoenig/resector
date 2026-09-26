@@ -9,7 +9,8 @@ export function splitThinking(text: string, done = false): { thinking: string; c
   const start = text.trimStart();
   if (OPEN.startsWith(start)) return { thinking: '', content: done ? text : '' };
   if (!start.startsWith(OPEN)) return { thinking: '', content: text };
-  const end = start.indexOf(CLOSE);
-  if (end < 0) return { thinking: start.slice(OPEN.length).trimStart(), content: '' };
-  return { thinking: start.slice(OPEN.length, end).trim(), content: start.slice(end + CLOSE.length).trimStart() };
+  const inside = start.slice(OPEN.length);
+  const end = inside.indexOf(CLOSE);
+  if (end < 0) return { thinking: inside.trimStart(), content: '' };
+  return { thinking: inside.slice(0, end).trim(), content: inside.slice(end + CLOSE.length).trimStart() };
 }

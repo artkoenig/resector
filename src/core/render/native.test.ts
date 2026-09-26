@@ -138,10 +138,27 @@ test('a Thinking block is the reasoning_content of its answer: text and Tool Cal
 });
 
 test('an Assistant block after anything but its Thinking block starts its own message', () => {
-  const context = fold([created, add(1, 'Thinking', 'plan'), add(2, 'User', 'moved here'), add(3, 'Assistant', 'text')]);
+  const context = fold([
+    created,
+    add(1, 'Assistant', 'first'),
+    add(2, 'Thinking', 'plan'),
+    add(3, 'User', 'moved here'),
+    add(4, 'Assistant', 'text'),
+    add(5, 'Thinking', 'again'),
+    add(6, 'Assistant', 'joined'),
+    add(7, 'Assistant', 'own'),
+    add(8, 'Thinking', 'call'),
+    add(9, 'Tool Call', 'ls'),
+    add(10, 'Assistant', 'after call'),
+  ]);
   expect(renderNative(context).messages).toEqual([
+    { role: 'assistant', content: 'first' },
     { role: 'assistant', content: '', reasoning_content: 'plan' },
     { role: 'user', content: 'moved here' },
     { role: 'assistant', content: 'text' },
+    { role: 'assistant', content: 'joined', reasoning_content: 'again' },
+    { role: 'assistant', content: 'own' },
+    { role: 'assistant', content: '', reasoning_content: 'call', tool_calls: [{ id: 'call_0', type: 'function', function: { name: 'bash', arguments: '{"command":"ls"}' } }] },
+    { role: 'assistant', content: 'after call' },
   ]);
 });

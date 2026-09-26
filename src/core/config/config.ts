@@ -18,13 +18,6 @@ export const DEFAULT_ENDPOINTS: Record<BackendKind, string> = {
 const ThinkingSchema = z.enum(['off', 'on', 'low', 'medium', 'high']);
 export type Thinking = z.infer<typeof ThinkingSchema>;
 
-// Request fields for the profile's thinking (FR-49): on/off through the chat template, else the effort.
-export const thinkingParams = (thinking: Thinking | undefined): Record<string, unknown> => {
-  if (thinking === undefined) return {};
-  if (thinking === 'off' || thinking === 'on') return { chat_template_kwargs: { enable_thinking: thinking === 'on' } };
-  return { reasoning_effort: thinking };
-};
-
 const ProfileSchema = z.strictObject({
   backend: BackendKindSchema,
   endpoint: z.string().optional().describe('Server URL; default per backend (8080, 11434, 1234 on localhost)'),

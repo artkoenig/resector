@@ -4,6 +4,7 @@ import { splitThinking } from './thinking';
 test('<think>…</think> at the start of the text is the reasoning, the rest the answer (FR-46)', () => {
   expect(splitThinking('<think>\nplan\n</think>\n\nHello')).toEqual({ thinking: 'plan', content: 'Hello' });
   expect(splitThinking('  <think>a</think>b')).toEqual({ thinking: 'a', content: 'b' });
+  expect(splitThinking('<think></think>b')).toEqual({ thinking: '', content: 'b' });
 });
 
 test('an unclosed <think> is all reasoning so far; the answer has not started', () => {

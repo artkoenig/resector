@@ -2,11 +2,11 @@
 // /v1/messages/count_tokens, which applies the model's chat template with the generation prompt.
 import type { Backend, CacheHit } from '../../core/backend';
 import { commonPrefix } from '../../core/cache/cache';
-import { thinkingParams, type Thinking } from '../../core/config/config';
-import { EMPTY_REQUEST as EMPTY, type Message, type Request } from '../../core/render/native';
-import { reasoningOf } from '../../core/tokens/reasoning';
+import type { Thinking } from '../../core/config/config';
+import { EMPTY_REQUEST as EMPTY, type AssistantMessage, type Message, type Request } from '../../core/render/native';
+import { thinkingShares } from '../../core/tokens/thinking';
 import { splitTokens } from '../../core/tokens/split';
-import { answerMessage, httpClient, streamChat } from './openai';
+import { answerMessage, httpClient, streamChat, thinkingParams } from './openai';
 
 const TRAILER: Message = { role: 'user', content: '' };
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -36,7 +36,7 @@ function addAnthropic(converted: AnthropicMessage[], m: Message) {
   } else converted.push(m.role === 'assistant' ? assistantAnthropic(m) : { role: m.role, content: m.content });
 }
 
-function assistantAnthropic(m: Extract<Message, { role: 'assistant' }>): AnthropicMessage {
+function assistantAnthropic(m: AssistantMessage): AnthropicMessage {
   const text = (m.reasoning_content === undefined ? '' : `<think>\n${m.reasoning_content}\n</think>\n\n`) + m.content;
   if (!m.tool_calls) return { role: 'assistant', content: text };
   const uses = m.tool_calls.map(c => ({ type: 'tool_use', id: c.id, name: c.function.name, input: JSON.parse(c.function.arguments) }));
@@ -117,8 +117,8 @@ export async function connectOmlx(endpoint: string, { window, model, sampling, t
       // Without user message the smallest renderable request is the one with the empty user turn.
       const sendable = whole.messages.some(m => m.role === 'user') && whole.messages.at(-1)?.role !== 'assistant';
       const total = whole.messages.some(m => m.role === 'user') ? await tokens(whole) : (prefixes.at(-1) ?? empty!);
-      const reasoning = await reasoningOf(requests, prefixes, total, { prefix, request: sendable ? tokens : null });
-      const split = splitTokens({ empty: empty!, prefixes, total, reasoning });
+      const shares = await thinkingShares(requests, prefixes, total, { prefix, request: sendable ? tokens : null });
+      const split = splitTokens({ empty: empty!, prefixes, total, thinking: shares });
       last = { key: JSON.stringify(whole), cached: await predict(requests, split.blocks) };
       return { ...split, cached: last.cached };
     },

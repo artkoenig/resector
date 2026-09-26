@@ -237,9 +237,9 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
 
   // The status line after an answer: how it ended, else the call to decide on next.
   function answerStatus(result: ChatResult, notRun: string | null, next: Block | undefined): Status {
-    const during = result.content || result.calls.length || !result.thinking ? '' : ' while thinking';
-    if (result.finish === 'aborted') return { text: `⚠ aborted${during} – partial answer kept (cut off)`, tone: 'warn' };
-    if (result.finish === 'length') return { text: `⚠ cut off at max_tokens${during}`, tone: 'warn' };
+    const whileThinking = result.content || result.calls.length || !result.thinking ? '' : ' while thinking';
+    if (result.finish === 'aborted') return { text: `⚠ aborted${whileThinking} – partial answer kept (cut off)`, tone: 'warn' };
+    if (result.finish === 'length') return { text: `⚠ cut off at max_tokens${whileThinking}`, tone: 'warn' };
     if (notRun) return { text: `⚠ tool call not run: ${notRun}`, tone: 'warn' };
     return next ? askFor() : { text: 'answer complete', tone: 'ok' };
   }
