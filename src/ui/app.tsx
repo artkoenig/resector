@@ -6,6 +6,7 @@ import { quoted, sessionRules, type Action, type Verdict } from '../core/approva
 import type { Kind } from '../core/log/events';
 import type { Block } from '../core/log/fold';
 import { fileCompletions } from '../core/notes/files';
+import { TOOL_NAMES } from '../core/toolcall/bash';
 import { COMMANDS, type Compaction, createGate, type Gate, type GateOptions, type Status } from './gate';
 import { around, cell, count, flagsOf, formatTokens, right, thinkingLabel, titleOf } from './format';
 import { Band, ErrorBand, errorBandLines, Footer, footerLines, HeaderBand, type Hint, PROMPT_LINES, PromptBand } from './parts';
@@ -67,13 +68,19 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   // The project's files, listed when the input opens: @path completion (FR-27).
   const [files, setFiles] = createSignal<string[]>([]);
   createEffect(on(mode, m => m === 'input' && setFiles(props.project.list())));
-  // Suggestions above the input: commands while it is a single `/word` (FR-6), project files while an @path
+  // Suggestions above the input: commands while it is a single `/word` (FR-6), the tools after `/tools `, project files while an @path
   // is typed at its end (FR-27). Tab completes; Enter runs a command taking no argument, else completes too.
   const suggestions = createMemo((): Suggestion[] => {
     if (mode() !== 'input') return [];
     if (/^\/\S*$/.test(draft())) {
       return COMMANDS.filter(c => c.name.startsWith(draft())).map(c => ({
         label: `${c.name} ${c.arg}`, description: c.description, draft: c.name + (c.arg ? ' ' : ''), run: c.arg && draft() !== c.name ? null : c.name,
+      }));
+    }
+    const tool = /^\/tools (\S*)$/.exec(draft());
+    if (tool) {
+      return TOOL_NAMES.filter(name => name.startsWith(tool[1]!)).map(name => ({
+        label: name, description: gate.toolsOn().includes(name) ? 'on → off' : 'off → on', draft: `/tools ${name}`, run: `/tools ${name}`,
       }));
     }
     const found = fileCompletions(draft(), files());

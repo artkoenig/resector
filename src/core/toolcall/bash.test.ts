@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { parseCall, resultText, TOOLS, toolNames } from './bash';
+import { parseCall, resultText, toggleTool, TOOLS, toolNames } from './bash';
 
 test('the Tools Block offers bash with one command parameter (FR-12, FR-21)', () => {
   expect(JSON.parse(TOOLS)).toEqual([
@@ -11,18 +11,30 @@ test('the Tools Block offers bash with one command parameter (FR-12, FR-21)', ()
   ]);
   expect(toolNames(TOOLS)).toBe('bash');
   expect(toolNames('[{"name":"a"},{"name":"b"}]')).toBe('a, b');
+  expect(toolNames('[]')).toBe('no tools');
+});
+
+test('/tools switches a tool off and on again; an unknown one is refused', () => {
+  const off = toggleTool(TOOLS, 'bash');
+  expect(off).toEqual({ content: '[]' });
+  expect(toggleTool('[]', 'bash')).toEqual({ content: TOOLS });
+  expect(toggleTool(TOOLS, 'python')).toEqual({ error: 'unknown tool python – bash' });
+});
+
+test('a call of a tool switched off is not run', () => {
+  expect(parseCall({ name: 'bash', arguments: '{"command":"ls"}' }, [])).toEqual({ error: 'tool bash is off (/tools)' });
 });
 
 test('a bash call yields its command', () => {
-  expect(parseCall({ name: 'bash', arguments: '{"command":"ls -la"}' })).toEqual({ command: 'ls -la' });
+  expect(parseCall({ name: 'bash', arguments: '{"command":"ls -la"}' }, ['bash'])).toEqual({ command: 'ls -la' });
 });
 
 test('other tools, broken JSON or a missing command are not runnable', () => {
-  expect(parseCall({ name: 'python', arguments: '{"command":"x"}' })).toEqual({ error: 'unknown tool python' });
-  expect(parseCall({ name: 'bash', arguments: '{"command":' })).toEqual({ error: 'arguments are not valid JSON' });
-  expect(parseCall({ name: 'bash', arguments: '{"cmd":"ls"}' })).toEqual({ error: 'no command string' });
-  expect(parseCall({ name: 'bash', arguments: 'null' })).toEqual({ error: 'no command string' });
-  expect(parseCall({ name: 'bash', arguments: '{"command":1}' })).toEqual({ error: 'no command string' });
+  expect(parseCall({ name: 'python', arguments: '{"command":"x"}' }, ['bash'])).toEqual({ error: 'unknown tool python' });
+  expect(parseCall({ name: 'bash', arguments: '{"command":' }, ['bash'])).toEqual({ error: 'arguments are not valid JSON' });
+  expect(parseCall({ name: 'bash', arguments: '{"cmd":"ls"}' }, ['bash'])).toEqual({ error: 'no command string' });
+  expect(parseCall({ name: 'bash', arguments: 'null' }, ['bash'])).toEqual({ error: 'no command string' });
+  expect(parseCall({ name: 'bash', arguments: '{"command":1}' }, ['bash'])).toEqual({ error: 'no command string' });
 });
 
 test('the result is the output, then how the run ended', () => {

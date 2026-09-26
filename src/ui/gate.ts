@@ -13,7 +13,7 @@ import { parseReference, peekReferences, readReferences, references, type ReadFi
 import { renderNative, renderPrefixes, sentBlocks, type Request } from '../core/render/native';
 import { DEFAULT_MODES } from '../core/render/template';
 import { answerBlocks } from '../core/toolcall/answer';
-import type { Runner } from '../core/toolcall/bash';
+import { toolsIn, type Runner } from '../core/toolcall/bash';
 import { count, errorText, formatTokens, thinkingLabel, titleOf } from './format';
 
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
@@ -50,6 +50,7 @@ export const COMMANDS = [
   { name: '/sessions', arg: '', description: 'list, resume, rename, delete sessions' },
   { name: '/rename', arg: '<title>', description: 'rename session' },
   { name: '/reload', arg: '', description: 're-read config' },
+  { name: '/tools', arg: '<tool>', description: 'switch a tool on or off' },
 ] as const;
 type CommandName = (typeof COMMANDS)[number]['name'];
 // In-flight answer, its reasoning apart; never persisted until complete or aborted (FR-37).
@@ -303,7 +304,7 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
 
   // The answer's text and Tool Calls become blocks; its calls are decided by the rules.
   function finish(result: ChatResult) {
-    const { events, notRun } = answerBlocks(result, nextId());
+    const { events, notRun } = answerBlocks(result, nextId(), toolsOn());
     events.forEach(append);
     held = !!notRun;
     append({ type: 'ResponseReceived', usage: result.usage, cached: result.cached });
@@ -605,7 +606,17 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     setStatus({ text: title ? `session renamed: ${title}` : 'session title reset to the first User message', tone: 'info' });
   }
 
-  const commands: Record<CommandName, (arg: string) => void> = { '/sessions': openSessions, '/rename': renameSession, '/reload': () => void reload() };
+  // The tools in the Tools Block, switched on or off with /tools.
+  const toolsOn = () => toolsIn(context().blocks.find(b => b.kind === 'Tools')?.content ?? '[]');
+  function toggleTool(name: string) {
+    if (!name) return setStatus({ text: `tools: ${toolsOn().join(', ') || 'none'} · /tools <tool> switches one`, tone: 'info' });
+    if (!apply(ops.toggleTool(events(), context(), name))) return;
+    setStatus({ text: `${name} ${toolsOn().includes(name) ? 'on' : 'off'} · u = undo`, tone: 'info' });
+  }
+
+  const commands: Record<CommandName, (arg: string) => void> = {
+    '/sessions': openSessions, '/rename': renameSession, '/reload': () => void reload(), '/tools': toggleTool,
+  };
   // Input text: a known command runs with the rest as argument; an unknown `/word` is an error; anything else becomes
   // a User block and is sent right away – if sending is blocked, the block stays and the status says why (FR-6).
   function submit(text: string) {
@@ -681,6 +692,7 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     edit: () => void edit(),
     copy: (text: string) => void copy(text),
     toggleMark,
+    toolsOn,
     // Any other key than the one asked for cancels the confirmation.
     cancelConfirm: () => {
       if (confirming()) setStatus(null);

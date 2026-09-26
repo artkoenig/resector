@@ -517,7 +517,7 @@ test('typing / suggests the commands, filtered while typing; ↑↓ choose, Ente
   await write('/sessions');
   await until(() => opened.length > 0);
   await write('/nope');
-  await frameMatching(ui, f => f.includes('unknown command /nope – /sessions /rename /reload'));
+  await frameMatching(ui, f => f.includes('unknown command /nope – /sessions /rename /reload /tools'));
 });
 
 test('/ in the Context starts a command in the input line', async () => {
@@ -544,6 +544,29 @@ test('Tab completes a command; /rename sets the session title, empty resets it (
   await write('/rename');
   await frameMatching(ui, f => f.includes('session title reset to the first User message'));
   expect(events().at(-1)).toEqual({ type: 'SessionRenamed', title: '' });
+});
+
+test('/tools completes the tool names and switches one off and on; off, it is not sent', async () => {
+  const { events } = await start();
+  ui.mockInput.pressTab();
+  await ui.flush();
+  await ui.mockInput.typeText('/tools b');
+  let frame = await frameMatching(ui, f => /^ {2}bash\s+on → off/m.test(f));
+  ui.mockInput.pressEnter();
+  frame = await frameMatching(ui, f => f.includes('bash off · u = undo'));
+  expect(line(frame, /Tools/)).toMatch(/2\s+Tools\s+no tools/);
+  expect(events().at(-1)).toMatchObject({ type: 'Edit', id: 2, content: '[]' });
+  fake.reply({ chunks: ['ok'] });
+  await write('hi');
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect((fake.chatRequests[0] as Sent).tools).toBeUndefined();
+  await write('/tools bash');
+  frame = await frameMatching(ui, f => f.includes('bash on · u = undo'));
+  expect(line(frame, /Tools/)).toMatch(/2\s+Tools\s+bash/);
+  await write('/tools');
+  await frameMatching(ui, f => f.includes('tools: bash · /tools <tool> switches one'));
+  await write('/tools python');
+  await frameMatching(ui, f => f.includes('unknown tool python – bash'));
 });
 
 // The first line of the Content preview: shows which block is selected.

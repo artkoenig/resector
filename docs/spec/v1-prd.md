@@ -25,7 +25,7 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 - **FR-3** Table columns: `# · Kind · Title · Tokens · Cache ●/○ · Flags`. Kinds written out (System, Tools, User, Thinking, Assistant, Tool Call, Tool Result, Note). Last row `Template` (BOS, generation prompt overhead), not selectable. Sum of all rows = exact request size.
 - **FR-4** Title is a display label only, never sent. Default = first non-empty line of content; origin titles: `System prompt`, tool names, the call, `→ <call>`, `@<path>`, `⇄ <call>`, `◇ N blocks compacted`.
 - **FR-5** Flags show only changes since the last request and reset after sending: `✎n` new Revision, `⤒`/`⤓` pin set/changed, `⇄` moved by user. Status flags persist: `✂ template` (FR-48), `⚠ cut off`, `⚠ malformed`, `? approve`, `⚠ killed`, `⚠ timeout`.
-- **FR-6** Two modes, `Tab` toggles. **Context mode** (default): list focused; `Enter` sends the Context. **Input mode**: `Enter` with text adds a User block, returns to Context mode and sends the Context (if sending is blocked, e.g. by Tool Calls awaiting approval, the block stays and the status line says why); `Tab`/`Esc` return without adding; `⌥⌫` deletes a word. `/` or `@` in Context mode opens Input mode with it typed. Typing `/` shows command suggestions above the input (name, argument, description), filtered while typing: `↑↓` choose, `Tab` complete, `Enter` run. v1 commands: `/sessions`, `/rename`, `/reload`.
+- **FR-6** Two modes, `Tab` toggles. **Context mode** (default): list focused; `Enter` sends the Context. **Input mode**: `Enter` with text adds a User block, returns to Context mode and sends the Context (if sending is blocked, e.g. by Tool Calls awaiting approval, the block stays and the status line says why); `Tab`/`Esc` return without adding; `⌥⌫` deletes a word. `/` or `@` in Context mode opens Input mode with it typed. Typing `/` shows command suggestions above the input (name, argument, description), filtered while typing: `↑↓` choose, `Tab` complete, `Enter` run. v1 commands: `/sessions`, `/rename`, `/reload`, `/tools <tool>` (switches a tool on or off in the Tools Block, a new Revision, `u` undoes it; the tool names are suggested; a call of a tool switched off is not run).
 - **FR-7** Streaming: the answer appears live as a new row (spinner in Tokens column); afterwards back to the Gate. `Esc` aborts; the partial answer is kept with `⚠ cut off`.
 
 ### 4.2 Context operations (Context mode)
@@ -80,7 +80,7 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 
 ### 4.7 System prompt
 
-- **FR-30** Shipped default ≤ ~400 tokens, English: role (local coding agent), style "Be extremely concise. Sacrifice grammar for the sake of concision.", bash conventions (`sed -n 'a,bp'`, `grep -n`, `rg`, `find`/`ls`, `| head`/`| tail`, heredoc for new files, `sed -i` for small edits, whole-file heredoc only for small files, no `patch`). No few-shot examples. No environment inside.
+- **FR-30** Shipped default ≤ ~400 tokens, English: role (local coding agent), style "Be extremely concise. Sacrifice grammar for the sake of concision.". Nothing about tools or bash. No few-shot examples. No environment inside.
 - **FR-31** Overridable globally (`system.md`) and per Model Profile (`systemPrompt` path). Editing at the Gate is session-local.
 
 ### 4.8 Sessions
