@@ -1394,3 +1394,72 @@ test('a Question without a valid Recommended Option goes back to the model as er
     { type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'error: question 1: recommended "Deno" is not an option label', call: 4 },
   ]);
 });
+
+// Question: several questions & multi-select (#34) ------------------------------------------------------------
+const LINTERS = {
+  question: 'Which linters should run?',
+  header: 'Linters',
+  options: [{ label: 'ESLint', description: 'plugins' }, { label: 'Biome', description: 'fast' }, { label: 'Oxlint', description: 'faster' }],
+  multiple: true,
+  recommended: ['Biome', 'Oxlint'],
+};
+
+test('several questions: one tab each plus Confirm; `multiple` toggles, its Recommended Options preselected (#34)', async () => {
+  await questioned(RUNTIME, LINTERS);
+  let frame = ui.captureCharFrame();
+  expect(line(frame, /Confirm/)).toMatch(/Runtime.*Linters.*Confirm/);
+  expect(line(frame, /1 Bun/)).toMatch(/› 1 Bun .*recommended/);
+  await press('1');
+  frame = await frameMatching(ui, f => f.includes('[✓]'));
+  expect(frame).toContain('Which linters should run?');
+  expect(line(frame, /Biome/)).toMatch(/› 1 \[✓\] Biome .*recommended/);
+  expect(line(frame, /Oxlint/)).toMatch(/2 \[✓\] Oxlint .*recommended/);
+  expect(line(frame, /ESLint/)).toMatch(/3 \[ \] ESLint/);
+  await press('3');
+  await press('1');
+  await frameMatching(ui, f => /3 \[✓\] ESLint/.test(f) && /1 \[ \] Biome/.test(f));
+  ui.mockInput.pressTab();
+  frame = await frameMatching(ui, f => f.includes('enter sends'));
+  expect(line(frame, /^\s+Runtime/)).toMatch(/Runtime\s+Bun/);
+  expect(line(frame, /^\s+Linters/)).toMatch(/Linters\s+ESLint, Oxlint/);
+  fake.reply({ chunks: ['ok'] });
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(answerSent()).toMatchObject({ content: `${RUNTIME.question}: Bun\nWhich linters should run?: ESLint, Oxlint` });
+});
+
+test('skipped questions come back as Unanswered; h/l and ←→ switch tabs (#34)', async () => {
+  await questioned(RUNTIME, LINTERS);
+  await press('l');
+  await frameMatching(ui, f => f.includes('Which linters should run?'));
+  await press('h');
+  await frameMatching(ui, f => f.includes('Which runtime should we use?'));
+  ui.mockInput.pressArrow('right');
+  await frameMatching(ui, f => f.includes('Which linters should run?'));
+  await press('1');
+  await press('2');
+  ui.mockInput.pressArrow('right');
+  await frameMatching(ui, f => f.includes('enter sends'));
+  fake.reply({ chunks: ['ok'] });
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(answerSent()).toMatchObject({ content: `${RUNTIME.question}: Unanswered\nWhich linters should run?: Unanswered` });
+});
+
+test('r fills the unanswered questions with their Recommended Options and jumps to Confirm; own answers join the toggles (#34)', async () => {
+  await questioned(RUNTIME, LINTERS, { ...RUNTIME, question: 'Which package manager?', header: 'Packages' });
+  await press('2');
+  await frameMatching(ui, f => f.includes('Which linters should run?'));
+  await press('4');
+  await frameMatching(ui, f => f.includes('answer >'));
+  await ui.mockInput.typeText('Prettier');
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => /\[✓\] own answer: Prettier/.test(f));
+  await press('r');
+  const frame = await frameMatching(ui, f => f.includes('enter sends'));
+  expect(line(frame, /^\s+Packages/)).toMatch(/Packages\s+Bun/);
+  fake.reply({ chunks: ['ok'] });
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(answerSent()).toMatchObject({ content: `${RUNTIME.question}: Node\nWhich linters should run?: Biome, Oxlint, Prettier\nWhich package manager?: Bun` });
+});

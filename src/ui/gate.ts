@@ -15,7 +15,7 @@ import { DEFAULT_MODES } from '../core/render/template';
 import { budget, lastDrift, type Budget } from '../core/tokens/budget';
 import { answerBlocks } from '../core/toolcall/answer';
 import { toolsIn, type Runner } from '../core/toolcall/bash';
-import { answerText, questionsOf, type Question } from '../core/toolcall/question';
+import { answerText, questionsOf, type Answer, type Question } from '../core/toolcall/question';
 import { count, errorText, formatTokens, thinkingLabel, titleOf } from './format';
 
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
@@ -387,7 +387,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     return call?.tool === 'question' && !streaming() && !running() ? { call, questions: questionsOf(call.content) } : null;
   });
   // The user's answers, one per question: the Tool Result, written by the user; then the loop goes on.
-  function answer(answers: string[]) {
+  function answer(answers: Answer[]) {
     const question = asked();
     if (!question) return;
     setSelected(nextId());

@@ -68,8 +68,12 @@ export function parseQuestions(args: unknown): { questions: Question[] } | { err
 // The questions of a stored Question call (its content: the arguments as JSON).
 export const questionsOf = (content: string): Question[] => (JSON.parse(content) as { questions: Question[] }).questions;
 
-// Tool Result of an answered Question: one line per question, `<full question text>: <answer>`.
-export const answerText = (questions: Question[], answers: string[]): string => questions.map((q, i) => `${q.question}: ${answers[i]}`).join('\n');
+// An answer: the chosen labels and the own answer, if any; none when the question was skipped.
+export type Answer = string[];
+// Tool Result of an answered Question: one line per question, `<full question text>: <answer>`, several comma-separated.
+// It does not say whether the user followed the recommendation.
+export const answerText = (questions: Question[], answers: Answer[]): string => questions.map((q, i) => `${q.question}: ${shownAnswer(answers[i] ?? [])}`).join('\n');
+export const shownAnswer = (answer: Answer) => (answer.length ? answer.join(', ') : 'Unanswered');
 
 // The options as the dock lists them: the Recommended Option(s) first, then the others in the model's order.
 export const orderedOptions = (q: Question): QuestionOption[] =>

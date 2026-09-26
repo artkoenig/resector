@@ -7,7 +7,9 @@ import type { Kind } from '../core/log/events';
 import type { Block } from '../core/log/fold';
 import { fileCompletions } from '../core/notes/files';
 import { TOOL_NAMES } from '../core/toolcall/bash';
-import { isRecommended, orderedOptions, type Question } from '../core/toolcall/question';
+import { isRecommended, shownAnswer } from '../core/toolcall/question';
+import * as dock from './dock';
+import type { DockState } from './dock';
 import { COMMANDS, type Compaction, createGate, type Gate, type GateOptions, type Status } from './gate';
 import { around, cell, count, flagsOf, formatTokens, right, thinkingLabel, titleOf } from './format';
 import { Band, ErrorBand, errorBandLines, Footer, footerLines, HeaderBand, type Hint, PROMPT_LINES, PromptBand } from './parts';
@@ -130,63 +132,66 @@ export function App(props: GateOptions & { onQuit: () => void }) {
 
   const inputKeys: Record<string, () => void> = { return: submit, tab: leaveInput, escape: leaveInput };
 
-  // Question dock (#33): replaces the input line while the model's Question is next. The questions are answered
-  // one after another; `choice` is the row chosen in the current one, the last row the own answer (typed while `typingOwn`).
-  const [step, setStep] = createSignal(0);
-  const [choice, setChoice] = createSignal(0);
-  const [answers, setAnswers] = createSignal<string[]>([]);
+  // Question dock (#33, #34): replaces the input line while the model's Question is next; its state lives in `dock`.
+  // The own answer is typed while `typingOwn`.
+  const [dockState, setDock] = createSignal<DockState | null>(null);
   const [typingOwn, setTypingOwn] = createSignal(false);
   createEffect(
     on(
       () => gate.asked()?.call.id,
       id => {
-        setStep(0);
-        setChoice(0);
-        setAnswers([]);
+        setDock(id === undefined ? null : dock.openDock(gate.asked()!.questions));
         setTypingOwn(false);
         if (id !== undefined) leaveInput();
       },
     ),
   );
-  const question = (): Question | undefined => gate.asked()?.questions[step()];
-  const choices = () => orderedOptions(question()!);
   // The dock takes the keys; a Compaction under way keeps them.
-  const dockOpen = () => !!question() && !phase();
-  // An answer for the current question; after the last one, all are the Tool Result and the Context is sent.
-  function record(text: string) {
-    const next = [...answers(), text];
-    setTypingOwn(false);
-    editDraft('');
-    if (next.length === gate.asked()!.questions.length) return gate.answer(next);
-    setAnswers(next);
-    setStep(step() + 1);
-    setChoice(0);
+  const dockOpen = () => !!dockState() && !phase();
+  // A step in the dock; a lone single-choice Question is sent with its first answer.
+  function step(next: DockState, send = dock.direct(next)) {
+    if (send) return gate.answer(dock.answers(next));
+    setDock(next);
   }
-  function pick(i: number) {
-    if (i === choices().length) return setTypingOwn(true);
-    if (i < choices().length) record(choices()[i]!.label);
+  function pickRow(i: number) {
+    const s = dockState()!;
+    if (i === dock.choices(s).length) {
+      editDraft(s.own[s.tab]!);
+      return setTypingOwn(true);
+    }
+    if (i < dock.choices(s).length) step(dock.pick(s, i), dock.direct(s));
   }
-  const moveChoice = (delta: number) => setChoice((choice() + delta + choices().length + 1) % (choices().length + 1));
+  const onQuestionTab = (action: () => void) => () => (dock.confirming(dockState()!) ? undefined : action());
   const dockKeys: Record<string, () => void> = {
-    up: () => moveChoice(-1),
-    k: () => moveChoice(-1),
-    down: () => moveChoice(1),
-    j: () => moveChoice(1),
-    return: () => pick(choice()),
+    up: () => setDock(dock.moveRow(dockState()!, -1)),
+    k: () => setDock(dock.moveRow(dockState()!, -1)),
+    down: () => setDock(dock.moveRow(dockState()!, 1)),
+    j: () => setDock(dock.moveRow(dockState()!, 1)),
+    ...Object.fromEntries(['tab', 'l', 'right'].map(k => [k, () => setDock(dock.switchTab(dockState()!, 1))])),
+    ...Object.fromEntries(['shift+tab', 'h', 'left'].map(k => [k, () => setDock(dock.switchTab(dockState()!, -1))])),
+    return: () => (dock.confirming(dockState()!) ? step(dockState()!, true) : pickRow(dockState()!.row)),
+    r: () => step(dock.recommend(dockState()!)),
     'shift+up': () => scrollPreview(-1),
     'shift+down': () => scrollPreview(1),
     q: props.onQuit,
-    ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => [String(n), () => pick(n - 1)])),
+    ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => [String(n), onQuestionTab(() => pickRow(n - 1))])),
   };
+  function closeOwn() {
+    setTypingOwn(false);
+    editDraft('');
+  }
   const ownKeys: Record<string, () => void> = {
-    return: () => draft().trim() && record(draft().trim()),
-    escape: () => {
-      setTypingOwn(false);
-      editDraft('');
+    return: () => {
+      const s = dockState()!;
+      const text = draft().trim();
+      if (!text && !s.questions[s.tab]!.multiple) return;
+      closeOwn();
+      step(dock.writeOwn(s, text), dock.direct(s));
     },
+    escape: closeOwn,
   };
-  // Lines of the dock above the prompt band: the question, its options, the own answer.
-  const dockLines = () => (question() ? choices().length + 2 : 0);
+  // Lines of the dock above the prompt band.
+  const dockLines = () => (dockState() ? dockHeight(dockState()!) : 0);
   // Compaction (FR-13, FR-15): writing the instruction, then the Gate locked on the proposal.
   // A memo: `on(phase)` must fire on a phase change only, not on every update of the Compaction.
   const phase = createMemo(() => gate.compacting()?.phase);
@@ -277,7 +282,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   // An error has its own band; the footer then shows only the hints.
   const error = () => (status()?.tone === 'error' ? status()!.text : null);
   const footerStatus = () => (error() === null ? status() : null);
-  const keyMode = (): KeyMode => (dockOpen() ? (typingOwn() ? 'answer' : 'question') : (phase() ?? mode()));
+  const keyMode = (): KeyMode => (dockOpen() ? dockMode(dockState()!, typingOwn()) : (phase() ?? mode()));
   const keys = () => keysOf(gate, suggestion() ? (suggestion()!.run === null ? 'complete' : 'suggest') : keyMode(), error() !== null);
   const errorLines = () => (error() === null ? 0 : errorBandLines(error()!, width()) + 1);
   // Block rows that fit: the screen less header band, column header, Template, preview band, error band, suggestions,
@@ -378,17 +383,15 @@ export function App(props: GateOptions & { onQuit: () => void }) {
           </text>
         )}
       </For>
-      <Show when={question()}>
-        {(q: () => Question) => <Dock question={q()} choice={choice()} step={step()} total={gate.asked()!.questions.length} width={width()} />}
-      </Show>
+      <Show when={dockState()}>{(d: () => DockState) => <Dock state={d()} width={width()} />}</Show>
       <PromptBand
         meta={
-          <Show when={gate.compacting()} fallback={<PromptMeta mode={mode()} question={!!question()} />}>
+          <Show when={gate.compacting()} fallback={<PromptMeta mode={mode()} question={!!dockState()} />}>
             {(c: () => Compaction) => <CompactionMeta gate={gate} compaction={c()} />}
           </Show>
         }
       >
-        <Show when={mode() !== 'context' || phase() === 'instruction' || typingOwn()} fallback={<text fg={question() ? TONE.warn : idle().fg}>{question() ? 'pick an answer above – or own answer to type one' : idle().text}</text>}>
+        <Show when={mode() !== 'context' || phase() === 'instruction' || typingOwn()} fallback={<text fg={dockState() ? TONE.warn : idle().fg}>{dockState() ? 'pick an answer above – or own answer to type one' : idle().text}</text>}>
           <box flexDirection="row" flexGrow={1}>
             <Show when={phase() === 'instruction'}>
               <text fg={ACCENT} flexShrink={0}>{'instruction > '}</text>
@@ -451,29 +454,80 @@ function ReferenceHint(props: { block: Block | undefined }) {
   );
 }
 
-// The model's Question (#33): the question, then its options, the Recommended Option first and marked, then the own answer.
-function Dock(props: { question: Question; choice: number; step: number; total: number; width: number }) {
-  const options = () => orderedOptions(props.question);
+// The model's Question (#33, #34): with several questions or a `multiple` one a tab bar first, then the current
+// question with its options, the Recommended ones first and marked, then the own answer; or on Confirm the answers.
+function Dock(props: { state: DockState; width: number }) {
+  return (
+    <Show when={!dock.direct(props.state)} fallback={<QuestionTab state={props.state} width={props.width} title />}>
+      <TabBar state={props.state} />
+      <Show when={!dock.confirming(props.state)} fallback={<ConfirmTab state={props.state} />}>
+        <QuestionTab state={props.state} width={props.width} />
+      </Show>
+    </Show>
+  );
+}
+// Dock lines: the tab bar, then the question line, its options and the own answer, or on Confirm the answers and a hint.
+function dockHeight(s: DockState): number {
+  if (dock.direct(s)) return dock.choices(s).length + 2;
+  return 1 + (dock.confirming(s) ? s.questions.length + 1 : dock.choices(s).length + 2);
+}
+function TabBar(props: { state: DockState }) {
+  const tab = (i: number, label: string) => (
+    <span style={{ fg: i === props.state.tab ? ACCENT : MUTED, bg: i === props.state.tab ? SELECTED_BG : undefined }}>{` ${label} `}</span>
+  );
+  return (
+    <text flexShrink={0}>
+      <span> </span>
+      <For each={props.state.questions}>{(q, i) => tab(i(), `${dock.answered(props.state, i()) ? '✓' : '·'} ${q.header}`)}</For>
+      {tab(props.state.questions.length, 'Confirm')}
+    </text>
+  );
+}
+function QuestionTab(props: { state: DockState; width: number; title?: boolean }) {
+  const q = () => dock.current(props.state)!;
+  const options = () => dock.choices(props.state);
+  const row = () => props.state.row;
+  const picks = () => props.state.picks[props.state.tab]!;
+  const own = () => props.state.own[props.state.tab]!;
   const labelWidth = () => Math.max(...options().map(o => o.label.length));
-  const progress = () => (props.total > 1 ? ` (${props.step + 1}/${props.total})` : '');
-  const marker = (i: number) => `  ${i === props.choice ? '›' : ' '} ${i + 1} `;
+  const box = (on: boolean) => (q().multiple ? (on ? '[✓] ' : '[ ] ') : '');
+  const marker = (i: number) => `  ${i === row() ? '›' : ' '} ${i + 1} `;
+  const title = () => (props.title ? `${q().header} · ` : '');
   return (
     <>
       <text flexShrink={0}>
-        <span style={{ fg: ACCENT }}>{`  ${props.question.header}${progress()} · `}</span>
-        <span style={{ fg: TEXT }}>{cell(props.question.question, Math.max(8, props.width - props.question.header.length - progress().length - 5)).trimEnd()}</span>
+        <span style={{ fg: ACCENT }}>{`  ${title()}`}</span>
+        <span style={{ fg: TEXT }}>{cell(q().question, Math.max(8, props.width - title().length - 3)).trimEnd()}</span>
       </text>
       <For each={options()}>
         {(o, i) => (
-          <text flexShrink={0} bg={i() === props.choice ? SELECTED_BG : undefined}>
-            <span style={{ fg: i() === props.choice ? ACCENT : TEXT }}>{`${marker(i())}${o.label.padEnd(labelWidth())} `}</span>
-            <span style={{ fg: TONE.ok }}>{isRecommended(props.question, o) ? 'recommended ' : ''}</span>
+          <text flexShrink={0} bg={i() === row() ? SELECTED_BG : undefined}>
+            <span style={{ fg: i() === row() ? ACCENT : TEXT }}>{`${marker(i())}${box(picks().includes(o.label))}${o.label.padEnd(labelWidth())} `}</span>
+            <span style={{ fg: TONE.ok }}>{isRecommended(q(), o) ? 'recommended ' : ''}</span>
             <span style={{ fg: MUTED }}>{o.description}</span>
           </text>
         )}
       </For>
-      <text flexShrink={0} bg={props.choice === options().length ? SELECTED_BG : undefined} fg={props.choice === options().length ? ACCENT : MUTED}>
-        {`${marker(options().length)}own answer`}
+      <text flexShrink={0} bg={row() === options().length ? SELECTED_BG : undefined} fg={row() === options().length ? ACCENT : MUTED}>
+        {`${marker(options().length)}${box(!!own())}own answer${own() ? `: ${own()}` : ''}`}
+      </text>
+    </>
+  );
+}
+function ConfirmTab(props: { state: DockState }) {
+  const width = () => Math.max(...props.state.questions.map(q => q.header.length));
+  return (
+    <>
+      <For each={dock.answers(props.state)}>
+        {(a, i) => (
+          <text flexShrink={0}>
+            <span style={{ fg: TEXT }}>{`  ${props.state.questions[i()]!.header.padEnd(width())}  `}</span>
+            <span style={{ fg: a.length ? TEXT : MUTED }}>{shownAnswer(a)}</span>
+          </text>
+        )}
+      </For>
+      <text flexShrink={0} fg={MUTED}>
+        {'  enter sends the answers · r fills the unanswered with the recommendation'}
       </text>
     </>
   );
@@ -617,7 +671,9 @@ function statusOf(gate: Gate, spin: string): Status | null {
 }
 
 // Key hints right of the status; they stay visible. An error band adds how to dismiss it.
-type KeyMode = Mode | 'suggest' | 'complete' | 'question' | 'answer' | Compaction['phase'];
+type KeyMode = Mode | 'suggest' | 'complete' | 'question' | 'questions' | 'answer' | Compaction['phase'];
+// The dock's keys: tabs only with several questions or a `multiple` one.
+const dockMode = (s: DockState, typingOwn: boolean): KeyMode => (typingOwn ? 'answer' : dock.direct(s) ? 'question' : 'questions');
 function keysOf(gate: Gate, mode: KeyMode, error: boolean): Hint[] {
   const keys = modeKeys(gate, mode);
   return error && mode === 'context' ? [...keys.slice(0, -1), ['esc', 'dismiss'], keys.at(-1)!] : keys;
@@ -631,6 +687,7 @@ const MODE_KEYS: Partial<Record<KeyMode, Hint[]>> = {
   complete: [['↑↓', 'choose'], ['tab/enter', 'complete'], ['esc', 'back']],
   input: [['enter', 'send'], ['tab/esc', 'back']],
   question: [['↑↓ jk', 'choose'], ['enter 1–9', 'pick'], ['q', 'quit']],
+  questions: [['↑↓ jk', 'choose'], ['enter 1–9', 'pick'], ['tab h/l', 'question'], ['r', 'recommended'], ['q', 'quit']],
   answer: [['enter', 'answer'], ['esc', 'back']],
 };
 function modeKeys(gate: Gate, mode: KeyMode): Hint[] {

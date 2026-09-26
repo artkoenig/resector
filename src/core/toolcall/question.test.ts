@@ -30,7 +30,10 @@ test('fewer than two options, missing texts or no questions are rejected', () =>
   expect(parseQuestions(null)).toEqual({ error: 'questions must be a non-empty list' });
 });
 
-test('the answer is one line per question: its full text, then the answer', () => {
+test('the answer is one line per question: its full text, then the answer; several comma-separated, none Unanswered', () => {
   const second = question({ question: 'Which test runner?' });
-  expect(answerText([question(), second], ['Bun', 'my own'])).toBe('Which runtime?: Bun\nWhich test runner?: my own');
+  const third = question({ question: 'Which linters?', multiple: true });
+  expect(answerText([question(), second, third], [['Bun'], [], ['Bun', 'Node', 'my own']])).toBe(
+    'Which runtime?: Bun\nWhich test runner?: Unanswered\nWhich linters?: Bun, Node, my own',
+  );
 });
