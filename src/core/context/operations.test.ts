@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
-import { approvable, edit, isFixed, inPair, move, nextCall, pin, reject, remove, rename, toNote, toolResult, undo } from './operations';
+import { approvable, deny, edit, isFixed, inPair, move, nextCall, pin, reject, remove, rename, toNote, toolResult, undo } from './operations';
 
 const session = (...then: SessionEvent[]): SessionEvent[] => [
   { type: 'SessionCreated', profile: 'default', protocol: 'native' },
@@ -80,7 +80,7 @@ test('undo has nothing to cancel without Context operations', () => {
 const tools: SessionEvent = { type: 'BlockAdded', id: 5, kind: 'Tools', origin: 'config', content: '[]' };
 const call = (id: number): SessionEvent => ({ type: 'BlockAdded', id, kind: 'Tool Call', origin: 'model', content: `cmd ${id}` });
 const answered = (id: number, of: number): SessionEvent => ({ type: 'BlockAdded', id, kind: 'Tool Result', origin: 'tool', content: 'out', call: of });
-const AWAITS = { error: 'Tool Call awaits approval – y run once · n reject · e edit' };
+const AWAITS = { error: 'Tool Call awaits approval – y run once · a allow for session · n reject · e edit' };
 
 test('the Tools Block is fixed like System (FR-12)', () => {
   const [context, block] = at(session(tools), 5);
@@ -115,6 +115,14 @@ test('reject answers the call with a Tool Result "rejected by user" (FR-23)', ()
     event: { type: 'BlockAdded', id: 8, kind: 'Tool Result', origin: 'tool', content: 'rejected by user', call: 6 },
   });
   expect(reject(...at(events, 7), 8)).toEqual({ error: 'approve the earlier Tool Call first' });
+});
+
+test('a denied call is answered with a Tool Result "denied by rule" (FR-23)', () => {
+  const events = session(call(6), call(7));
+  expect(deny(...at(events, 6), 8)).toEqual({
+    event: { type: 'BlockAdded', id: 8, kind: 'Tool Result', origin: 'tool', content: 'denied by rule', call: 6 },
+  });
+  expect(deny(...at(events, 7), 8)).toEqual({ error: 'approve the earlier Tool Call first' });
 });
 
 test('a run becomes the Tool Result of its call, flagged when stopped', () => {

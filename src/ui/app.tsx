@@ -2,6 +2,7 @@
 import type { MouseEvent, ScrollBoxRenderable } from '@opentui/core';
 import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/solid';
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from 'solid-js';
+import { quoted, sessionRules, type Action, type Verdict } from '../core/approval/approval';
 import type { Kind } from '../core/log/events';
 import { COMMANDS, type Compaction, createGate, type Gate, type GateOptions, type Status } from './gate';
 import { around, cell, count, flagsOf, formatTokens, right, titleOf } from './format';
@@ -150,6 +151,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     pageup: () => scrollPreview(-previewPage()),
     pagedown: () => scrollPreview(previewPage()),
     y: gate.approve,
+    a: gate.allowForSession,
     n: gate.reject,
     p: gate.pin,
     d: gate.remove,
@@ -260,6 +262,9 @@ export function App(props: GateOptions & { onQuit: () => void }) {
                   <Show when={row().dropped}>
                     <text fg={TONE.warn}>✂ dropped by the chat template – sent, but 0 tokens reach the model</text>
                   </Show>
+                  <Show when={!row().live && !gate.running() && gate.nextCall()?.id === row().id && gate.verdict(gate.nextCall()!)}>
+                    {(verdict: () => Verdict) => <Checks verdict={verdict()} />}
+                  </Show>
                   <text fg={row().kind === 'Thinking' ? MUTED : TEXT}>{row().content}</text>
                 </scrollbox>
               </Band>
@@ -314,6 +319,31 @@ export function App(props: GateOptions & { onQuit: () => void }) {
       </PromptBand>
       <Footer status={footerStatus()} hints={keys()} width={width()} />
     </box>
+  );
+}
+
+const ACTION_COLOR: Record<Action, string> = { allow: TONE.ok, ask: TONE.warn, deny: TONE.error };
+// Why the rules ask for the pending call: each sub-command with its decision and reason (FR-22), then what `a`
+// would allow for the session, before anything is saved (FR-23).
+function Checks(props: { verdict: Verdict }) {
+  const session = () => {
+    const found = sessionRules(props.verdict);
+    return 'error' in found ? found.error : `a allows ${quoted(found.patterns)} for this session`;
+  };
+  return (
+    <>
+      <For each={props.verdict.checks}>
+        {c => (
+          <text>
+            <span style={{ fg: ACTION_COLOR[c.action] }}>{c.action.padEnd(6)}</span>
+            <span style={{ fg: TEXT }}>{c.text.replace(/\s+/g, ' ')}</span>
+            <span style={{ fg: MUTED }}>{`  ${c.why}`}</span>
+          </text>
+        )}
+      </For>
+      <text fg={MUTED}>{session()}</text>
+      <text> </text>
+    </>
   );
 }
 
@@ -445,5 +475,5 @@ function modeKeys(gate: Gate, mode: KeyMode): Hint[] {
   if (own) return own;
   if (gate.running()) return [['esc', 'kill'], ...LOOK_KEYS];
   if (gate.streaming()) return [['esc', 'abort'], ...LOOK_KEYS];
-  return gate.selectedBlock()?.pending ? [['y', 'run once'], ['n', 'reject'], ...KEYS] : KEYS;
+  return gate.selectedBlock()?.pending ? [['y', 'run once'], ['a', 'allow for session'], ['n', 'reject'], ...KEYS] : KEYS;
 }

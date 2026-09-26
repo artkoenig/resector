@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { BUILTIN_ALLOW } from '../approval/approval';
 import { configJsonSchema, initialConfig, readConfig, SCHEMA_URL } from './config';
 
 test('a JSONC config with comments and trailing commas resolves its default Model Profile', () => {
@@ -106,6 +107,27 @@ test('permission rules, keybindings and the bash timeout are read from config', 
   expect(() => readConfig([{ source: 'global', text: '{ "permission": { "rm *": "never" }, "bash": { "timeout": 0 } }' }])).toThrow(
     'invalid config: permission.rm *: Invalid option: expected one of "allow"|"ask"|"deny"; bash.timeout: Too small: expected number to be >0',
   );
+});
+
+test('permission rules: built-in, then global, then project; project allow entries are ignored (FR-25)', () => {
+  const { permissions } = readConfig([
+    { source: 'global', text: '{ "permission": { "git push *": "ask", "make *": "allow" } }' },
+    { source: 'project', project: true, text: '{ "permission": { "make *": "deny", "git commit *": "allow" } }' },
+  ]);
+  expect(permissions).toEqual({
+    rules: [...BUILTIN_ALLOW, { pattern: 'git push *', action: 'ask', source: 'global' }, { pattern: 'make *', action: 'allow', source: 'global' }, { pattern: 'make *', action: 'deny', source: 'project' }],
+    ignored: ['git commit *'],
+  });
+  expect(readConfig([{ source: 'global', text: '{}' }]).permissions).toEqual({ rules: BUILTIN_ALLOW, ignored: [] });
+});
+
+test('an invalid permission is an error even when a later file overrides it', () => {
+  const files = [
+    { source: 'global.jsonc', text: '{ "permission": { "rm *": "never", "mv *": "sometimes" } }' },
+    { source: 'project.jsonc', project: true, text: '{ "permission": { "rm *": "deny", "mv *": "ask" } }' },
+  ];
+  const option = 'Invalid option: expected one of "allow"|"ask"|"deny"';
+  expect(() => readConfig(files)).toThrow(`invalid config: global.jsonc: permission.rm *: ${option}; permission.mv *: ${option}`);
 });
 
 test('the published JSON Schema matches the config schema', async () => {

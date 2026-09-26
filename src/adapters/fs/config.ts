@@ -18,7 +18,7 @@ export function configPaths({ home, cwd, env }: { home: string; cwd: string; env
 export function loadConfig(paths: ConfigPaths) {
   const files: ConfigFile[] = [paths.global, paths.project]
     .filter(path => existsSync(path))
-    .map(path => ({ source: path, text: readFileSync(path, 'utf8') }));
+    .map(path => ({ source: path, text: readFileSync(path, 'utf8'), project: path === paths.project }));
   if (!files.length) return null;
   const config = readConfig(files);
   // FR-31: profile file, else system.md next to the project config, else next to the global one, else shipped.

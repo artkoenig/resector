@@ -21,12 +21,12 @@ src/
     tokens/                Tokenizer interface, per-block split, drift
     cache/                 prefix diff → invalidation point → rows ●/○
     compaction/            compaction request + proposal state machine
-    approval/              permission rules, bash command splitting, evaluation
+    approval/              permission rules, evaluation of split commands, session rules
     toolcall/              parse tool calls (native + text-xml), malformed detection, split thinking
     config/                JSONC load, merge, schema, permission tightening
   adapters/                I/O at the edge
     backend/               llamacpp | ollama | lmstudio | omlx (chat, tokenize, props)
-    bash/                  process runner (timeout, kill, stdin /dev/null)
+    bash/                  process runner (timeout, kill, stdin /dev/null), command splitting (tree-sitter-bash)
     editor/                $EDITOR on a temporary file (suspends the TUI)
     clipboard/             copy on select: OSC 52 + pbcopy / wl-copy / xclip
     fs/                    @file read, environment probe, AGENTS.md
@@ -93,7 +93,7 @@ Per-block split via offset mapping / prefix differences; remainder = `Template` 
 ## 5. Tool Approval
 
 - Rules from config (global `allow|ask|deny`, project only `ask|deny`) + session `AllowRuleAdded` events; last match wins; default `ask`; built-in read-only allow list.
-- tree-sitter-bash splits compound commands; each sub-command evaluated; parse failure → `ask`; path arguments leaving the project root → `ask`.
+- tree-sitter-bash splits compound commands; each sub-command evaluated; parse failure → `ask`; path arguments (incl. redirect targets) leaving the project root, or not literal (`$VAR`, `$(…)`), → `ask`; a built-in read-only command writing files (redirect, or options like `find -delete`, `sed -i`) → `ask`.
 - "Allow for session" stores `<prefix> *` derived via an arity table (e.g. `git checkout *`, `bun test *`).
 - Runner: `bash -c`, cwd = project root, stdin `/dev/null`, timeout (default 120 s), kill on `Esc`.
 
