@@ -81,6 +81,7 @@ export async function connectLlamaCpp(endpoint: string, { window, model, samplin
     window: window ?? props.default_generation_settings.n_ctx,
     thinking,
     thinkingModes: props.chat_template ? thinkingModes(props.chat_template) : null,
+    exact: true,
 
     async count(requests) {
       const request = requests.at(-1) ?? EMPTY;

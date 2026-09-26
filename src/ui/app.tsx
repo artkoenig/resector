@@ -416,8 +416,18 @@ function CompactionMeta(props: { gate: Gate; compaction: Compaction }) {
 function Header(props: { gate: Gate; width: number }) {
   const total = () => props.gate.split()?.total ?? 0;
   const used = () => (props.gate.split() ? formatTokens(total()) : '…');
+  const budget = () => props.gate.budget();
+  // FR-2: ±X drift of an inexact tokenizer, dimmed; above the window red `over by X`.
   const window = () => ` / ${formatTokens(props.gate.window())}`;
-  const tone = () => (total() > props.gate.window() ? TONE.error : total() >= 0.9 * props.gate.window() ? TONE.warn : undefined);
+  const drift = () => {
+    const label = budget()?.driftLabel;
+    return label ? ` ${label}` : '';
+  };
+  const over = () => {
+    const tokens = budget()?.over;
+    return tokens ? ` over by ${formatTokens(tokens)}` : '';
+  };
+  const tone = () => ({ ok: undefined, warn: TONE.warn, over: TONE.error })[budget()?.tone ?? 'ok'];
   const profile = () => props.gate.profile();
   const thinking = () => ` · thinking ${thinkingLabel(props.gate.thinking())}`;
   return (
@@ -429,9 +439,11 @@ function Header(props: { gate: Gate; width: number }) {
         <>
           <span style={{ fg: tone() ?? TEXT }}>{used()}</span>
           <span style={{ fg: tone() ?? MUTED }}>{window()}</span>
+          <span style={{ fg: MUTED }}>{drift()}</span>
+          <span style={{ fg: TONE.error }}>{over()}</span>
         </>
       }
-      rightWidth={used().length + window().length}
+      rightWidth={used().length + window().length + drift().length + over().length}
       below={
         <text>
           <span>{'  '}</span>
@@ -443,8 +455,10 @@ function Header(props: { gate: Gate; width: number }) {
 }
 
 // FR-2: one segment per block in Context order (plus Template), proportional to tokens; free space in the border colour.
+// Over the window the bar is scaled to the Context and marks the window edge.
 // Half cells: thicker than a line, lighter than a solid strip.
 const BAR = '▀';
+const EDGE = '│';
 function contextBar(gate: Gate, width: number): { char: string; color: string }[] {
   const split = gate.split();
   const cells = Array.from({ length: width }, () => ({ char: BAR, color: BORDER }));
@@ -463,6 +477,8 @@ function contextBar(gate: Gate, width: number): { char: string; color: string }[
     for (let x = from; x < Math.min(to, width); x++) cells[x] = { char: BAR, color: s.color };
     filled = Math.max(filled, to);
   }
+  const edge = Math.round((gate.window() / scale) * width);
+  if (split.total > gate.window() && edge < width) cells[edge] = { char: EDGE, color: TONE.error };
   return cells;
 }
 
@@ -471,7 +487,8 @@ const SINGLE_KEYS = new Set(['alt+up', 'alt+down', 'y', 'a', 'n', 'p', 'e']);
 const BUSY_KEYS = new Set(['up', 'down', 'shift+up', 'shift+down', 'pageup', 'pagedown', 'q']);
 const WHEEL: Record<string, number> = { up: -1, down: 1 };
 
-const modifierOf = (key: { option?: boolean; meta: boolean; shift: boolean }) => (key.option || key.meta ? 'alt+' : key.shift ? 'shift+' : '');
+const modifierOf = (key: { option?: boolean; meta: boolean; shift: boolean }) =>
+  key.option || key.meta ? 'alt+' : key.shift ? 'shift+' : '';
 
 const LOOK_KEYS: Hint[] = [['q', 'quit']];
 // With marks only what acts on all marked blocks.

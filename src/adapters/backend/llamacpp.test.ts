@@ -59,6 +59,15 @@ test('an answer streams in deltas and ends with finish reason, usage and cached 
   expect(fake.chatRequests).toEqual([{ n_cache_reuse: 0, messages, stream: true, stream_options: { include_usage: true } }]);
 });
 
+test('max_tokens goes into the request: the window minus the Context (FR-18); llama.cpp counts exactly', async () => {
+  fake = startFakeLlamaCpp();
+  fake.reply({ chunks: ['ok'] });
+  const backend = await connectLlamaCpp(fake.url);
+  expect(backend.exact).toBe(true);
+  await backend.chat(request([{ role: 'user', content: 'hi' }]), { signal: new AbortController().signal, onDelta: () => {}, maxTokens: 321 });
+  expect(fake.chatRequests[0]).toMatchObject({ max_tokens: 321 });
+});
+
 test('aborting keeps the partial answer', async () => {
   fake = startFakeLlamaCpp();
   fake.reply({ chunks: ['Hal'], hang: true });

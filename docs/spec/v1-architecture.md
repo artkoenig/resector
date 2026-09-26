@@ -18,7 +18,7 @@ src/
     session/               new session, session summary (title, blocks, tokens)
     context/               Context Blocks, Revisions, pins, Tool Pairs, undo
     render/                Context → request per Tool Protocol (native, text-xml)
-    tokens/                Tokenizer interface, per-block split, drift
+    tokens/                Tokenizer interface, per-block split, drift, budget (max_tokens, blocking)
     cache/                 prefix diff → invalidation point → rows ●/○
     compaction/            compaction request + proposal state machine
     notes/                 @path references and snapshots, environment Note text and refresh

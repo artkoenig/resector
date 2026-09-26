@@ -15,6 +15,8 @@ import { listProjectFiles, projectFiles } from '../adapters/fs/project';
 import { newSession, type SessionNotes } from '../core/session/session';
 import { TOOLS } from '../core/toolcall/bash';
 import { App } from './app';
+import { formatTokens } from './format';
+import { TONE } from './theme';
 import type { GateOptions } from './gate';
 
 let fake: ReturnType<typeof startFakeLlamaCpp>;
@@ -42,14 +44,15 @@ let openedFiles: string[];
 
 // `users`: User blocks already in the Session Log, not yet sent; `global`, `project`: permission rules of the config.
 // `calls`: pending Tool Calls after them, as at a resume. `template`: the chat template the server reports.
-type Start = { template?: string; notes?: SessionNotes; timeout?: number; compactor?: GateOptions['compactor']; users?: string[]; calls?: string[]; global?: Permissions; project?: Permissions };
-async function start({ template, notes, timeout = 120, compactor, users = [], calls = [], global, project: own }: Start = {}) {
+// `window`: the server's context size; `exact`: false counts like an inexact tokenizer (Ollama, LM Studio).
+type Start = { template?: string; window?: number; exact?: boolean; notes?: SessionNotes; timeout?: number; compactor?: GateOptions['compactor']; users?: string[]; calls?: string[]; global?: Permissions; project?: Permissions };
+async function start({ template, window = 4096, exact = true, notes, timeout = 120, compactor, users = [], calls = [], global, project: own }: Start = {}) {
   editor = async text => text;
   copied = [];
   environment = notes?.environment ?? '';
   openedFiles = [];
-  fake = startFakeLlamaCpp({ nCtx: 4096, template });
-  const backend = await connectLlamaCpp(fake.url);
+  fake = startFakeLlamaCpp({ nCtx: window, template });
+  const backend = { ...(await connectLlamaCpp(fake.url)), exact };
   const log = createSessionLog(mkdtempSync(join(tmpdir(), 'resector-')), 'ses_test');
   const runner = createRunner({ cwd: project, timeout });
   // search without ddgr: the query is echoed back as its result.
@@ -68,7 +71,8 @@ async function start({ template, notes, timeout = 120, compactor, users = [], ca
     () => <App backend={backend} runner={runner} searcher={searcher} approval={approval} editor={text => editor(text)} project={files} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} reconnect={async () => backend} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
     { width: 80, height: 20 },
   );
-  await frameMatching(ui, f => f.includes(users.length || notes ? ' / 4k' : '52 / 4k') && !f.includes('… / 4k'));
+  const size = ` / ${formatTokens(window)}`;
+  await frameMatching(ui, f => f.includes(users.length || notes ? size : `52${size}`) && !f.includes(`…${size}`));
   const events = () => readFileSync(log.path, 'utf8').trim().split('\n').map(l => JSON.parse(l));
   return { events, opened };
 }
@@ -122,6 +126,82 @@ test('Enter in input mode adds a User block and sends the Context; the answer st
     { type: 'BlockAdded', id: 4, kind: 'Assistant', origin: 'model', content: 'Hello world' },
     { type: 'ResponseReceived', usage: { prompt_tokens: 24, completion_tokens: 2 }, cached: 16 },
   ]);
+});
+
+test('every request sends max_tokens = window − Context: no answer reserve (FR-18)', async () => {
+  const { events } = await start();
+  fake.reply({ chunks: ['ok'] });
+  await write('hi there');
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(events()[4]).toMatchObject({ type: 'RequestSent', tokens: 60 });
+  expect(fake.chatRequests[0]).toMatchObject({ max_tokens: 4096 - 60 });
+});
+
+// The colour of the header's `tokens / window` (first line, right).
+const headerTone = () => {
+  const spans = ui.captureSpans().lines[0]!.spans.filter(s => /\d/.test(s.text));
+  return spans.map(s => Array.from(s.fg.buffer.slice(0, 3), c => c.toString(16).padStart(2, '0')).join(''));
+};
+
+test('from 90 % of the window the tokens turn yellow (FR-2)', async () => {
+  await start({ window: 64, users: ['short'] });
+  const frame = ui.captureCharFrame();
+  expect(line(frame, /default/)).toMatch(/58 \/ 64 {2}$/);
+  expect(headerTone()).toEqual([TONE.warn.slice(1)]);
+});
+
+const LONG = 'a b c d e f g h i j k l m n o p q r s t';
+
+test('a Context as big as the window blocks sending: red over by X, the bar marks the window edge (FR-2, FR-18)', async () => {
+  const { events } = await start({ window: 80, users: [LONG, 'short'] });
+  let frame = ui.captureCharFrame();
+  expect(line(frame, /default/)).toMatch(/102 \/ 80 over by 23 {2}$/);
+  expect(headerTone()).toEqual([TONE.error.slice(1)]);
+  expect(frame.split('\n')[1]).toMatch(/^ {2}▀+│▀+ *$/);
+  const before = events().length;
+  ui.mockInput.pressEnter();
+  frame = await frameMatching(ui, f => f.includes('over by 23 – sending blocked'));
+  expect(line(frame, /sending blocked/)).toContain('d remove · e edit · c compact');
+  expect(fake.chatRequests).toEqual([]);
+  expect(events().slice(before).map(e => e.type)).not.toContain('RequestSent');
+  // Removing the long block makes room: sent with the rest of the window as max_tokens.
+  await press('down');
+  await press('down');
+  await press('d');
+  frame = await frameMatching(ui, f => f.includes('58 / 80'));
+  expect(frame.split('\n')[1]).not.toContain('│');
+  fake.reply({ chunks: ['ok'] });
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(fake.chatRequests[0]).toMatchObject({ max_tokens: 80 - 58 });
+});
+
+test('an inexact tokenizer shows ±drift and blocks sending that much below the window (FR-2, FR-18)', async () => {
+  const { events } = await start({ window: 80, exact: false, users: ['short'] });
+  expect(line(ui.captureCharFrame(), /default/)).toMatch(/58 \/ 80 ±\? {2}$/);
+  // The server counts 10 more prompt tokens than the backend did.
+  fake.reply({ chunks: ['ok'], usage: { prompt_tokens: 68, completion_tokens: 1 } });
+  ui.mockInput.pressEnter();
+  let frame = await frameMatching(ui, f => f.includes('answer complete') && /\d+ \/ 80 ±10 {2}$/m.test(f));
+  expect(events().find(e => e.type === 'RequestSent')).toMatchObject({ tokens: 58 });
+  const total = Number(/(\d+) \/ 80 ±10 {2}$/m.exec(frame)![1]);
+  // One word per two tokens: enough to reach the window less the drift, not the window itself.
+  await write('x '.repeat(Math.ceil((70 - total - 5) / 2)).trim());
+  frame = await frameMatching(ui, f => f.includes('sending blocked'));
+  const header = /(\d+) \/ 80 ±10 over by (\d+) {2}$/m.exec(frame)!;
+  expect(Number(header[1])).toBeGreaterThanOrEqual(70);
+  expect(Number(header[1])).toBeLessThan(80);
+  expect(Number(header[2])).toBe(Number(header[1]) - 70 + 1);
+  expect(fake.chatRequests).toHaveLength(1);
+});
+
+test('Enter in input mode on a full window: the User block stays, the status says why (FR-6, FR-18)', async () => {
+  const { events } = await start({ window: 64, users: [LONG] });
+  await write('more');
+  const frame = await frameMatching(ui, f => f.includes('sending blocked'));
+  expect(line(frame, /more/)).toMatch(/User\s+more/);
+  expect(events().at(-1)).toMatchObject({ type: 'BlockAdded', kind: 'User', content: 'more' });
+  expect(fake.chatRequests).toEqual([]);
 });
 
 test('empty Enter in input mode adds nothing and sends nothing', async () => {
@@ -1127,11 +1207,14 @@ test('a request too big for the compaction window is blocked; Compaction runs on
     await press('down');
     await frameMatching(ui, f => previewed(f) === 'short');
     await press('c');
-    await frameMatching(ui, f => /request \d+ \/ 80/.test(f));
+    frame = await frameMatching(ui, f => /request \d+ \/ 80/.test(f));
+    const request = Number(/request (\d+) \/ 80/.exec(frame)![1]);
     small.reply({ chunks: ['s'] });
     ui.mockInput.pressEnter();
     frame = await frameMatching(ui, f => f.includes('session cache untouched'));
     expect(small.chatRequests).toHaveLength(1);
+    // The proposal may use the rest of the Compaction profile's window (FR-18).
+    expect(small.chatRequests[0]).toMatchObject({ max_tokens: 80 - request });
     expect(fake.chatRequests).toEqual([]);
   } finally {
     small.stop();
