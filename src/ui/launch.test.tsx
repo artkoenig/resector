@@ -163,8 +163,10 @@ test('Compaction runs on compactionProfile with the instruction from compaction.
     await frameMatching(ui, f => f.includes('/ 2k'));
     await command('/reload');
     await frameMatching(ui, f => f.includes('config reloaded'));
+    fake.reply({ chunks: ['ok'] });
     await command('long story');
-    await frameMatching(ui, f => /3\s+User\s+long story/.test(f));
+    await frameMatching(ui, f => /3\s+User\s+long story/.test(f) && f.includes('answer complete'));
+    ui.mockInput.pressArrow('up');
     ui.mockInput.pressKey('c');
     await frameMatching(ui, f => /◇ Compact 1 block \(\d+ tok\) · small · request \d+ \/ 1k/.test(f));
     expect(ui.captureCharFrame()).toContain('instruction > keep names');
@@ -173,7 +175,8 @@ test('Compaction runs on compactionProfile with the instruction from compaction.
     await frameMatching(ui, f => f.includes('session cache untouched'));
     expect(other.chatRequests).toHaveLength(1);
     expect((other.chatRequests[0] as { messages: { content: string }[] }).messages[1]!.content).toEndWith('Instruction: keep names');
-    expect(fake.chatRequests).toEqual([]);
+    // Only the answer to `long story` went to the session backend.
+    expect(fake.chatRequests).toHaveLength(1);
   } finally {
     other.stop();
   }

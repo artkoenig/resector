@@ -8,7 +8,7 @@ Local LLMs (7B–30B, 8k–32k window) degrade fast when the context fills with 
 
 ## 2. Product
 
-A text-based (TUI) coding agent whose core is the **Review Gate**: a pause before *every* request to the model — including follow-up requests in the tool loop — where the user sees each **Context Block** with its exact token count and cache effect, and can send, edit, move, pin, remove or compact it. UX model: opencode. UI language: English.
+A text-based (TUI) coding agent whose core is editing the **Context**: the user sees each **Context Block** with its exact token count and cache effect, and can edit, move, pin, remove or compact it. This happens at the **Review Gate**, a pause before *every* request to the model — including follow-up requests in the tool loop. UX model: opencode. UI language: English.
 
 ## 3. Users & scope
 
