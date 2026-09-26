@@ -394,6 +394,12 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     append({ type: 'BlockAdded', id: nextId(), kind: 'Tool Result', origin: 'user', content: answerText(question.questions, answers), call: question.call.id });
     advance();
   }
+  // Esc: the Question is declined; the results are held at the Gate.
+  function decline() {
+    const question = asked();
+    if (!question) return;
+    notRun(ops.decline, question.call, ['question declined']);
+  }
 
   // The selected Tool Call, if it may be decided on now.
   function decidable(): Block | null {
@@ -424,9 +430,13 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   function reject() {
     const call = decidable();
     if (!call) return;
+    notRun(ops.reject, call);
+  }
+  // The call is answered without running; the results are held at the Gate.
+  function notRun(operation: typeof ops.reject, call: Block, notes: string[] = []) {
     held = true;
     setSelected(nextId());
-    if (apply(ops.reject(context(), call, nextId()))) advance();
+    if (apply(operation(context(), call, nextId()))) advance(notes);
   }
 
   // Why the Context cannot be sent now, or null: calls await approval, or the model has answered
@@ -731,6 +741,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     leaveInstruction,
     editProposal: () => void editProposal(),
     approve,
+    decline,
     allowForSession,
     reject,
     // Why the rules ask for a pending call, per sub-command (FR-22); null for any other block.

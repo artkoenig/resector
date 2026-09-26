@@ -173,6 +173,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     r: () => step(dock.recommend(dockState()!)),
     'shift+up': () => scrollPreview(-1),
     'shift+down': () => scrollPreview(1),
+    escape: gate.decline,
     q: props.onQuit,
     ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => [String(n), onQuestionTab(() => pickRow(n - 1))])),
   };
@@ -686,8 +687,8 @@ const MODE_KEYS: Partial<Record<KeyMode, Hint[]>> = {
   suggest: [['↑↓', 'choose'], ['tab', 'complete'], ['enter', 'run'], ['esc', 'back']],
   complete: [['↑↓', 'choose'], ['tab/enter', 'complete'], ['esc', 'back']],
   input: [['enter', 'send'], ['tab/esc', 'back']],
-  question: [['↑↓ jk', 'choose'], ['enter 1–9', 'pick'], ['q', 'quit']],
-  questions: [['↑↓ jk', 'choose'], ['enter 1–9', 'pick'], ['tab h/l', 'question'], ['r', 'recommended'], ['q', 'quit']],
+  question: [['↑↓ jk', 'choose'], ['enter 1–9', 'pick'], ['esc', 'decline'], ['q', 'quit']],
+  questions: [['↑↓ jk', 'choose'], ['enter 1–9', 'pick'], ['tab h/l', 'question'], ['r', 'recommended'], ['esc', 'decline'], ['q', 'quit']],
   answer: [['enter', 'answer'], ['esc', 'back']],
 };
 function modeKeys(gate: Gate, mode: KeyMode): Hint[] {

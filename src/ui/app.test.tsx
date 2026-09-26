@@ -15,6 +15,7 @@ import { createSessionLog } from '../adapters/store/session-log';
 import { permissionRules, type Permissions, type Split } from '../core/approval/approval';
 import { listProjectFiles, projectFiles } from '../adapters/fs/project';
 import { newSession, type SessionNotes } from '../core/session/session';
+import type { Tool } from '../core/log/events';
 import { App } from './app';
 import { formatTokens } from './format';
 import { TONE } from './theme';
@@ -44,9 +45,9 @@ let environment: string;
 let openedFiles: string[];
 
 // `tools`: the Tools Block (default bash only, so token counts stay put). `users`: User blocks already in the Session Log, not yet sent; `global`, `project`: permission rules of the config.
-// `calls`: pending Tool Calls after them, as at a resume. `template`: the chat template the server reports.
+// `calls`: pending Tool Calls after them, as at a resume (a string: a bash command). `template`: the chat template the server reports.
 // `window`: the server's context size; `exact`: false counts like an inexact tokenizer (Ollama, LM Studio).
-type Start = { tools?: string; template?: string; window?: number; exact?: boolean; notes?: SessionNotes; timeout?: number; compactor?: GateOptions['compactor']; users?: string[]; calls?: string[]; global?: Permissions; project?: Permissions };
+type Start = { tools?: string; template?: string; window?: number; exact?: boolean; notes?: SessionNotes; timeout?: number; compactor?: GateOptions['compactor']; users?: string[]; calls?: (string | { tool: Tool; content: string })[]; global?: Permissions; project?: Permissions };
 async function start({ tools = BASH_TOOLS, template, window = 4096, exact = true, notes, timeout = 120, compactor, users = [], calls = [], global, project: own }: Start = {}) {
   editor = async text => text;
   copied = [];
@@ -62,7 +63,7 @@ async function start({ tools = BASH_TOOLS, template, window = 4096, exact = true
   const initial = [
     ...withTools(newSession('default', 'You are an agent.', notes), tools),
     ...users.map((content, i) => ({ type: 'BlockAdded' as const, id: i + first, kind: 'User' as const, origin: 'user' as const, content })),
-    ...calls.map((content, i) => ({ type: 'BlockAdded' as const, id: users.length + i + first, kind: 'Tool Call' as const, origin: 'model' as const, content })),
+    ...calls.map((call, i) => ({ type: 'BlockAdded' as const, id: users.length + i + first, kind: 'Tool Call' as const, origin: 'model' as const, ...(typeof call === 'string' ? { content: call } : call) })),
   ];
   initial.forEach(log.append);
   const opened: string[] = [];
@@ -1462,4 +1463,64 @@ test('r fills the unanswered questions with their Recommended Options and jumps 
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('answer complete'));
   expect(answerSent()).toMatchObject({ content: `${RUNTIME.question}: Node\nWhich linters should run?: Biome, Oxlint, Prettier\nWhich package manager?: Bun` });
+});
+
+// Question: decline, resume, ordering (#35) --------------------------------------------------------------------
+test('Esc declines the Question: its Tool Result says declined, the loop stops at the Gate (#35)', async () => {
+  const { events } = await questioned(RUNTIME, LINTERS);
+  await escape();
+  const frame = await frameMatching(ui, f => f.includes('question declined – review the results, Enter sends'));
+  expect(frame).not.toContain('own answer');
+  expect(fake.chatRequests).toHaveLength(1);
+  expect(events().at(-1)).toEqual({ type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'declined', call: 4 });
+});
+
+test('resuming with an unanswered Question reopens the dock, after the earlier calls are decided (#35)', async () => {
+  const { events } = await start({ tools: TOOLS, users: ['go'], calls: ['ls -d .', { tool: 'question', content: JSON.stringify({ questions: [RUNTIME] }) }] });
+  const frame = await frameMatching(ui, f => f.includes('own answer'));
+  expect(line(frame, /1 Bun/)).toMatch(/› 1 Bun .*recommended/);
+  expect(events().at(-1)).toMatchObject({ kind: 'Tool Result', content: '.\n[exit 0]', call: 4 });
+  fake.reply({ chunks: ['ok'] });
+  await press('2');
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect((fake.chatRequests[0] as Sent).messages.at(-1)).toMatchObject({ role: 'tool', content: 'Which runtime should we use?: Node' });
+});
+
+test('mixed bash and question calls are decided in order: the Question waits for the earlier calls, later ones wait for it (#35)', async () => {
+  const { events } = await start({ tools: TOOLS });
+  fake.reply({ chunks: [], calls: [bash('touch first.txt'), questionCall(RUNTIME), bash('touch last.txt')] });
+  await write('go');
+  let frame = await frameMatching(ui, f => /Tool Call\s+touch first\.txt.*\? approve/.test(f));
+  expect(frame).not.toContain('own answer');
+  await press('y');
+  await frameMatching(ui, f => f.includes('own answer'));
+  expect(await Bun.file(join(project, 'last.txt')).exists()).toBe(false);
+  await press('1');
+  frame = await frameMatching(ui, f => /Tool Call\s+touch last\.txt.*\? approve/.test(f));
+  expect(frame).not.toContain('own answer');
+  fake.reply({ chunks: ['ok'] });
+  await press('y');
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(events().filter(e => e.kind === 'Tool Result').map(e => [e.call, e.content])).toEqual([
+    [4, '[exit 0]'],
+    [5, 'Which runtime should we use?: Bun'],
+    [6, '[exit 0]'],
+  ]);
+});
+
+test('the answer is a normal Context Block: e makes a new Revision; d removes the Tool Pair as a whole (#35)', async () => {
+  const { events } = await questioned(RUNTIME);
+  fake.reply({ chunks: ['ok'] });
+  await press('2');
+  await frameMatching(ui, f => f.includes('answer complete'));
+  await press('up');
+  await frameMatching(ui, f => f.includes('┃ Tool Result  #5'));
+  editor = async () => 'Which runtime should we use?: Deno\n';
+  await press('e');
+  let frame = await frameMatching(ui, f => f.includes('┃ Which runtime should we use?: Deno'));
+  expect(events().at(-1)).toEqual({ type: 'Edit', id: 5, revision: 2, content: 'Which runtime should we use?: Deno' });
+  await press('d');
+  frame = await frameMatching(ui, f => f.includes('(whole Tool Pair)'));
+  expect(line(frame, /Tool Call/)).toMatch(/Tool Call\s+question .*removed/);
+  expect(events().at(-1)).toEqual({ type: 'Remove', id: 5 });
 });

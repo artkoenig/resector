@@ -134,3 +134,5 @@ const notRun = (content: string) => (context: Context, call: Block, id: number):
 export const reject = notRun('rejected by user');
 // A deny rule matches the call (FR-23).
 export const deny = notRun('denied by rule');
+// Esc in the dock: the user declines to answer the Question (FR-21).
+export const decline = notRun('declined');
