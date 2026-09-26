@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TextAttributes } from '@opentui/core';
@@ -11,7 +11,7 @@ import { createRunner } from '../adapters/bash/runner';
 import { createSplit } from '../adapters/bash/split';
 import { createSessionLog } from '../adapters/store/session-log';
 import { permissionRules, type Permissions, type Split } from '../core/approval/approval';
-import { projectFiles } from '../adapters/fs/project';
+import { listProjectFiles, projectFiles } from '../adapters/fs/project';
 import { newSession, type SessionNotes } from '../core/session/session';
 import { TOOLS } from '../core/toolcall/bash';
 import { App } from './app';
@@ -61,7 +61,7 @@ async function start({ notes, timeout = 120, compactor, users = [], calls = [], 
   initial.forEach(log.append);
   const opened: string[] = [];
   const approval = { split, root: project, permissions: () => permissionRules(global, own) };
-  const files = { read: projectFiles(project), environment: () => environment, open: async (path: string) => void openedFiles.push(path) };
+  const files = { read: projectFiles(project), list: () => listProjectFiles(project), environment: () => environment, open: async (path: string) => void openedFiles.push(path) };
   ui = await testRender(
     () => <App backend={backend} runner={runner} approval={approval} editor={text => editor(text)} project={files} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} reconnect={async () => backend} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
     { width: 80, height: 20 },
@@ -1057,6 +1057,25 @@ test('@file adds a reference row, not sent; e opens the file; on send it becomes
     { role: 'user', content: '[notes.txt:2-3]\n2: TWO\n3: three' },
     { role: 'user', content: 'explain' },
   ]);
+});
+
+test('an @file path is completed from the project files: ↑↓ choose, Tab or Enter complete (FR-27)', async () => {
+  mkdirSync(join(project, 'docs'), { recursive: true });
+  writeFileSync(join(project, 'docs/complete-me.md'), 'x\n');
+  writeFileSync(join(project, 'complete-too.txt'), 'y\n');
+  const { events } = await start();
+  ui.mockInput.pressTab();
+  await ui.flush();
+  await ui.mockInput.typeText('@file compl');
+  let frame = await frameMatching(ui, f => f.includes('docs/complete-me.md') && f.includes('complete-too.txt'));
+  expect(frame).toContain('↑↓ choose  tab/enter complete  esc back');
+  await press('down');
+  ui.mockInput.pressEnter();
+  frame = await frameMatching(ui, f => f.includes('┃ @file docs/complete-me.md ') && !f.includes('complete-too.txt'));
+  expect(events().some(e => e.type === 'FileReferenced')).toBe(false);
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('1 file reference added'));
+  expect(events().at(-1)).toEqual({ type: 'FileReferenced', id: 3, file: 'docs/complete-me.md' });
 });
 
 test('a referenced file missing at send aborts sending (FR-27)', async () => {

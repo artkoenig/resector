@@ -7,7 +7,7 @@ import { createRunner } from '../adapters/bash/runner';
 import { createSplit } from '../adapters/bash/split';
 import type { Clipboard } from '../adapters/clipboard/clipboard';
 import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
-import { probeEnvironment, projectFiles, projectInstructions } from '../adapters/fs/project';
+import { listProjectFiles, probeEnvironment, projectFiles, projectInstructions } from '../adapters/fs/project';
 import type { OpenSession, SessionStore } from '../adapters/store/sessions';
 import type { Split } from '../core/approval/approval';
 import type { Editor } from '../core/context/operations';
@@ -52,7 +52,7 @@ export function Launch(props: LaunchOptions) {
   const [current, setCurrent] = createSignal('');
   const root = props.cwd ?? process.cwd();
   const environment = () => environmentText(probeEnvironment(root));
-  const project = { read: projectFiles(root), environment, open: (path: string) => props.openFile(resolve(root, path)) };
+  const project = { read: projectFiles(root), list: () => listProjectFiles(root), environment, open: (path: string) => props.openFile(resolve(root, path)) };
 
   const load = () => {
     const loaded = loadConfig(props.paths);

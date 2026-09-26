@@ -16,6 +16,26 @@ export function references(input: string): { files: string[]; text: string } {
   return { files, text };
 }
 
+// The @file reference being typed at the end of the input: where its path starts and the project files matching
+// it, best first – the file name starting with it, then the path, then containing it anywhere (FR-27).
+export function fileCompletions(input: string, files: readonly string[], limit = 8): { at: number; paths: string[] } | null {
+  const typed = /(?<=^|\s)@file\s+(\S*)$/.exec(input);
+  if (!typed) return null;
+  const partial = typed[1]!.toLowerCase();
+  const rank = (path: string) => {
+    const lower = path.toLowerCase();
+    const name = lower.slice(lower.lastIndexOf('/') + 1);
+    return name.startsWith(partial) ? 0 : lower.startsWith(partial) ? 1 : lower.includes(partial) ? 2 : -1;
+  };
+  const paths = files
+    .map(path => ({ path, rank: rank(path) }))
+    .filter(f => f.rank >= 0 && f.path !== typed[1])
+    .sort((a, b) => a.rank - b.rank || a.path.length - b.path.length || a.path.localeCompare(b.path))
+    .slice(0, limit)
+    .map(f => f.path);
+  return { at: input.length - typed[1]!.length, paths };
+}
+
 // `path`, `path:a` or `path:a-b`.
 export function parseReference(file: string): Reference {
   const m = /(.+):(\d+)(?:-(\d+))?$/.exec(file);

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
-import { fileNote, parseReference, peekReferences, readReferences, references, snapshot } from './files';
+import { fileCompletions, fileNote, parseReference, peekReferences, readReferences, references, snapshot } from './files';
 
 test('@file references are taken from the input; the rest is the User text (FR-27)', () => {
   expect(references('@file src/a.ts explain this')).toEqual({ files: ['src/a.ts'], text: 'explain this' });
@@ -13,6 +13,22 @@ test('@file references are taken from the input; the rest is the User text (FR-2
   expect(references('@file  a.ts')).toEqual({ files: ['a.ts'], text: '' });
   expect(references('see @file a.ts:3-5, then @file b.ts).')).toEqual({ files: ['a.ts:3-5', 'b.ts'], text: 'see then' });
   expect(references('@file a.ts\nline one\nline two')).toEqual({ files: ['a.ts'], text: 'line one\nline two' });
+});
+
+const FILES = ['src/ui/gate.ts', 'src/ui/app.tsx', 'docs/gate.md', 'src/core/notes/files.ts', 'package.json'];
+
+test('the @file path being typed is completed from the project files, file name matches first (FR-27)', () => {
+  expect(fileCompletions('see @file ', FILES, 3)).toEqual({ at: 10, paths: ['docs/gate.md', 'package.json', 'src/ui/app.tsx'] });
+  expect(fileCompletions('@file GA', FILES)).toEqual({ at: 6, paths: ['docs/gate.md', 'src/ui/gate.ts'] });
+  expect(fileCompletions('@file src/', FILES)?.paths).toEqual(['src/ui/app.tsx', 'src/ui/gate.ts', 'src/core/notes/files.ts']);
+  expect(fileCompletions('@file notes', FILES)?.paths).toEqual(['src/core/notes/files.ts']);
+});
+
+test('no completion once the path is complete, ended or not being typed', () => {
+  expect(fileCompletions('@file src/ui/gate.ts', FILES)?.paths).toEqual([]);
+  expect(fileCompletions('@file src/ui/gate.ts ', FILES)).toBeNull();
+  expect(fileCompletions('mail@file x', FILES)).toBeNull();
+  expect(fileCompletions('hello', FILES)).toBeNull();
 });
 
 test('a reference is a path with an optional line or line range', () => {

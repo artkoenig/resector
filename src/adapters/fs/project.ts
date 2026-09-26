@@ -1,7 +1,7 @@
 // The project on disk: @file reads (FR-27), the environment probe (FR-28), project instructions (FR-29).
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import type { Environment } from '../../core/notes/environment';
 import type { ReadFile } from '../../core/notes/files';
 import type { Instructions } from '../../core/session/session';
@@ -15,6 +15,28 @@ export const projectFiles = (root: string): ReadFile => path => {
     return null;
   }
 };
+
+// The project's files for @file completion (FR-27), relative to the root: in a git repository the tracked and
+// untracked ones not ignored, else a walk skipping dot directories and node_modules. At most `limit`.
+export function listProjectFiles(root: string, limit = 20000): string[] {
+  const git = spawnSync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  if (git.status === 0) return git.stdout.split('\n').filter(Boolean).slice(0, limit);
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(join(root, dir), { withFileTypes: true })) {
+      if (files.length >= limit) return;
+      const path = dir ? `${dir}/${entry.name}` : entry.name;
+      if (entry.isFile()) files.push(path);
+      else if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') walk(path);
+    }
+  };
+  try {
+    walk('');
+  } catch {
+    // An unreadable directory ends the walk; what was found so far is offered.
+  }
+  return files;
+}
 
 const INSTRUCTIONS = ['AGENTS.md', 'CLAUDE.md'];
 

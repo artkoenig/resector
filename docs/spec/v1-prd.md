@@ -74,7 +74,7 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 
 ### 4.6 Files & Notes
 
-- **FR-27** `@file <path>[:a-b]` in the input adds a file reference row. Before sending, `e` on it opens the file itself in `$EDITOR`. On send the file (or line range) is read and becomes a Note with origin `@file <path>`; from then on a plain snapshot, never tracked, refreshed or marked stale. Missing file at send → sending aborts with `file not found: <path>`.
+- **FR-27** `@file <path>[:a-b]` in the input adds a file reference row. While the path is typed, project files (git: tracked + untracked, not ignored) matching it are suggested above the input, file name matches first: `↑↓` choose, `Tab`/`Enter` complete. Before sending, `e` on it opens the file itself in `$EDITOR`. On send the file (or line range) is read and becomes a Note with origin `@file <path>`; from then on a plain snapshot, never tracked, refreshed or marked stale. Missing file at send → sending aborts with `file not found: <path>`.
 - **FR-28** Environment Note (origin `environment`, pinned top): cwd, OS/shell, date (no time), git branch. Regenerated before each request; replaced only when changed (new Revision, `✎`).
 - **FR-29** Project instructions (`AGENTS.md`, else `CLAUDE.md`) are read once when a session is created → Note (origin file), pinned top. Snapshot like `@file`; not re-read on resume.
 

@@ -37,9 +37,9 @@ export type GateOptions = {
   compactor?: () => Promise<Compactor | null>;
 };
 export type Compactor = { profile: string; backend: Backend };
-// The project on disk: files for @file references (FR-27), the environment Note's text now (FR-28), and $EDITOR on
-// a file of the project (`e` on a reference).
-export type Project = { read: ReadFile; environment: () => string; open: (path: string) => Promise<void> };
+// The project on disk: files for @file references and their completion (FR-27), the environment Note's text now
+// (FR-28), and $EDITOR on a file of the project (`e` on a reference).
+export type Project = { read: ReadFile; list: () => string[]; environment: () => string; open: (path: string) => Promise<void> };
 // Tool Approval (FR-22, FR-25): the splitter, the project root arguments must stay in, and the config's rules as read
 // at open and on /reload (ignored: project allow patterns).
 export type Approval = { split: Split; root: string; permissions: () => { rules: Rule[]; ignored: string[] } };

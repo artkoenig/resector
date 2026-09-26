@@ -5,6 +5,7 @@ import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from
 import { quoted, sessionRules, type Action, type Verdict } from '../core/approval/approval';
 import type { Kind } from '../core/log/events';
 import type { Block } from '../core/log/fold';
+import { fileCompletions } from '../core/notes/files';
 import { COMMANDS, type Compaction, createGate, type Gate, type GateOptions, type Status } from './gate';
 import { around, cell, count, flagsOf, formatTokens, right, titleOf } from './format';
 import { Band, ErrorBand, errorBandLines, Footer, footerLines, HeaderBand, type Hint, PROMPT_LINES, PromptBand } from './parts';
@@ -19,6 +20,8 @@ const CACHE_COLOR: Record<string, string> = { '●': TONE.ok, '○': FAINT, '': 
 type Mode = 'context' | 'input' | 'rename';
 // A row per visible block; removed ones are struck through, unnumbered and not selectable until sent.
 // dropped: a Thinking block the chat template drops (FR-48), dimmed.
+// A line above the input: Tab puts `draft` into it; Enter runs `run`, or (null) completes as Tab does.
+type Suggestion = { label: string; description: string; draft: string; run: string | null };
 type Row = { id: number; heading?: string; n: string; kind: Kind; title: string; content: string; tokens: string; cache: string; flags: string; live: boolean; removed: boolean; dropped?: boolean };
 
 export function App(props: GateOptions & { onQuit: () => void }) {
@@ -61,27 +64,37 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     return done;
   };
 
-  // FR-6: command suggestions while the input is a single `/word`.
-  const suggestions = () => (mode() === 'input' && /^\/\S*$/.test(draft()) ? COMMANDS.filter(c => c.name.startsWith(draft())) : []);
-  const suggestion = () => suggestions()[Math.min(suggested(), suggestions().length - 1)];
+  // The project's files, listed when the input opens: @file completion (FR-27).
+  const [files, setFiles] = createSignal<string[]>([]);
+  createEffect(on(mode, m => m === 'input' && setFiles(props.project.list())));
+  // Suggestions above the input: commands while it is a single `/word` (FR-6), project files while an @file path
+  // is typed at its end (FR-27). Tab completes; Enter runs a command taking no argument, else completes too.
+  const suggestions = createMemo((): Suggestion[] => {
+    if (mode() !== 'input') return [];
+    if (/^\/\S*$/.test(draft())) {
+      return COMMANDS.filter(c => c.name.startsWith(draft())).map(c => ({
+        label: `${c.name} ${c.arg}`, description: c.description, draft: c.name + (c.arg ? ' ' : ''), run: c.arg && draft() !== c.name ? null : c.name,
+      }));
+    }
+    const found = fileCompletions(draft(), files());
+    return found ? found.paths.map(path => ({ label: path, description: '', draft: `${draft().slice(0, found.at)}${path} `, run: null })) : [];
+  });
+  const chosen = () => Math.min(suggested(), suggestions().length - 1);
+  const suggestion = () => suggestions()[chosen()];
   const editDraft = (text: string) => {
     setDraft(text);
     setSuggested(0);
   };
-  const complete = (c: (typeof COMMANDS)[number]) => editDraft(c.name + (c.arg ? ' ' : ''));
-  // Enter on a suggestion: one taking an argument is completed, any other runs.
   const choose = () => {
-    const c = suggestion()!;
-    if (c.arg && draft() !== c.name) complete(c);
-    else {
-      gate.submit(c.name);
-      leaveInput();
-    }
+    const { draft: completed, run } = suggestion()!;
+    if (run === null) return editDraft(completed);
+    gate.submit(run);
+    leaveInput();
   };
   const suggestionKeys: Record<string, () => void> = {
     up: () => setSuggested((suggested() + suggestions().length - 1) % suggestions().length),
     down: () => setSuggested((suggested() + 1) % suggestions().length),
-    tab: () => complete(suggestion()!),
+    tab: () => editDraft(suggestion()!.draft),
     return: choose,
   };
 
@@ -199,7 +212,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   // An error has its own band; the footer then shows only the hints.
   const error = () => (status()?.tone === 'error' ? status()!.text : null);
   const footerStatus = () => (error() === null ? status() : null);
-  const keys = () => keysOf(gate, suggestion() ? 'suggest' : (phase() ?? mode()), error() !== null);
+  const keys = () => keysOf(gate, suggestion() ? (suggestion()!.run === null ? 'complete' : 'suggest') : (phase() ?? mode()), error() !== null);
   const errorLines = () => (error() === null ? 0 : errorBandLines(error()!, width()) + 1);
   // Block rows that fit: the screen less header band, column header, Template, preview band, error band, suggestions,
   // prompt band and footer. Preview and error band have a blank line above, the prompt band too. Lines never shrink, so rows cannot overlap.
@@ -284,10 +297,10 @@ export function App(props: GateOptions & { onQuit: () => void }) {
       </Show>
       <text flexShrink={0}> </text>
       <For each={suggestions()}>
-        {c => (
-          <text flexShrink={0} bg={c === suggestion() ? SELECTED_BG : undefined}>
-            <span style={{ fg: c === suggestion() ? ACCENT : TEXT }}>{`  ${`${c.name} ${c.arg}`.padEnd(22)} `}</span>
-            <span style={{ fg: MUTED }}>{c.description}</span>
+        {(s, i) => (
+          <text flexShrink={0} bg={i() === chosen() ? SELECTED_BG : undefined}>
+            <span style={{ fg: i() === chosen() ? ACCENT : TEXT }}>{`  ${s.label.padEnd(22)} `}</span>
+            <span style={{ fg: MUTED }}>{s.description}</span>
           </text>
         )}
       </For>
@@ -467,7 +480,7 @@ function statusOf(gate: Gate, spin: string): Status | null {
 }
 
 // Key hints right of the status; they stay visible. An error band adds how to dismiss it.
-type KeyMode = Mode | 'suggest' | Compaction['phase'];
+type KeyMode = Mode | 'suggest' | 'complete' | Compaction['phase'];
 function keysOf(gate: Gate, mode: KeyMode, error: boolean): Hint[] {
   const keys = modeKeys(gate, mode);
   return error && mode === 'context' ? [...keys.slice(0, -1), ['esc', 'dismiss'], keys.at(-1)!] : keys;
@@ -478,6 +491,7 @@ const MODE_KEYS: Partial<Record<KeyMode, Hint[]>> = {
   review: [['enter', 'accept'], ['x', 'discard'], ['i', 'instruction'], ['e', 'edit'], ...LOOK_KEYS],
   instruction: [['enter', 'compact'], ['tab', 'default'], ['esc', 'back']],
   suggest: [['↑↓', 'choose'], ['tab', 'complete'], ['enter', 'run'], ['esc', 'back']],
+  complete: [['↑↓', 'choose'], ['tab/enter', 'complete'], ['esc', 'back']],
   input: [['enter', 'send'], ['tab/esc', 'back']],
   rename: [['enter', 'set title'], ['tab/esc', 'cancel']],
 };
