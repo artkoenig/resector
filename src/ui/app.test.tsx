@@ -473,7 +473,7 @@ test('d strikes the block through until sent; u brings it back as a counter-even
   expect(order(frame)).toEqual(['1 System', '2 bash', '3 keep', '4 fine']);
 });
 
-test('Space marks and unmarks the selected block; the selection stays', async () => {
+test('Space marks and unmarks the selected block; the selection stays on the last row', async () => {
   await withUsers('one', 'two');
   await press(' ');
   let frame = await frameMatching(ui, f => /●\s+4\s+User\s+two/.test(f));
@@ -481,6 +481,14 @@ test('Space marks and unmarks the selected block; the selection stays', async ()
   await press(' ');
   frame = await frameMatching(ui, f => !f.includes('●'));
   expect(line(frame, /two/)).toMatch(/^[ ┃] {2} +4\s+User/);
+});
+
+test('Space moves the selection on to the next row, like d', async () => {
+  await withUsers('one', 'two');
+  await press('up');
+  await press(' ');
+  const frame = await frameMatching(ui, f => /●\s+3\s+User\s+one/.test(f));
+  expect(previewed(frame)).toBe('two');
 });
 
 test('@ in the Context starts a file reference in the input line, r does nothing', async () => {
@@ -1044,8 +1052,10 @@ test('d removes a Tool Pair as a whole; Space marks it as a whole (FR-9)', async
   await press(' ');
   frame = await frameMatching(ui, f => /●\s+5\s+Tool Result/.test(f));
   expect(line(frame, /Tool Call/)).toMatch(/●\s+4\s+Tool Call/);
+  await press('up');
   await press(' ');
   await frameMatching(ui, f => !/^[ ┃] ●/m.test(f));
+  await press('up');
   await press('d');
   frame = await frameMatching(ui, f => f.includes('(whole Tool Pair)'));
   expect(line(frame, /Tool Call/)).toMatch(/^ {8}Tool Call\s+echo hi\s+removed/);
@@ -1115,8 +1125,8 @@ test('c opens the instruction line with header and the default instruction as hi
 test('the proposal streams at the first source; Enter accepts it as one Note, u restores the sources (FR-14–FR-16)', async () => {
   const { events } = await withUsers('one', 'two', 'three');
   await press('up');
-  await press(' ');
   await press('up');
+  await press(' ');
   await press(' ');
   await press('c');
   await frameMatching(ui, f => f.includes('◇ Compact 2 blocks'));

@@ -37,7 +37,7 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 | `e` | edit block in `$EDITOR` (new Revision) |
 | `d` | remove (struck through until sent, then hidden; undoable) |
 | `p` | pin cycle: top → bottom → off |
-| `Space` | mark / unmark (selection stays) |
+| `Space` | mark / unmark, then select the next row (like `d`) |
 | `c` | compact marked blocks (or current) |
 | `t` | thinking: cycle the chat template's modes, `off → on → on:<effort>` (FR-49) |
 | `u` | undo |
