@@ -290,12 +290,14 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   // Text selected with the mouse, copied on release.
   const copy = (text: string) => clipboard(text).then(() => setStatus({ text: `copied ${text.length} chars`, tone: 'info' }));
   // A Tool Pair is marked as a whole: it is compacted only as a whole (FR-9); a pending Tool Call not at all.
+  // Like d, the selection then moves on to the next row.
   function toggleMark() {
     const block = selectedBlock();
     if (!block || ops.isFixed(block) || block.pending) return;
     const pair = pairOf(context().blocks, block.id);
     const on = !marked().has(block.id);
     setMarked(new Set([...marked()].filter(id => !pair.includes(id)).concat(on ? pair : [])));
+    selectAt(Math.max(...pair.map(id => rows().indexOf(id))) + 1);
   }
 
   // The status line after an answer without calls to decide on: how it ended.
