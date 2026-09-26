@@ -92,6 +92,14 @@ test('an answer streams in deltas and ends with finish reason, usage and cached 
   ]);
 });
 
+test('max_tokens goes into the request: the window minus the Context (FR-18); oMLX counts exactly', async () => {
+  const backend = await open();
+  expect(backend.exact).toBe(true);
+  fake.reply({ chunks: ['ok'] });
+  await backend.chat(request([{ role: 'user', content: 'hi' }]), { signal: new AbortController().signal, onDelta: () => {}, maxTokens: 321 });
+  expect(fake.chatRequests[0]).toMatchObject({ max_tokens: 321 });
+});
+
 test('a length cut-off is reported as such', async () => {
   const backend = await open();
   fake.reply({ chunks: ['Hel'], finish: 'length' });

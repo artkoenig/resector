@@ -68,12 +68,12 @@ export async function streamChat(
   { name, request }: { name: string; request: ReturnType<typeof httpClient>['request'] },
   params: Record<string, unknown>,
   chat: Request,
-  { signal, onDelta, onThinking = () => {} }: ChatOptions,
+  { signal, onDelta, onThinking = () => {}, maxTokens }: ChatOptions,
 ): Promise<ChatResult> {
   const answer: Answer = { result: { thinking: '', content: '', calls: [], finish: 'aborted', usage: null, cached: null, predicted: null }, fromField: '', text: '', inline: '' };
   const emit = { onDelta, onThinking };
   try {
-    const body = { ...params, ...chatFields(chat), stream: true, stream_options: { include_usage: true } };
+    const body = { ...params, ...chatFields(chat), ...(maxTokens !== undefined && { max_tokens: maxTokens }), stream: true, stream_options: { include_usage: true } };
     const res = await request('/v1/chat/completions', { ...jsonPost(body), signal });
     let finished = false;
     for await (const event of serverSentEvents(res.body!)) finished = accumulate(name, answer, event, emit) || finished;

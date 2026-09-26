@@ -109,6 +109,7 @@ export async function connectOmlx(endpoint: string, { window, model, sampling, t
 
   return {
     window: size,
+    exact: true,
 
     async count(requests) {
       const whole = requests.at(-1) ?? EMPTY;

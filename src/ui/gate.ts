@@ -11,6 +11,7 @@ import { afterCalls, fold, pairOf, type Block } from '../core/log/fold';
 import { refreshEnvironment } from '../core/notes/environment';
 import { parseReference, peekReferences, readReferences, references, type ReadFile } from '../core/notes/files';
 import { renderNative, renderPrefixes, sentBlocks, type Request } from '../core/render/native';
+import { budget, lastDrift, type Budget } from '../core/tokens/budget';
 import { answerBlocks } from '../core/toolcall/answer';
 import type { Runner } from '../core/toolcall/bash';
 import { count, errorText, formatTokens, titleOf } from './format';
@@ -122,6 +123,9 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
   // Per sent block, in Context order: still in the server's prefix cache (FR-3).
   const warm = createMemo(() => (split() ? warmRows(split()!.blocks, split()!.cached.tokens) : null));
   const nextId = () => context().nextId;
+  // The budget of a Context of `total` tokens: max_tokens, and whether it may be sent (FR-18).
+  const budgetOf = (total: number): Budget =>
+    budget({ total, window: backend().window, exact: backend().exact, drift: lastDrift(events()) });
   // Messages right after the last answer; a Context changed since then may be sent again as is.
   const lastAnswer = createMemo(() => {
     const last = events().findLastIndex(e => e.type === 'ResponseReceived');
@@ -399,14 +403,31 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     return changed || last === 'User' || last === 'Tool Result' || last === 'Note' ? null : { text: 'nothing to send – Tab to write', tone: 'info' };
   }
 
-  async function send() {
-    if (streaming() || running()) return;
+  // A Context as big as the window is not sent; the user makes room (FR-18, FR-20).
+  function overBudget(total: number): boolean {
+    const { over } = budgetOf(total);
+    if (over) setStatus({ text: `over by ${formatTokens(over)} – sending blocked · d remove · e edit · c compact`, tone: 'error' });
+    return over > 0;
+  }
+
+  // Whether the Context may go: nothing blocks it, it fits, and its references are read. The window is checked
+  // first on the Gate's count, so a Context known to be too big reads no references (FR-27); the count right
+  // before sending checks again (halted).
+  function ready(): boolean {
     const blocked = unsendable();
-    if (blocked) {
-      setStatus(blocked);
-      return;
-    }
-    if (!prepare()) return;
+    if (blocked) setStatus(blocked);
+    return !blocked && !(split() && overBudget(split()!.total)) && prepare();
+  }
+  // After the count right before sending: Esc cancelled it, or the Context does not fit.
+  function halted(aborted: boolean, total: number): boolean {
+    if (aborted) setStatus({ text: 'send cancelled', tone: 'info' });
+    const halt = aborted || overBudget(total);
+    if (halt) setStreaming(null);
+    return halt;
+  }
+
+  async function send() {
+    if (streaming() || running() || !ready()) return;
     const requested = prefixes();
     const payload = requested.at(-1)!;
     const abort = new AbortController();
@@ -414,11 +435,7 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     setStatus(null);
     try {
       const { total } = await backend().count(requested);
-      if (abort.signal.aborted) {
-        setStreaming(null);
-        setStatus({ text: 'send cancelled', tone: 'info' });
-        return;
-      }
+      if (halted(abort.signal.aborted, total)) return;
       append({ type: 'RequestSent', hash: Bun.hash(JSON.stringify(payload)).toString(16), tokens: total });
       setMarked(new Set<number>());
       setSelected(nextId());
@@ -429,7 +446,7 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
         if (thinking && !text && selected() === nextId()) setSelected(nextId() + 1);
         setStreaming({ ...streaming()!, text: text + d });
       };
-      const result = await backend().chat(payload, { signal: abort.signal, onDelta, onThinking });
+      const result = await backend().chat(payload, { signal: abort.signal, onDelta, onThinking, maxTokens: budgetOf(total).maxTokens });
       setStreaming(null);
       finish(result);
     } catch (e) {
@@ -483,7 +500,8 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     update({ phase: 'running', draft, abort });
     setStatus(null);
     try {
-      if (await fits(c, request)) await propose(c, request, draft, abort);
+      const total = await fits(c, request);
+      if (total !== null) await propose(c, request, draft, abort, c.backend.window - total);
     } catch (e) {
       endCompaction({ text: `compaction failed: ${errorText(e)}`, tone: 'error' });
     } finally {
@@ -491,22 +509,24 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
       if (c.same) setRecount(recount() + 1);
     }
   }
-  // Too big for the window of the Compaction's Model Profile: back to the instruction, no chunking (FR-14).
-  async function fits(c: Compaction, request: Request) {
+  // The request's tokens; too big for the window of the Compaction's Model Profile: null, back to the
+  // instruction, no chunking (FR-14).
+  async function fits(c: Compaction, request: Request): Promise<number | null> {
     const { total } = await c.backend.count([request]);
-    if (total < c.backend.window) return true;
+    if (total < c.backend.window) return total;
     update({ phase: 'instruction', abort: null });
     setStatus({ text: `compaction request ${formatTokens(total)} ≥ window ${formatTokens(c.backend.window)} of ${c.profile} – shrink the selection (Esc, then d / e)`, tone: 'error' });
-    return false;
+    return null;
   }
-  // The proposal streams into its row; Esc aborts, also while the request is still counted.
-  async function propose(c: Compaction, request: Request, draft: string, abort: AbortController) {
+  // The proposal streams into its row, with the rest of the window as max_tokens (FR-18); Esc aborts, also while
+  // the request is still counted.
+  async function propose(c: Compaction, request: Request, draft: string, abort: AbortController, maxTokens: number) {
     const aborted = () => endCompaction({ text: 'compaction aborted – Context unchanged', tone: 'info' });
     if (abort.signal.aborted) return aborted();
     update({ attempt: c.attempt + 1, instruction: instructionOf(draft), text: '', after: null });
     setSelected(nextId());
     const onDelta = (d: string) => update({ text: compacting()!.text + d });
-    const result = await c.backend.chat(request, { signal: abort.signal, onDelta });
+    const result = await c.backend.chat(request, { signal: abort.signal, onDelta, maxTokens });
     if (result.finish === 'aborted') return aborted();
     update({ phase: 'review', abort: null });
     if (result.finish === 'length') setStatus({ text: '⚠ proposal cut off at max_tokens', tone: 'warn' });
@@ -627,6 +647,8 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     selectedBlock,
     marked,
     window: () => backend().window,
+    // The Context's budget (FR-2, FR-18); null while counting.
+    budget: () => (split() ? budgetOf(split()!.total) : null),
     // Whether a sent block is still cached; null while counting.
     warm: (id: number) => warm()?.[sent().findIndex(b => b.id === id)] ?? null,
     profile: () => context().profile,
