@@ -54,7 +54,11 @@ export const COMMANDS = [
   { name: '/rename', arg: '<title>', description: 'rename session' },
   { name: '/reload', arg: '', description: 're-read config' },
   { name: '/tools', arg: '<tool>', description: 'switch a tool on or off' },
+  { name: '/filter', arg: '<kind>', description: 'show only blocks of one Kind' },
 ] as const;
+// The Kinds a Kind Filter takes, in glossary order, by their /filter name: kebab-case.
+export const KINDS: readonly Kind[] = ['System', 'Tools', 'User', 'Thinking', 'Assistant', 'Tool Call', 'Tool Result', 'Note'];
+export const filterName = (kind: Kind) => kind.toLowerCase().replace(' ', '-');
 type CommandName = (typeof COMMANDS)[number]['name'];
 // In-flight answer, its reasoning apart; never persisted until complete or aborted (FR-37).
 export type Streaming = { thinking: string; text: string; abort: AbortController };
@@ -103,6 +107,8 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   const [selected, setSelected] = createSignal(1);
   // Marked blocks (Space) for Compaction; UI state, not logged.
   const [marked, setMarked] = createSignal<ReadonlySet<number>>(new Set());
+  // Kind Filter: the one Kind the block table shows; UI state, not logged.
+  const [filter, setFilter] = createSignal<Kind | null>(null);
   const [backend, setBackend] = createSignal(options.backend);
   // Moving or pinning a Tool Pair asks first: the operation and block awaiting the same key again (FR-9).
   const [confirming, setConfirming] = createSignal<string | null>(null);
@@ -164,9 +170,23 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     }
     return ids;
   });
-  const selectedBlock = (): Block | undefined => sent().find(b => b.id === selected());
-  const selectAt = (i: number) => setSelected(rows()[Math.max(0, Math.min(rows().length - 1, i))]!);
-  const keepSelection = () => rows().includes(selected()) || selectAt(rows().length - 1);
+  // Whether the Kind Filter lets a row through; a Compaction's proposal always passes.
+  const passes = (id: number, kind: Kind) => !filter() || kind === filter() || (!!compacting() && compacting()!.phase !== 'instruction' && id === live()[0]?.id);
+  // The rows shown, in order.
+  const shown = createMemo(() => {
+    const kinds = new Map<number, Kind>([...sent(), ...live()].map(b => [b.id, b.kind]));
+    return rows().filter(id => passes(id, kinds.get(id)!));
+  });
+  // Only a shown block is selected: a hidden one gives way to the next shown row, else the previous.
+  createEffect(() => {
+    const ids = shown();
+    if (!filter() || !ids.length || ids.includes(selected())) return;
+    const at = rows().indexOf(selected());
+    setSelected(ids.find(id => rows().indexOf(id) > at) ?? ids.at(-1)!);
+  });
+  const selectedBlock = (): Block | undefined => (shown().includes(selected()) ? sent().find(b => b.id === selected()) : undefined);
+  const selectAt = (i: number) => shown().length && setSelected(shown()[Math.max(0, Math.min(shown().length - 1, i))]!);
+  const keepSelection = () => shown().includes(selected()) || selectAt(shown().length - 1);
 
   createEffect(() => {
     recount();
@@ -234,7 +254,8 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     then();
   }
   const PINNED = { top: 'pinned ⤒ top', bottom: 'pinned ⤓ bottom (sent as user-role Note at the end)' };
-  const move = (dir: -1 | 1) => viaNote(`move ${dir}`, dir < 0 ? '⌥↑' : '⌥↓', () => operate(b => ops.move(context(), b, dir), () => null));
+  // Not while a Kind Filter hides the neighbours the block would move past.
+  const move = (dir: -1 | 1) => filter() || viaNote(`move ${dir}`, dir < 0 ? '⌥↑' : '⌥↓', () => operate(b => ops.move(context(), b, dir), () => null));
   // A block as it is now, after an operation.
   const blockOf = (id: number) => context().blocks.find(b => b.id === id)!;
   const pinned = ({ pin }: Block) => (pin ? PINNED[pin] : 'unpinned');
@@ -242,7 +263,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   const whole = (b: Block) => (ops.inPair(b) ? ' (whole Tool Pair)' : '');
   // d: the marked blocks, else the selected one.
   function remove() {
-    const at = rows().indexOf(selected());
+    const at = shown().indexOf(selected());
     if (marked().size) removeMarked();
     else operate(ops.remove, b => `removed${whole(b)} · struck through until sent · u = undo`);
     setMarked(new Set([...marked()].filter(id => sent().some(b => b.id === id))));
@@ -301,7 +322,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     const pair = pairOf(context().blocks, block.id);
     const on = !marked().has(block.id);
     setMarked(new Set([...marked()].filter(id => !pair.includes(id)).concat(on ? pair : [])));
-    selectAt(Math.max(...pair.map(id => rows().indexOf(id))) + 1);
+    selectAt(Math.max(...pair.map(id => shown().indexOf(id))) + 1);
   }
 
   // The status line after an answer without calls to decide on: how it ended.
@@ -518,7 +539,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
 
   // c: the marked blocks, else the selected one, are compacted; first the instruction is written.
   async function startCompaction() {
-    const found = compaction.sourcesOf(context(), marked(), selected());
+    const found = compaction.sourcesOf(context(), marked(), selectedBlock()?.id ?? -1);
     if ('error' in found) return setStatus({ text: found.error, tone: 'info' });
     try {
       const own = await compactor();
@@ -674,8 +695,16 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     setStatus({ text: `${name} ${toolsOn().includes(name) ? 'on' : 'off'} · u = undo`, tone: 'info' });
   }
 
+  // /filter <kind> shows only blocks of that Kind, /filter off all again. A change clears the marks: none stay hidden.
+  function filterBy(name: string) {
+    const kind = name.toLowerCase() === 'off' ? null : KINDS.find(k => filterName(k) === name.toLowerCase());
+    if (kind === undefined) return setStatus({ text: `unknown filter ${name}: off ${KINDS.map(filterName).join(' ')}`, tone: 'error' });
+    if (kind !== filter()) setMarked(new Set<number>());
+    setFilter(kind);
+  }
+
   const commands: Record<CommandName, (arg: string) => void> = {
-    '/sessions': openSessions, '/rename': renameSession, '/reload': () => void reload(), '/tools': toggleTool,
+    '/sessions': openSessions, '/rename': renameSession, '/reload': () => void reload(), '/tools': toggleTool, '/filter': filterBy,
   };
   // Input text: a known command runs with the rest as argument; an unknown `/word` is an error; anything else becomes
   // a User block and is sent right away – if sending is blocked, the block stays and the status says why (FR-6).
@@ -717,6 +746,8 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     selected,
     selectedBlock,
     marked,
+    filter,
+    passes,
     window: () => backend().window,
     // The Context's budget (FR-2, FR-18); null while counting.
     budget: () => (split() ? budgetOf(split()!.total) : null),
@@ -748,7 +779,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     verdict: (block: Block): Verdict | null => (block.pending && block.tool !== 'question' ? verdictOf(block) : null),
     asked,
     answer,
-    select: (delta: number) => selectAt(rows().indexOf(selected()) + delta),
+    select: (delta: number) => selectAt(shown().indexOf(selected()) + delta),
     move,
     pin,
     remove,

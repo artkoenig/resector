@@ -10,7 +10,7 @@ import { TOOL_NAMES } from '../core/toolcall/bash';
 import { isRecommended, shownAnswer } from '../core/toolcall/question';
 import * as dock from './dock';
 import type { DockState } from './dock';
-import { COMMANDS, type Compaction, createGate, type Gate, type GateOptions, type Status } from './gate';
+import { COMMANDS, type Compaction, createGate, filterName, KINDS, type Gate, type GateOptions, type Status } from './gate';
 import { around, cell, count, flagsOf, formatTokens, right, thinkingLabel, titleOf } from './format';
 import { Band, ErrorBand, errorBandLines, Footer, footerLines, HeaderBand, type Hint, PROMPT_LINES, PromptBand } from './parts';
 import { ACCENT, BG, BORDER, FAINT, KIND_COLOR, MUTED, PANEL_BG, SELECTED_BG, TEXT, TONE } from './theme';
@@ -65,13 +65,13 @@ export function App(props: GateOptions & { onQuit: () => void }) {
       const row = { ...live, n: n(live.id), title: titleOf({ ...live, call: running }, blocks), tokens: counted, cache: '', flags: '', live: true, removed: false };
       done.splice(at < 0 ? done.length : at, 0, row);
     }
-    return done;
+    return done.filter(r => gate.passes(r.id, r.kind));
   };
 
   // The project's files, listed when the input opens: @path completion (FR-27).
   const [files, setFiles] = createSignal<string[]>([]);
   createEffect(on(mode, m => m === 'input' && setFiles(props.project.list())));
-  // Suggestions above the input: commands while it is a single `/word` (FR-6), the tools after `/tools `, project files while an @path
+  // Suggestions above the input: commands while it is a single `/word` (FR-6), the tools after `/tools `, the Kinds after `/filter `, project files while an @path
   // is typed at its end (FR-27). Tab completes; Enter runs a command taking no argument, else completes too.
   const suggestions = createMemo((): Suggestion[] => {
     if (mode() !== 'input') return [];
@@ -85,6 +85,13 @@ export function App(props: GateOptions & { onQuit: () => void }) {
       return TOOL_NAMES.filter(name => name.startsWith(tool[1]!)).map(name => ({
         label: name, description: gate.toolsOn().includes(name) ? 'on → off' : 'off → on', draft: `/tools ${name}`, run: `/tools ${name}`,
       }));
+    }
+    const kind = /^\/filter (\S*)$/.exec(draft());
+    if (kind) {
+      const off = gate.filter() ? [{ name: 'off', description: 'show all blocks' }] : [];
+      return [...off, ...KINDS.map(k => ({ name: filterName(k), description: k }))]
+        .filter(f => f.name.startsWith(kind[1]!.toLowerCase()))
+        .map(f => ({ label: f.name, description: f.description, draft: `/filter ${f.name}`, run: `/filter ${f.name}` }));
     }
     const found = fileCompletions(draft(), files());
     return found ? found.paths.map(path => ({ label: path, description: '', draft: `${draft().slice(0, found.at)}${path} `, run: null })) : [];
@@ -285,7 +292,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   // Block rows that fit: the screen less header band, column header, Template, preview band, error band, suggestions,
   // prompt band and footer. Preview and error band have a blank line above, the prompt band too. Lines never shrink, so rows cannot overlap.
   const capacity = () =>
-    Math.max(1, size().height - 2 - 2 - (previewHeight() + 1) - errorLines() - 1 - suggestions().length - (dockOpen() ? dockLines() : PROMPT_LINES) - footerLines(footerStatus()?.text ?? '', keys(), width()));
+    Math.max(1, size().height - 2 - 2 - (gate.filter() ? 1 : 0) - (previewHeight() + 1) - errorLines() - 1 - suggestions().length - (dockOpen() ? dockLines() : PROMPT_LINES) - footerLines(footerStatus()?.text ?? '', keys(), width()));
   // The rows shown: a window around the selection.
   const visibleRows = () => around(rows(), rows().findIndex(r => r.id === gate.selected() && !r.removed), capacity());
   // The wheel over the block table moves the selection, like ↑↓ (also while busy).
@@ -323,6 +330,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   return (
     <box flexDirection="column" width="100%" height="100%" backgroundColor={BG} onMouseUp={copySelection}>
       <Header gate={gate} width={width()} />
+      <Show when={gate.filter()}>{(kind: () => Kind) => <FilterLine gate={gate} kind={kind()} />}</Show>
       <text fg={MUTED} flexShrink={0}>{`     #  ${'Type'.padEnd(11)}  ${cell('Content', titleWidth())}  Tokens  Cache  Flags`}</text>
       <box flexDirection="column" flexGrow={1} overflow="hidden" onMouseScroll={wheel}>
         <For each={visibleRows()}>
@@ -343,6 +351,9 @@ export function App(props: GateOptions & { onQuit: () => void }) {
             );
           }}
         </For>
+        <Show when={gate.filter() && !rows().length}>
+          <text fg={MUTED} flexShrink={0}>{`        no ${filterName(gate.filter()!)} blocks`}</text>
+        </Show>
         <text fg={MUTED} flexShrink={0}>
           {`        ${'Template'.padEnd(11)}  ${cell('BOS · generation prompt', titleWidth())}  ${right(gate.split() ? String(gate.split()!.template) : '…', 6)}`}
         </text>
@@ -631,6 +642,23 @@ function Header(props: { gate: Gate; width: number }) {
   );
 }
 
+// Kind Filter: the Kind shown, its blocks and tokens of the ones sent (removed ones are not).
+function FilterLine(props: { gate: Gate; kind: Kind }) {
+  const sent = () => props.gate.sent();
+  const split = () => props.gate.split();
+  const shown = () => sent().flatMap((b, i) => (b.kind === props.kind ? [i] : []));
+  const tokens = () => {
+    const s = split();
+    return s ? `${formatTokens(shown().reduce((sum, i) => sum + s.blocks[i]!, 0))}/${formatTokens(s.total)}` : '…';
+  };
+  return (
+    <text flexShrink={0}>
+      <span style={{ fg: ACCENT }}>{`  filter: ${filterName(props.kind)}`}</span>
+      <span style={{ fg: MUTED }}>{` · ${shown().length}/${sent().length} blocks · ${tokens()} tokens`}</span>
+    </text>
+  );
+}
+
 // FR-2: one segment per block in Context order (plus Template), proportional to tokens; free space in the border colour.
 // Over the window the bar is scaled to the Context and marks the window edge.
 // Half cells: thicker than a line, lighter than a solid strip.
@@ -719,5 +747,6 @@ function modeKeys(gate: Gate, mode: KeyMode): Hint[] {
   if (gate.running()) return [['esc', 'kill'], ...LOOK_KEYS];
   if (gate.streaming()) return [['esc', 'abort'], ...LOOK_KEYS];
   if (gate.marked().size) return MARKED_KEYS;
-  return gate.selectedBlock()?.pending ? [['y', 'run once'], ['a', 'allow for session'], ['n', 'reject'], ...KEYS] : KEYS;
+  const keys = gate.filter() ? KEYS.filter(([, action]) => action !== 'move') : KEYS;
+  return gate.selectedBlock()?.pending ? [['y', 'run once'], ['a', 'allow for session'], ['n', 'reject'], ...keys] : keys;
 }
