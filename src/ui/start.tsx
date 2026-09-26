@@ -4,7 +4,7 @@ import { createCliRenderer } from '@opentui/core';
 import { render } from '@opentui/solid';
 import { copyCommand, createClipboard } from '../adapters/clipboard/clipboard';
 import { configPaths } from '../adapters/fs/config';
-import { createEditor } from '../adapters/editor/editor';
+import { createEditor, createFileEditor } from '../adapters/editor/editor';
 import { projectSessionStore } from '../adapters/store/sessions';
 import type { Start } from '../main';
 import { Launch } from './launch';
@@ -22,6 +22,7 @@ export async function start({ resume }: Start) {
         paths={configPaths({ home: homedir(), cwd: process.cwd(), env: process.env })}
         store={projectSessionStore(homedir(), process.cwd())}
         editor={createEditor({ env: process.env, suspend: () => renderer.suspend(), resume: () => renderer.resume() })}
+        openFile={createFileEditor({ env: process.env, suspend: () => renderer.suspend(), resume: () => renderer.resume() })}
         clipboard={createClipboard({ osc52: text => renderer.copyToClipboardOSC52(text), command: copyCommand(process.platform, process.env) })}
         resume={resume}
         onQuit={() => exit(0)}

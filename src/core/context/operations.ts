@@ -77,16 +77,18 @@ export function edit(events: SessionEvent[], block: Block, edited: string): Outc
   if (error) return { error };
   const content = block.content.endsWith('\n') ? edited : edited.replace(block.kind === 'Tool Call' ? /\n+$/ : /\n$/, '');
   if (content === block.content) return { error: 'unchanged – no new Revision' };
-  const edits = events.filter(e => e.type === 'Edit' && e.id === block.id).length;
-  return { event: { type: 'Edit', id: block.id, revision: FIRST_REVISION + edits + 1, content } };
+  return { event: { type: 'Edit', id: block.id, revision: nextRevision(events, block.id), content } };
 }
+
+export const nextRevision = (events: SessionEvent[], id: number) =>
+  FIRST_REVISION + events.filter(e => e.type === 'Edit' && e.id === id).length + 1;
 
 export const rename = (block: Block, title: string): Outcome => ({ event: { type: 'Rename', id: block.id, title: title.trim() } });
 
 // Undo cancels the latest Context operation not yet undone, by a counter-event.
 export function undo(events: SessionEvent[]): Outcome<Undo> {
   const skip = undone(events);
-  const eventId = events.findLastIndex((e, i) => UNDOABLE.has(e.type) && !skip.has(i));
+  const eventId = events.findLastIndex((e, i) => UNDOABLE.has(e.type) && !skip.has(i) && !('harness' in e));
   return eventId === -1 ? { error: 'nothing to undo' } : { event: { type: 'Undo', eventId } };
 }
 

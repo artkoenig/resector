@@ -4,6 +4,7 @@ import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import { quoted, sessionRules, type Action, type Verdict } from '../core/approval/approval';
 import type { Kind } from '../core/log/events';
+import type { Block } from '../core/log/fold';
 import { COMMANDS, type Compaction, createGate, type Gate, type GateOptions, type Status } from './gate';
 import { around, cell, count, flagsOf, formatTokens, right, titleOf } from './format';
 import { Band, ErrorBand, errorBandLines, Footer, footerLines, HeaderBand, type Hint, PROMPT_LINES, PromptBand } from './parts';
@@ -265,6 +266,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
                   <Show when={!row().live && !gate.running() && gate.nextCall()?.id === row().id && gate.verdict(gate.nextCall()!)}>
                     {(verdict: () => Verdict) => <Checks verdict={verdict()} />}
                   </Show>
+                  <ReferenceHint block={row().live ? undefined : gate.context().blocks.find(b => b.id === row().id)} />
                   <text fg={row().kind === 'Thinking' ? MUTED : TEXT}>{row().content}</text>
                 </scrollbox>
               </Band>
@@ -347,12 +349,21 @@ function Checks(props: { verdict: Verdict }) {
   );
 }
 
+// An unread @file reference in the preview: when it is read, or why it cannot be (FR-27).
+function ReferenceHint(props: { block: Block | undefined }) {
+  return (
+    <Show when={props.block?.unread}>
+      <text fg={props.block!.missing ? TONE.warn : MUTED}>{props.block!.missing ?? '@file reference – read at send, a snapshot from then on · e opens the file'}</text>
+    </Show>
+  );
+}
+
 // Third line of the prompt band: what Enter does with the draft.
 function PromptMeta(props: { mode: Mode }) {
   return (
     <Show when={props.mode !== 'context'}>
       <span style={{ fg: props.mode === 'rename' ? ACCENT : KIND_COLOR.User }}>{props.mode === 'rename' ? 'title' : 'User'}</span>
-      <span style={{ fg: MUTED }}>{props.mode === 'rename' ? '  display only, never sent · empty resets' : '  adds a block and sends the Context'}</span>
+      <span style={{ fg: MUTED }}>{props.mode === 'rename' ? '  display only, never sent · empty resets' : '  adds a block and sends the Context · @file path[:a-b] adds a file'}</span>
     </Show>
   );
 }

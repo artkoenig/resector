@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test';
-import { chmodSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createEditor } from './editor';
+import { createEditor, createFileEditor } from './editor';
 
 const bin = mkdtempSync(join(tmpdir(), 'resector-editor-bin-'));
 // A fake editor: a script that runs `body` with the file as $1.
@@ -43,4 +43,16 @@ test('an editor exiting with an error (e.g. :cq) is an error, the screen is take
   await expect(edit('x')).rejects.toThrow(/exited with 1/);
   expect(calls).toEqual(['suspend', 'resume']);
   expect(files()).toEqual([]);
+});
+
+test('a file is opened in $EDITOR itself, the screen handed over and taken back (FR-27)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'resector-editor-file-'));
+  const file = join(dir, 'a.ts');
+  writeFileSync(file, 'x');
+  const calls: string[] = [];
+  const open = createFileEditor({ env: { EDITOR: script('mark', 'echo edited > "$1"') }, suspend: () => calls.push('suspend'), resume: () => calls.push('resume') });
+  await open(file);
+  expect(readFileSync(file, 'utf8')).toBe('edited\n');
+  expect(calls).toEqual(['suspend', 'resume']);
+  await expect(createFileEditor({ env: { EDITOR: script('fail2', 'exit 3') }, suspend() {}, resume() {} })(file)).rejects.toThrow(/exited with 3/);
 });

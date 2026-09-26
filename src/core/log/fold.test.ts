@@ -270,3 +270,22 @@ test('a Compaction of a Tool Pair hides both its blocks', () => {
   ];
   expect(ids(events)).toEqual([1, 2, 5]);
 });
+
+test('a block added pinned sits with the top pins, unflagged', () => {
+  const events = session(1, { type: 'BlockAdded', id: 3, kind: 'Note', origin: 'environment', content: 'env', pin: 'top' },
+    { type: 'BlockAdded', id: 4, kind: 'Note', origin: 'file', file: 'AGENTS.md', content: 'rules', pin: 'top' });
+  expect(ids(events)).toEqual([1, 3, 4, 2]);
+  expect(block(events, 3)).toMatchObject({ pin: 'top', pinChanged: false });
+  expect(block(events, 4)).toMatchObject({ file: 'AGENTS.md', pin: 'top' });
+});
+
+test('a file reference is an unread Note until the file is read, then a plain snapshot (FR-27)', () => {
+  const referenced = session(1, { type: 'FileReferenced', id: 3, file: 'a.ts:1-2' });
+  expect(block(referenced, 3)).toEqual({
+    id: 3, kind: 'Note', origin: 'file', file: 'a.ts:1-2', unread: true, content: '', cutOff: false,
+    title: null, pin: null, removed: false, moved: false, pinChanged: false, revision: 1, revised: false,
+  });
+  const read = block([...referenced, { type: 'FileRead', id: 3, content: '[a.ts:1-2]\n1: x' }], 3);
+  expect(read).toMatchObject({ file: 'a.ts:1-2', content: '[a.ts:1-2]\n1: x', revision: 1, revised: false });
+  expect(read.unread).toBeUndefined();
+});

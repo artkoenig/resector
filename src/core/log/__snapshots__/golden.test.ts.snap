@@ -901,3 +901,196 @@ exports[`fixture compaction.jsonl replays to its Context and request 1`] = `
   },
 }
 `;
+
+exports[`fixture file-notes.jsonl replays to its Context and request 1`] = `
+{
+  "context": {
+    "blocks": [
+      {
+        "content": "You are an agent.",
+        "cutOff": false,
+        "id": 1,
+        "kind": "System",
+        "moved": false,
+        "origin": "config",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "revised": false,
+        "revision": 1,
+        "title": null,
+      },
+      {
+        "content": "[{"name":"bash","description":"Run a bash command.","parameters":{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}}]",
+        "cutOff": false,
+        "id": 2,
+        "kind": "Tools",
+        "moved": false,
+        "origin": "config",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "revised": false,
+        "revision": 1,
+        "title": null,
+      },
+      {
+        "content": 
+"cwd: /p
+os: linux x64 · shell: bash
+date: 2026-09-27
+git branch: main"
+,
+        "cutOff": false,
+        "id": 3,
+        "kind": "Note",
+        "moved": false,
+        "origin": "environment",
+        "pin": "top",
+        "pinChanged": false,
+        "removed": false,
+        "revised": false,
+        "revision": 2,
+        "title": null,
+      },
+      {
+        "content": 
+"[AGENTS.md]
+# Rules
+"
+,
+        "cutOff": false,
+        "file": "AGENTS.md",
+        "id": 4,
+        "kind": "Note",
+        "moved": false,
+        "origin": "file",
+        "pin": "top",
+        "pinChanged": false,
+        "removed": false,
+        "revised": false,
+        "revision": 1,
+        "title": null,
+      },
+      {
+        "content": 
+"[src/a.ts:2-3]
+2: b
+3: c"
+,
+        "cutOff": false,
+        "file": "src/a.ts:2-3",
+        "id": 5,
+        "kind": "Note",
+        "moved": false,
+        "origin": "file",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "revised": false,
+        "revision": 1,
+        "title": null,
+      },
+      {
+        "content": "explain",
+        "cutOff": false,
+        "id": 7,
+        "kind": "User",
+        "moved": false,
+        "origin": "user",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "revised": false,
+        "revision": 1,
+        "title": null,
+      },
+      {
+        "content": "It returns b and c.",
+        "cutOff": false,
+        "id": 8,
+        "kind": "Assistant",
+        "moved": false,
+        "origin": "model",
+        "pin": null,
+        "pinChanged": false,
+        "removed": false,
+        "revised": false,
+        "revision": 1,
+        "title": null,
+      },
+    ],
+    "nextId": 9,
+    "profile": "default",
+    "protocol": "native",
+  },
+  "request": {
+    "messages": [
+      {
+        "content": "You are an agent.",
+        "role": "system",
+      },
+      {
+        "content": 
+"cwd: /p
+os: linux x64 · shell: bash
+date: 2026-09-27
+git branch: main"
+,
+        "role": "user",
+      },
+      {
+        "content": 
+"[AGENTS.md]
+# Rules
+"
+,
+        "role": "user",
+      },
+      {
+        "content": 
+"[src/a.ts:2-3]
+2: b
+3: c"
+,
+        "role": "user",
+      },
+      {
+        "content": "explain",
+        "role": "user",
+      },
+      {
+        "content": "It returns b and c.",
+        "role": "assistant",
+      },
+    ],
+    "tools": [
+      {
+        "function": {
+          "description": "Run a bash command.",
+          "name": "bash",
+          "parameters": {
+            "properties": {
+              "command": {
+                "type": "string",
+              },
+            },
+            "required": [
+              "command",
+            ],
+            "type": "object",
+          },
+        },
+        "type": "function",
+      },
+    ],
+  },
+  "summary": {
+    "blocks": 7,
+    "profile": "default",
+    "renamed": false,
+    "title": "explain",
+    "tokens": 120,
+  },
+}
+`;

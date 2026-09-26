@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, realpathSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TextAttributes } from '@opentui/core';
@@ -11,7 +11,8 @@ import { createRunner } from '../adapters/bash/runner';
 import { createSplit } from '../adapters/bash/split';
 import { createSessionLog } from '../adapters/store/session-log';
 import { permissionRules, type Permissions, type Split } from '../core/approval/approval';
-import { newSession } from '../core/session/session';
+import { projectFiles } from '../adapters/fs/project';
+import { newSession, type SessionNotes } from '../core/session/session';
 import { TOOLS } from '../core/toolcall/bash';
 import { App } from './app';
 import type { GateOptions } from './gate';
@@ -35,30 +36,37 @@ beforeAll(async () => {
 let editor: (text: string) => Promise<string>;
 // What copy on select put into the clipboard.
 let copied: string[];
+// The environment Note's text as the harness probes it now; the files opened in $EDITOR (`e` on an @file reference).
+let environment: string;
+let openedFiles: string[];
 
 // `users`: User blocks already in the Session Log, not yet sent; `global`, `project`: permission rules of the config.
 // `calls`: pending Tool Calls after them, as at a resume.
-type Start = { timeout?: number; compactor?: GateOptions['compactor']; users?: string[]; calls?: string[]; global?: Permissions; project?: Permissions };
-async function start({ timeout = 120, compactor, users = [], calls = [], global, project: own }: Start = {}) {
+type Start = { notes?: SessionNotes; timeout?: number; compactor?: GateOptions['compactor']; users?: string[]; calls?: string[]; global?: Permissions; project?: Permissions };
+async function start({ notes, timeout = 120, compactor, users = [], calls = [], global, project: own }: Start = {}) {
   editor = async text => text;
   copied = [];
+  environment = notes?.environment ?? '';
+  openedFiles = [];
   fake = startFakeLlamaCpp({ nCtx: 4096 });
   const backend = await connectLlamaCpp(fake.url);
   const log = createSessionLog(mkdtempSync(join(tmpdir(), 'resector-')), 'ses_test');
   const runner = createRunner({ cwd: project, timeout });
+  const first = newSession('default', '', notes).length;
   const initial = [
-    ...newSession('default', 'You are an agent.'),
-    ...users.map((content, i) => ({ type: 'BlockAdded' as const, id: i + 3, kind: 'User' as const, origin: 'user' as const, content })),
-    ...calls.map((content, i) => ({ type: 'BlockAdded' as const, id: users.length + i + 3, kind: 'Tool Call' as const, origin: 'model' as const, content })),
+    ...newSession('default', 'You are an agent.', notes),
+    ...users.map((content, i) => ({ type: 'BlockAdded' as const, id: i + first, kind: 'User' as const, origin: 'user' as const, content })),
+    ...calls.map((content, i) => ({ type: 'BlockAdded' as const, id: users.length + i + first, kind: 'Tool Call' as const, origin: 'model' as const, content })),
   ];
   initial.forEach(log.append);
   const opened: string[] = [];
   const approval = { split, root: project, permissions: () => permissionRules(global, own) };
+  const files = { read: projectFiles(project), environment: () => environment, open: async (path: string) => void openedFiles.push(path) };
   ui = await testRender(
-    () => <App backend={backend} runner={runner} approval={approval} editor={text => editor(text)} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} reconnect={async () => backend} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
+    () => <App backend={backend} runner={runner} approval={approval} editor={text => editor(text)} project={files} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} reconnect={async () => backend} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
     { width: 80, height: 20 },
   );
-  await frameMatching(ui, f => f.includes(users.length ? ' / 4k' : '52 / 4k') && !f.includes('… / 4k'));
+  await frameMatching(ui, f => f.includes(users.length || notes ? ' / 4k' : '52 / 4k') && !f.includes('… / 4k'));
   const events = () => readFileSync(log.path, 'utf8').trim().split('\n').map(l => JSON.parse(l));
   return { events, opened };
 }
@@ -1010,4 +1018,66 @@ test('a request too big for the compaction window is blocked; Compaction runs on
   } finally {
     small.stop();
   }
+});
+
+// Files, environment and project instructions (FR-27–FR-29) ---------------------------------------------------------
+const messages = (i: number) => (fake.chatRequests[i] as { messages: { role: string; content: string }[] }).messages;
+
+test('@file adds a reference row, not sent; e opens the file; on send it becomes a snapshot Note (FR-27)', async () => {
+  writeFileSync(join(project, 'notes.txt'), 'one\ntwo\nthree\n');
+  const { events } = await start();
+  await write('@file notes.txt:2-3');
+  let frame = await frameMatching(ui, f => f.includes('1 file reference added'));
+  expect(line(frame, /@file notes/)).toMatch(/3\s+Note\s+@file notes\.txt:2-3\s+.*@ read at send/);
+  expect(frame).toContain('@file reference – read at send');
+  expect(frame).toContain('[notes.txt:2-3]');
+  expect(fake.chatRequests).toEqual([]);
+  expect(events().at(-1)).toEqual({ type: 'FileReferenced', id: 3, file: 'notes.txt:2-3' });
+  ui.mockInput.pressKey('e');
+  await frameMatching(ui, f => f.includes('notes.txt – read at send'));
+  expect(openedFiles).toEqual(['notes.txt']);
+  writeFileSync(join(project, 'notes.txt'), 'one\nTWO\nthree\n');
+  fake.reply({ chunks: ['ok'] });
+  await write('explain');
+  frame = await frameMatching(ui, f => f.includes('answer complete'));
+  expect(line(frame, /@file notes/)).not.toContain('@ read at send');
+  expect(events().slice(4, 6)).toEqual([
+    { type: 'BlockAdded', id: 4, kind: 'User', origin: 'user', content: 'explain' },
+    { type: 'FileRead', id: 3, content: '[notes.txt:2-3]\n2: TWO\n3: three' },
+  ]);
+  expect(messages(0).slice(1)).toEqual([
+    { role: 'user', content: '[notes.txt:2-3]\n2: TWO\n3: three' },
+    { role: 'user', content: 'explain' },
+  ]);
+});
+
+test('a referenced file missing at send aborts sending (FR-27)', async () => {
+  const { events } = await start();
+  await write('@file gone.txt what is in it?');
+  const frame = await frameMatching(ui, f => f.includes('✗ file not found') && f.includes('gone.txt – sending aborted'));
+  expect(line(frame, /@file gone/)).toMatch(/3\s+Note\s+@file gone\.txt\s+.*⚠ not found/);
+  expect(fake.chatRequests).toEqual([]);
+  expect(events().map(e => e.type)).not.toContain('RequestSent');
+});
+
+test('the environment Note is pinned top; a changed environment is a new Revision before sending (FR-28)', async () => {
+  const { events } = await start({ notes: { environment: 'date: 2026-09-26' } });
+  let frame = ui.captureCharFrame();
+  expect(line(frame, /Environment/)).toMatch(/3\s+Note\s+Environment\s+\d+/);
+  fake.reply({ chunks: ['ok'] });
+  await write('hi');
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(events().filter(e => e.type === 'Edit')).toEqual([]);
+  environment = 'date: 2026-09-27';
+  fake.reply({ chunks: ['ok'] });
+  await write('again');
+  frame = await frameMatching(ui, f => f.includes('answer complete') && /6\s+User\s+again/.test(f));
+  expect(events().filter(e => e.type === 'Edit')).toEqual([{ type: 'Edit', id: 3, revision: 2, content: 'date: 2026-09-27', harness: true }]);
+  expect(messages(1)[1]).toEqual({ role: 'user', content: 'date: 2026-09-27' });
+});
+
+test('the project instructions are a pinned-top Note after the environment (FR-29)', async () => {
+  await start({ notes: { environment: 'cwd: /p', instructions: { file: 'AGENTS.md', content: '# Rules' } } });
+  const frame = ui.captureCharFrame();
+  expect(line(frame, /AGENTS/)).toMatch(/4\s+Note\s+@file AGENTS\.md\s+\d+/);
 });

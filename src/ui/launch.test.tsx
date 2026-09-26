@@ -27,12 +27,15 @@ function put(path: string, text: string) {
   writeFileSync(path, text);
 }
 
-type Setup = { config?: (url: string) => string; systemMd?: string; servers?: (url: string) => LocalServer[]; sessions?: Record<string, SessionEvent[]>; locks?: Record<string, number>; resume?: true | string };
+type Setup = { config?: (url: string) => string; systemMd?: string; servers?: (url: string) => LocalServer[]; sessions?: Record<string, SessionEvent[]>; locks?: Record<string, number>; resume?: true | string; files?: Record<string, string> };
 
-async function launch({ config, systemMd, servers, sessions = {}, locks = {}, resume }: Setup = {}) {
+async function launch({ config, systemMd, servers, sessions = {}, locks = {}, resume, files = {} }: Setup = {}) {
   fake = startFakeLlamaCpp({ nCtx: 4096, model: 'qwen3-8b.gguf' });
   const root = mkdtempSync(join(tmpdir(), 'resector-launch-'));
-  const paths = configPaths({ home: join(root, 'home'), cwd: join(root, 'project'), env: {} });
+  const project = join(root, 'project');
+  mkdirSync(project, { recursive: true });
+  for (const [name, text] of Object.entries(files)) put(join(project, name), text);
+  const paths = configPaths({ home: join(root, 'home'), cwd: project, env: {} });
   if (config) put(paths.global, config(fake.url));
   if (systemMd) put(join(dirname(paths.global), 'system.md'), systemMd);
   const fatal: string[] = [];
@@ -54,6 +57,8 @@ async function launch({ config, systemMd, servers, sessions = {}, locks = {}, re
         servers={servers?.(fake.url) ?? [{ backend: 'llamacpp', endpoint: fake.url }]}
         store={store}
         editor={async text => text}
+        openFile={async () => {}}
+        cwd={project}
         clipboard={async () => {}}
         resume={resume}
         onQuit={() => quit.push('quit')}
@@ -165,7 +170,7 @@ test('Compaction runs on compactionProfile with the instruction from compaction.
     await frameMatching(ui, f => f.includes('config reloaded'));
     fake.reply({ chunks: ['ok'] });
     await command('long story');
-    await frameMatching(ui, f => /3\s+User\s+long story/.test(f) && f.includes('answer complete'));
+    await frameMatching(ui, f => /4\s+User\s+long story/.test(f) && f.includes('answer complete'));
     ui.mockInput.pressArrow('up');
     ui.mockInput.pressKey('c');
     await frameMatching(ui, f => /◇ Compact 1 block \(\d+ tok\) · small · request \d+ \/ 1k/.test(f));
@@ -253,7 +258,7 @@ test('/sessions lists the project sessions newest first with marker, profile, Co
     await sessionsView({ ses_a: titled('local', 'fix the build', 1900), ses_b: titled('gone', 'old question'), ses_c: titled('local', 'busy') }, { ses_c: other.pid });
     const frame = await frameMatching(ui, f => f.includes('busy'));
     expect(frame).toContain('Sessions · 4 sessions');
-    expect(line(frame, /\(new session\)/)).toMatch(/^[ ┃]● +\(new session\) +now +local +– +2\b/);
+    expect(line(frame, /\(new session\)/)).toMatch(/^[ ┃]● +\(new session\) +now +local +– +3\b/);
     expect(line(frame, /fix the build/)).toMatch(/fix the build +1h ago +local +1\.9k\/2k +4\b/);
     expect(line(frame, /old question/)).toMatch(/old question +2h ago +⚠ gone +20 +4\b/);
     expect(line(frame, /busy/)).toMatch(/^[ ┃] ⊘ +busy/);
@@ -390,4 +395,21 @@ test('/sessions with more sessions than fit: rows never overlap, the list follow
   expect(titles(frame).at(-1)).toBe('topic 8');
   expect(titles(frame)).not.toContain('(new session)');
   expect(frame.split('\n')[2]).toMatch(/^ {5}Title/);
+});
+
+test('a new session starts with the environment Note and AGENTS.md, else CLAUDE.md, pinned top (FR-28, FR-29)', async () => {
+  const { log } = await launch({ config: url => profileConfig(url), files: { 'AGENTS.md': '# Agents', 'CLAUDE.md': '# Claude' } });
+  const frame = await frameMatching(ui, f => f.includes('/ 2k') && !f.includes('… / 2k'));
+  expect(frame).toMatch(/3\s+Note\s+Environment/);
+  expect(frame).toMatch(/4\s+Note\s+@file AGENTS\.md/);
+  expect(log().slice(3)).toEqual([
+    { type: 'BlockAdded', id: 3, kind: 'Note', origin: 'environment', content: expect.stringMatching(/^cwd: .*\nos: .* · shell: bash\ndate: \d{4}-\d\d-\d\d\ngit branch: /), pin: 'top' },
+    { type: 'BlockAdded', id: 4, kind: 'Note', origin: 'file', file: 'AGENTS.md', content: '[AGENTS.md]\n# Agents', pin: 'top' },
+  ]);
+});
+
+test('resuming does not read the project instructions again (FR-29)', async () => {
+  const { log } = await launch({ config: url => profileConfig(url), sessions: { ses_test: chat('local') }, resume: true, files: { 'AGENTS.md': '# Agents' } });
+  await frameMatching(ui, f => f.includes('resumed'));
+  expect(log().some(e => e.file === 'AGENTS.md')).toBe(false);
 });
