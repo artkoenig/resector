@@ -247,19 +247,22 @@ export function App(props: GateOptions & { onQuit: () => void }) {
       <text fg={MUTED} flexShrink={0}>{`     #  ${'Type'.padEnd(11)}  ${cell('Content', titleWidth())}  Tokens  Cache  Flags`}</text>
       <box flexDirection="column" flexGrow={1} overflow="hidden" onMouseScroll={wheel}>
         <For each={visibleRows()}>
-          {row => (
-            <text flexShrink={0} bg={isSelected(row) ? SELECTED_BG : undefined} fg={rowFg(row).text}>
-              <span style={{ fg: ACCENT }}>{`${isSelected(row) ? '┃' : ' '} ${gate.marked().has(row.id) ? '●' : ' '}`}</span>
-              <span style={{ fg: isSelected(row) ? TEXT : MUTED }}>{`${right(row.n, 3)}  `}</span>
-              <span style={{ fg: rowFg(row).kind, strikethrough: row.removed }}>{row.kind.padEnd(11)}</span>
-              <span>{'  '}</span>
-              <span style={{ fg: isSelected(row) ? TEXT : MUTED, strikethrough: row.removed, italic: row.kind === 'Thinking' }}>{cell(row.title, titleWidth())}</span>
-              <span>{'  '}</span>
-              <span style={{ fg: row.live && !row.removed ? TONE.warn : isSelected(row) ? TEXT : MUTED }}>{right(row.tokens, 6)}</span>
-              <span style={{ fg: CACHE_COLOR[row.cache] }}>{`    ${row.cache.padEnd(1)}    `}</span>
-              <span style={{ fg: rowFg(row).flags }}>{cell(row.flags, FLAGS_WIDTH).trimEnd()}</span>
-            </text>
-          )}
+          {row => {
+            const fg = () => columnFg(row, isSelected(row));
+            return (
+              <text flexShrink={0} bg={isSelected(row) ? SELECTED_BG : undefined} fg={fg().text}>
+                <span style={{ fg: ACCENT }}>{`${isSelected(row) ? '┃' : ' '} ${gate.marked().has(row.id) ? '●' : ' '}`}</span>
+                <span style={{ fg: fg().muted }}>{`${right(row.n, 3)}  `}</span>
+                <span style={{ fg: fg().kind, strikethrough: row.removed }}>{row.kind.padEnd(11)}</span>
+                <span>{'  '}</span>
+                <span style={{ fg: fg().muted, strikethrough: row.removed, italic: row.kind === 'Thinking' }}>{cell(row.title, titleWidth())}</span>
+                <span>{'  '}</span>
+                <span style={{ fg: fg().tokens }}>{right(row.tokens, 6)}</span>
+                <span style={{ fg: CACHE_COLOR[row.cache] }}>{`    ${row.cache.padEnd(1)}    `}</span>
+                <span style={{ fg: fg().flags }}>{cell(row.flags, FLAGS_WIDTH).trimEnd()}</span>
+              </text>
+            );
+          }}
         </For>
         <text fg={MUTED} flexShrink={0}>
           {`        ${'Template'.padEnd(11)}  ${cell('BOS · generation prompt', titleWidth())}  ${right(gate.split() ? String(gate.split()!.template) : '…', 6)}`}
@@ -500,6 +503,11 @@ const rowFg = (row: Row) =>
   row.removed || row.dropped
     ? { text: MUTED, kind: MUTED, flags: row.dropped ? TONE.warn : MUTED }
     : { text: TEXT, kind: KIND_COLOR[row.kind], flags: TONE.warn };
+// A row's column colours: # and Content muted unless selected; Tokens yellow while live (not yet in the Context).
+const columnFg = (row: Row, selected: boolean) => {
+  const muted = selected ? TEXT : MUTED;
+  return { ...rowFg(row), muted, tokens: row.live && !row.removed ? TONE.warn : muted };
+};
 
 // Status line: a running command, the streaming answer (both with the row's spinner), else the last action.
 function statusOf(gate: Gate, spin: string): Status | null {

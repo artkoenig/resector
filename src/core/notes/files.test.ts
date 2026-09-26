@@ -23,6 +23,11 @@ test('the @path being typed is completed from the project files, file name match
   expect(fileCompletions('@notes', FILES)?.paths).toEqual(['src/core/notes/files.ts']);
 });
 
+test('a file name starting with the typed path beats a path starting with it, which beats one containing it', () => {
+  expect(fileCompletions('@s', ['sa/b.ts', 'x/y/sb.ts'])?.paths).toEqual(['x/y/sb.ts', 'sa/b.ts']);
+  expect(fileCompletions('@sa', ['usa.md', 'sa/b.ts'])?.paths).toEqual(['sa/b.ts', 'usa.md']);
+});
+
 test('no completion once the path is complete, ended or not being typed', () => {
   expect(fileCompletions('@src/ui/gate.ts', FILES)?.paths).toEqual([]);
   expect(fileCompletions('@src/ui/gate.ts ', FILES)).toBeNull();

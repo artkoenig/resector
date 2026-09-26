@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { thinkingModes } from './template';
+import { DEFAULT_MODES, thinkingModes } from './template';
 
 test('a template with enable_thinking and a checked effort list offers off, on and its efforts, lowest first (FR-49)', () => {
   const template = `{%- if enable_thinking is defined and enable_thinking is false %}…{%- endif %}
@@ -16,4 +16,15 @@ test('efforts only compared with: those; no enable_thinking: no off and on', () 
 test('a template without thinking offers no mode', () => {
   expect(thinkingModes('{{ messages }}')).toEqual([]);
   expect(thinkingModes('{%- if enable_thinking %}<think>{% endif %}')).toEqual(['off', 'on']);
+});
+
+test('effort lists and comparisons are found however they are spaced; unknown efforts come last', () => {
+  expect(thinkingModes(`{% if reasoning_effort  not  in ('high', 'low') %}`)).toEqual(['low', 'high']);
+  expect(thinkingModes(`{% if reasoning_effort in('turbo', 'max', 'xhigh', 'high', 'medium', 'low', 'minimal', 'none') %}`))
+    .toEqual(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'turbo']);
+  expect(thinkingModes(`{% if reasoning_effort=='low' %}`)).toEqual(['low']);
+});
+
+test('an unknown chat template: every mode the backends map (architecture §4)', () => {
+  expect(DEFAULT_MODES).toEqual(['off', 'on', 'low', 'medium', 'high']);
 });
