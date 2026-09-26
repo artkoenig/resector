@@ -14,7 +14,7 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 
 - One developer, one machine, local OpenAI-compatible backends: llama.cpp server, Ollama, LM Studio, oMLX.
 - Platforms: macOS and Linux (arm64, x64). No Windows.
-- **Out of scope v1:** automatic placement rules / auto-compaction, MCP, LSP, web tools, cloud-provider optimisation, bash sandboxing, forking sessions, file snapshots/restore, auto-update, tools other than `bash`.
+- **Out of scope v1:** automatic placement rules / auto-compaction, MCP, LSP, web tools other than `search`, cloud-provider optimisation, bash sandboxing, forking sessions, file snapshots/restore, auto-update, tools other than `bash` and `search`.
 
 ## 4. Functional requirements
 
@@ -44,7 +44,7 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 | `q` | quit |
 
 - **FR-8** Editable: all kinds except Tools Block and executed Tool Calls. A Tool Call awaiting approval is editable (FR-22). Edit keeps the kind.
-- **FR-9** Tool Pair: removed/compacted only as a whole; editing the result in place keeps the pair; moving or pinning it asks for confirmation (same key again) and turns it into a Note `[Tool bash: <cmd>]` + result.
+- **FR-9** Tool Pair: removed/compacted only as a whole; editing the result in place keeps the pair; moving or pinning it asks for confirmation (same key again) and turns it into a Note `[Tool <tool>: <cmd or query>]` + result.
 - **FR-10** Pin top = right after System + Tools Block (+ environment/project Notes); pin bottom = very end, sent as user-role Note. Pinned blocks keep their order and can be reordered among themselves.
 - **FR-11** *Dropped:* no trash view; removed blocks come back only via undo (`u`).
 - **FR-12** The Tools Block (`bash`) is always sent and never edited; no tool toggle.
@@ -65,7 +65,7 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 
 ### 4.5 Tool execution & Tool Approval
 
-- **FR-21** Only tool: `bash`. Timeout 120 s (configurable); stdin `/dev/null`; `Esc` kills a running command → partial output + `⚠ killed`; timeout → `⚠ timeout`.
+- **FR-21** Tools: `bash` and `search`. A new session's Tools Block offers `bash` only; `/tools search` switches search on. `search {query}` runs `ddgr --json -n 5` (DuckDuckGo), is always allowed (no permission rule), timeout 30 s; its Tool Call's title is `search <query>`. `bash`: timeout 120 s (configurable); stdin `/dev/null`; `Esc` kills a running command → partial output + `⚠ killed`; timeout → `⚠ timeout`.
 - **FR-22** Permission rules `{pattern: allow|ask|deny}`, last match wins, default `ask`. Built-in `allow`: `ls`, `cat`, `head`, `tail`, `wc`, `grep`, `rg`, `find`, `sed -n`, `git status|diff|log|show`. Compound commands (`&&`, `;`, `|`, `$(…)`) are split with tree-sitter-bash; every sub-command must be allowed; unparseable → `ask`. Arguments pointing outside the project (absolute paths, `..`) → `ask`.
 - **FR-23** Allowed call runs immediately. `ask` → the Tool Call row shows `? approve` and sending is blocked. On the selected pending row: `y` run once, `a` allow for session (prefix + ` *`, shown in the preview before pressing, saved at once), `n` reject → result `rejected by user`, `e` edit command → new Revision, re-evaluated. `deny` → result `denied by rule`. Once all calls of an answer are decided: if every one ran (allowed, `y`, `a`) and none was stopped, the results are sent automatically; otherwise (rejected, denied, killed, timeout, not run) the Gate shows the results and `Enter` sends.
 - **FR-24** Several calls in one answer are approved one by one in order; results keep call order.
@@ -135,4 +135,4 @@ Where earlier decisions conflicted, the later or more specific one wins:
 | Removed blocks always visible (Gate UI) vs. until sent (Compaction flow) | Struck through until sent. |
 | `n` = new Note vs. `n` = reject | `n` only rejects (on a selected `? approve` row); free-text Notes dropped (complete prototype). |
 | Changed AGENTS.md on resume → stale-content ticket vs. no staleness at all | Read once at session creation; snapshot. |
-| read/edit/grep/glob tools (charting) vs. only `bash` | Only `bash`. |
+| read/edit/grep/glob tools (charting) vs. only `bash` | Only `bash`; later `search` (web search, FR-21). |

@@ -4,6 +4,7 @@ import { createSignal, onMount, Show } from 'solid-js';
 import { connect } from '../adapters/backend/connect';
 import { discover, LOCAL_SERVERS, type DiscoveredModel, type LocalServer } from '../adapters/backend/discover';
 import { createRunner } from '../adapters/bash/runner';
+import { createSearcher } from '../adapters/search/ddgr';
 import { createSplit } from '../adapters/bash/split';
 import type { Clipboard } from '../adapters/clipboard/clipboard';
 import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
@@ -41,6 +42,8 @@ export type LaunchOptions = {
 type Loaded = NonNullable<ReturnType<typeof loadConfig>>;
 
 const DEFAULT_TIMEOUT = 120;
+// A search runs into this timeout (seconds).
+const SEARCH_TIMEOUT = 30;
 
 export function Launch(props: LaunchOptions) {
   const [found, setFound] = createSignal<DiscoveredModel[] | null>(null);
@@ -115,9 +118,10 @@ export function Launch(props: LaunchOptions) {
     setCurrent(opened.id);
     setFound(null);
     const runner = createRunner({ cwd: root, timeout: loaded.config.bash?.timeout ?? DEFAULT_TIMEOUT });
+    const searcher = createSearcher({ cwd: root, timeout: SEARCH_TIMEOUT });
     const approval = { split, root, permissions: () => config.permissions };
     const instruction = () => config.compactionInstruction();
-    setGate({ backend, runner, approval, editor: props.editor, clipboard: props.clipboard, log: opened.log, events, project, notice, reconnect: reconnect(profile, opened.id), openSessions: () => setView('sessions'), instruction, compactor: compactor(profile, opened.id) });
+    setGate({ backend, runner, searcher, approval, editor: props.editor, clipboard: props.clipboard, log: opened.log, events, project, notice, reconnect: reconnect(profile, opened.id), openSessions: () => setView('sessions'), instruction, compactor: compactor(profile, opened.id) });
   }
 
   // /sessions (FR-33): switching sessions reconnects; the Gate comes back with the session's logged events.

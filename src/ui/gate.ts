@@ -2,7 +2,7 @@
 import { createEffect, createMemo, createSignal } from 'solid-js';
 import type { Clipboard } from '../adapters/clipboard/clipboard';
 import type { Backend, ChatResult, Counted } from '../core/backend';
-import { evaluate, quoted, sessionAllowed, sessionRules, type Rule, type Split, type Verdict } from '../core/approval/approval';
+import { quoted, sessionAllowed, sessionRules, verdictOf as decide, type Rule, type Split, type Verdict } from '../core/approval/approval';
 import { warmRows } from '../core/cache/cache';
 import * as compaction from '../core/compaction/compaction';
 import * as ops from '../core/context/operations';
@@ -19,11 +19,12 @@ import { count, errorText, formatTokens, thinkingLabel, titleOf } from './format
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
 // events: the Session Log so far (new or resumed); reconnect: re-reads the config and opens the session's
 // Model Profile again (/reload, FR-44); openSessions: shows /sessions; notice: initial status line.
-// runner: runs approved bash calls (FR-21); approval: decides which may run (FR-22); editor: $EDITOR for `e` (FR-8);
+// runner: runs approved bash calls, searcher: search calls (FR-21); approval: decides which may run (FR-22); editor: $EDITOR for `e` (FR-8);
 // clipboard: copy on select.
 export type GateOptions = {
   backend: Backend;
   runner: Runner;
+  searcher: Runner;
   approval: Approval;
   editor: ops.Editor;
   clipboard: Clipboard;
@@ -55,8 +56,8 @@ export const COMMANDS = [
 type CommandName = (typeof COMMANDS)[number]['name'];
 // In-flight answer, its reasoning apart; never persisted until complete or aborted (FR-37).
 export type Streaming = { thinking: string; text: string; abort: AbortController };
-// Approved Tool Call running; its output so far is shown, the result is logged when it ends.
-export type Running = { call: Block; output: string; started: number; abort: AbortController };
+// Approved Tool Call running; its output so far is shown, the result is logged when it ends. timeout: its tool's.
+export type Running = { call: Block; output: string; started: number; timeout: number; abort: AbortController };
 // The row of an answer or result not in the Context yet, shown before the block `before` (null: at the end).
 // A proposal has its own title, heading and, once counted, tokens.
 export type Live = { id: number; kind: Kind; content: string; before: number | null; title?: string; heading?: string; tokens?: number };
@@ -88,7 +89,7 @@ const APPROVE = 'y run once · a allow for session · n reject · e edit';
 const cacheMiss = ({ predicted, cached }: ChatResult) =>
   predicted !== null && cached !== null && cached < predicted ? `cache: predicted ${predicted} · server reused ${cached}` : null;
 
-export function createGate({ log, reconnect, openSessions, runner, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, ...options }: GateOptions) {
+export function createGate({ log, reconnect, openSessions, runner, searcher, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, ...options }: GateOptions) {
   const [events, setEvents] = createSignal(options.events);
   const [counted, setCounted] = createSignal<{ prefixes: Request[]; split: Counted } | null>(null);
   const [streaming, setStreaming] = createSignal<Streaming | null>(null);
@@ -317,7 +318,7 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
   // Tool Approval (FR-22–FR-25) ----------------------------------------------------------------------------
   // The rules for a call: built-in, global and project rules, then the ones allowed for this session; last match wins.
   const rules = () => [...approval.permissions().rules, ...sessionAllowed(events())];
-  const verdictOf = (call: Block): Verdict => evaluate(call.content, { rules: rules(), split: approval.split, root: approval.root });
+  const verdictOf = (call: Block): Verdict => decide(call, { rules: rules(), split: approval.split, root: approval.root });
 
   // Whether the answer's calls leave the results for review at the Gate: one was not run (rejected, denied, not a
   // bash call) or was stopped (killed, timeout). Otherwise, once every call ran, the results are sent (FR-23).
@@ -342,24 +343,25 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     setStatus({ text: `${notes.join(' · ') || 'tool loop paused'} – review the results, Enter sends`, tone: notes.length ? 'warn' : 'ok' });
   }
 
-  // Runs the call (FR-21); its output streams into a live Tool Result row, then the next call is decided.
+  // Runs the call with its tool's runner (FR-21); its output streams into a live Tool Result row, then the next call is decided.
   async function run(call: Block, notes: string[]) {
     const abort = new AbortController();
-    setRunning({ call, output: '', started: Date.now(), abort });
+    const tool = call.tool === 'search' ? searcher : runner;
+    setRunning({ call, output: '', started: Date.now(), timeout: tool.timeout, abort });
     setSelected(nextId());
     setStatus(null);
     try {
       const onOutput = (text: string) => setRunning({ ...running()!, output: running()!.output + text });
-      const result = await runner.run(call.content, { signal: abort.signal, onOutput });
+      const result = await tool.run(call.content, { signal: abort.signal, onOutput });
       setRunning(null);
       setSelected(nextId());
-      append(ops.toolResult(call, nextId(), result, runner.timeout));
+      append(ops.toolResult(call, nextId(), result, tool.timeout));
       if (result.stopped) held = true;
       advance(result.stopped ? [...notes, `⚠ ${result.stopped}`] : notes);
     } catch (e) {
       setRunning(null);
       setSelected(call.id);
-      setStatus({ text: `bash failed: ${errorText(e)}`, tone: 'error' });
+      setStatus({ text: `${call.tool ?? 'bash'} failed: ${errorText(e)}`, tone: 'error' });
     }
   }
 
@@ -652,7 +654,6 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     // Streaming or running: only Esc (abort, kill) acts.
     nextCall: () => ops.nextCall(context()),
     busy: () => streaming() !== null || running() !== null || compacting()?.phase === 'running',
-    timeout: runner.timeout,
     status,
     rows,
     selected,

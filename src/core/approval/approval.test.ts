@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { BUILTIN_ALLOW, evaluate, matches, permissionRules, prefixRule, quoted, sessionAllowed, sessionRules, type Command, type Rule, type Split } from './approval';
+import { BUILTIN_ALLOW, evaluate, matches, verdictOf, permissionRules, prefixRule, quoted, sessionAllowed, sessionRules, type Command, type Rule, type Split } from './approval';
 
 const ROOT = '/work/project';
 // A split that treats `&&` as the only separator and every word after the first as a literal argument.
@@ -7,6 +7,13 @@ const words: Split = command => (command.includes('"') ? null : command.split('&
 const rule = (pattern: string, action: Rule['action'], source: Rule['source'] = 'global'): Rule => ({ pattern, action, source });
 const verdict = (command: string, rules: Rule[] = BUILTIN_ALLOW, split: Split = words) => evaluate(command, { rules, split, root: ROOT });
 const only = (command: Command) => () => [command];
+
+test('search is always allowed, whatever the rules; a bash call is decided by them (FR-21)', () => {
+  const input = { rules: [rule('*', 'deny')], split: words, root: ROOT };
+  expect(verdictOf({ tool: 'search', content: 'rm -rf /' }, input)).toEqual({ action: 'allow', checks: [] });
+  expect(verdictOf({ content: 'ls' }, input).action).toBe('deny');
+  expect(verdictOf({ tool: 'bash', content: 'ls' }, input).action).toBe('deny');
+});
 
 test('a pattern ending in " *" matches the command alone or with arguments, not a longer word (FR-22)', () => {
   expect(matches('git status *', 'git status')).toBe(true);

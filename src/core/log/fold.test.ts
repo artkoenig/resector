@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from './events';
-import { fold, undone } from './fold';
+import { callText, fold, undone } from './fold';
 
 test('Context holds the session profile and the added blocks in order', () => {
   const context = fold([
@@ -195,6 +195,19 @@ test('PairToNote turns the Tool Pair into a Note after the calls and results of 
   expect(ids([...events, sent])).toEqual([1, 2, 4, 6, 7]);
   expect(ids(session(1, call(3, 'ls'), call(4, 'pwd'), result(5, 3), result(6, 4), toNote(7, 4)))).toEqual([1, 2, 3, 5, 7]);
   expect(fold(events).nextId).toBe(8);
+});
+
+test('a search call keeps its tool; its pair becomes a Note `[Tool search: <query>]`, titled by tool and query', () => {
+  const search: SessionEvent = { type: 'BlockAdded', id: 3, kind: 'Tool Call', origin: 'model', content: 'bun', tool: 'search' };
+  expect(block(session(1, search), 3)).toMatchObject({ kind: 'Tool Call', tool: 'search', content: 'bun', pending: true });
+  expect(block(session(1, call(3, 'ls')), 3)).not.toHaveProperty('tool');
+  expect(block(session(1, search, result(4, 3), toNote(5, 3)), 5)).toMatchObject({ content: '[Tool search: bun]\nout 3', source: 'search bun' });
+});
+
+test('callText: the bash command as is, another tool by name and query', () => {
+  expect(callText({ content: 'ls' })).toBe('ls');
+  expect(callText({ tool: 'bash', content: 'ls' })).toBe('ls');
+  expect(callText({ tool: 'search', content: 'bun' })).toBe('search bun');
 });
 
 test('a Tool Result edited in place stays the result of its call', () => {

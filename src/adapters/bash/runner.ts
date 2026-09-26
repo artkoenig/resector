@@ -6,12 +6,18 @@ import type { Stopped } from '../../core/log/events';
 
 // timeout: seconds.
 export function createRunner({ cwd, timeout }: { cwd: string; timeout: number }): Runner {
+  return processRunner(command => ['bash', '-c', command], { cwd, timeout });
+}
+
+// A runner starting the process `argv` gives for a Tool Call's content (e.g. the search adapter's ddgr).
+export function processRunner(argv: (content: string) => string[], { cwd, timeout }: { cwd: string; timeout: number }): Runner {
   return {
     timeout,
-    run: (command, { signal, onOutput }) =>
+    run: (content, { signal, onOutput }) =>
       new Promise<RunResult>((resolve, reject) => {
+        const [file, ...args] = argv(content);
         // Own process group, so a kill reaches pipelines and background children too.
-        const child = spawn('bash', ['-c', command], { cwd, stdio: ['ignore', 'pipe', 'pipe'], detached: true, env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' } });
+        const child = spawn(file!, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], detached: true, env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' } });
         let output = '';
         let stopped: Stopped | null = null;
         const collect = (data: Buffer) => {

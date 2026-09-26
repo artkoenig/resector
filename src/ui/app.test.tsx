@@ -52,6 +52,8 @@ async function start({ template, notes, timeout = 120, compactor, users = [], ca
   const backend = await connectLlamaCpp(fake.url);
   const log = createSessionLog(mkdtempSync(join(tmpdir(), 'resector-')), 'ses_test');
   const runner = createRunner({ cwd: project, timeout });
+  // search without ddgr: the query is echoed back as its result.
+  const searcher = { timeout: 30, run: async (query: string) => ({ output: `results for ${query}\n`, exit: 0, stopped: null }) };
   const first = newSession('default', '', notes).length;
   const initial = [
     ...newSession('default', 'You are an agent.', notes),
@@ -63,7 +65,7 @@ async function start({ template, notes, timeout = 120, compactor, users = [], ca
   const approval = { split, root: project, permissions: () => permissionRules(global, own) };
   const files = { read: projectFiles(project), list: () => listProjectFiles(project), environment: () => environment, open: async (path: string) => void openedFiles.push(path) };
   ui = await testRender(
-    () => <App backend={backend} runner={runner} approval={approval} editor={text => editor(text)} project={files} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} reconnect={async () => backend} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
+    () => <App backend={backend} runner={runner} searcher={searcher} approval={approval} editor={text => editor(text)} project={files} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} reconnect={async () => backend} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
     { width: 80, height: 20 },
   );
   await frameMatching(ui, f => f.includes(users.length || notes ? ' / 4k' : '52 / 4k') && !f.includes('… / 4k'));
@@ -566,7 +568,24 @@ test('/tools completes the tool names and switches one off and on; off, it is no
   await write('/tools');
   await frameMatching(ui, f => f.includes('tools: bash · /tools <tool> switches one'));
   await write('/tools python');
-  await frameMatching(ui, f => f.includes('unknown tool python – bash'));
+  await frameMatching(ui, f => f.includes('unknown tool python – bash search'));
+});
+
+test('search, switched on with /tools, runs without asking; its call and result are sent as search (FR-21)', async () => {
+  const { events } = await start();
+  await write('/tools search');
+  await frameMatching(ui, f => f.includes('search on · u = undo'));
+  fake.reply({ chunks: [], calls: [{ name: 'search', arguments: '{"query":"bun runtime"}' }] });
+  fake.reply({ chunks: ['ok'] });
+  await write('go');
+  const frame = await frameMatching(ui, f => f.includes('answer complete'));
+  expect(frame).not.toContain('? approve');
+  expect(frame).toMatch(/Tool Call\s+search bun runtime/);
+  expect(frame).toMatch(/Tool Result\s+→ search bun runtime/);
+  expect(events().find(e => e.kind === 'Tool Call')).toMatchObject({ tool: 'search', content: 'bun runtime' });
+  expect(events().find(e => e.kind === 'Tool Result')).toMatchObject({ content: 'results for bun runtime\n[exit 0]' });
+  const [call] = (fake.chatRequests[1] as { messages: { tool_calls?: { function: object }[] }[] }).messages.flatMap(m => m.tool_calls ?? []);
+  expect(call!.function).toEqual({ name: 'search', arguments: '{"query":"bun runtime"}' });
 });
 
 // The first line of the Content preview: shows which block is selected.

@@ -1,5 +1,5 @@
-// The only tool (FR-21): bash. Its definition in the Tools Block, calls as the model sends them, results.
-import type { Stopped } from '../log/events';
+// The tools (FR-21): bash and search. Their definitions in the Tools Block, calls as the model sends them, results.
+import type { Stopped, Tool } from '../log/events';
 
 type ToolDefinition = { name: string; description: string; parameters: object };
 // Every tool the harness runs; the Tools Block holds those switched on (/tools).
@@ -9,12 +9,20 @@ const CATALOG: ToolDefinition[] = [
     description: 'Run a shell command in the project root. Returns combined stdout/stderr and the exit code.',
     parameters: { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] },
   },
+  {
+    name: 'search',
+    description: 'Search the web (DuckDuckGo). Returns title, URL and abstract of the top results as JSON.',
+    parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+  },
 ];
+// The one argument of each tool: a Tool Call's content.
+const ARGUMENT: Record<Tool, string> = { bash: 'command', search: 'query' };
 export const TOOL_NAMES = CATALOG.map(t => t.name);
 
 // Tools Block content, protocol-neutral: name, description, JSON schema of the arguments.
 const toolsContent = (tools: ToolDefinition[]) => JSON.stringify(tools, null, 2);
-export const TOOLS = toolsContent(CATALOG);
+// A new session's Tools Block: bash only; search is switched on with /tools (it needs ddgr).
+export const TOOLS = toolsContent(CATALOG.filter(t => t.name === 'bash'));
 
 // The names of the tools in Tools Block content.
 export const toolsIn = (tools: string): string[] => (JSON.parse(tools) as { name: string }[]).map(t => t.name);
@@ -34,18 +42,22 @@ export function toggleTool(tools: string, name: string): { content: string } | {
 export type RawCall = { name: string; arguments: string };
 
 // `tools`: the names in the Tools Block; a tool switched off is not run.
-export function parseCall(call: RawCall, tools: string[]): { command: string } | { error: string } {
-  if (call.name !== 'bash') return { error: `unknown tool ${call.name}` };
-  if (!tools.includes(call.name)) return { error: `tool ${call.name} is off (/tools)` };
+export function parseCall(call: RawCall, tools: string[]): { tool: Tool; content: string } | { error: string } {
+  if (!Object.hasOwn(ARGUMENT, call.name)) return { error: `unknown tool ${call.name}` };
+  const tool = call.name as Tool;
+  if (!tools.includes(tool)) return { error: `tool ${tool} is off (/tools)` };
   let args: unknown;
   try {
     args = JSON.parse(call.arguments);
   } catch {
     return { error: 'arguments are not valid JSON' };
   }
-  const command = (args as { command?: unknown } | null)?.command;
-  return typeof command === 'string' ? { command } : { error: 'no command string' };
+  const content = (args as Record<string, unknown> | null)?.[ARGUMENT[tool]];
+  return typeof content === 'string' ? { tool, content } : { error: `no ${ARGUMENT[tool]} string` };
 }
+
+// The arguments of a Tool Call as the model sent them.
+export const callArguments = (tool: Tool, content: string): string => JSON.stringify({ [ARGUMENT[tool]]: content });
 
 // exit: null when the run was stopped.
 export type RunResult = { output: string; exit: number | null; stopped: Stopped | null };

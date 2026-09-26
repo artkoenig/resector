@@ -6,6 +6,8 @@ export type Origin = 'config' | 'user' | 'model' | 'tool' | 'compaction' | 'file
 // How a bash run ended early (FR-21): Esc killed it, or it ran into the timeout.
 export type Stopped = 'killed' | 'timeout';
 export type ToolProtocol = 'native';
+// The tools the harness runs (FR-21).
+export type Tool = 'bash' | 'search';
 // Reasoning (FR-49): 'off', 'on', or an effort level the model's chat template accepts (e.g. 'low', 'xhigh').
 export type Thinking = string;
 
@@ -20,9 +22,10 @@ export type SessionEvent =
   | { type: 'ProfileFallback'; profile: string }
   // Session title; empty = reset to the first User message (FR-34).
   | { type: 'SessionRenamed'; title: string }
-  // Tool Call: content = the bash command; Tool Result: `call` = its Tool Call, content = the output.
+  // Tool Call: content = the bash command or the search query, `tool` = its tool (absent: bash);
+  // Tool Result: `call` = its Tool Call, content = the output.
   // file: the file a Note was read from; pin: added pinned (environment Note, project instructions).
-  | { type: 'BlockAdded'; id: number; kind: Kind; origin: Origin; content: string; cutOff?: true; call?: number; stopped?: Stopped; file?: string; pin?: Pin }
+  | { type: 'BlockAdded'; id: number; kind: Kind; origin: Origin; content: string; tool?: Tool; cutOff?: true; call?: number; stopped?: Stopped; file?: string; pin?: Pin }
   // `@<path>[:a-b]` (FR-27): a reference row, read only on send …
   | { type: 'FileReferenced'; id: number; file: string }
   // … into a snapshot, never refreshed afterwards.

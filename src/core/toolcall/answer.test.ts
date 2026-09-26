@@ -21,6 +21,14 @@ test('calls without text add no Assistant block; an answer without anything adds
   expect(answerBlocks(result({}), 3, ['bash']).events).toEqual([{ type: 'BlockAdded', id: 3, kind: 'Assistant', origin: 'model', content: '' }]);
 });
 
+test('a search call becomes a Tool Call of tool search, its query the content', () => {
+  const search = { name: 'search', arguments: '{"query":"bun runtime"}' };
+  expect(answerBlocks(result({ calls: [search, bash('ls')] }), 3, ['bash', 'search']).events).toEqual([
+    { type: 'BlockAdded', id: 3, kind: 'Tool Call', origin: 'model', content: 'bun runtime', tool: 'search' },
+    { type: 'BlockAdded', id: 4, kind: 'Tool Call', origin: 'model', content: 'ls' },
+  ]);
+});
+
 test('a cut-off answer runs no call: its calls stay in the text (FR-19)', () => {
   for (const finish of ['length', 'aborted'] as const)
     expect(answerBlocks(result({ content: 'Hm', calls: [bash('ls')], finish }), 3, ['bash'])).toEqual({

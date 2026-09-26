@@ -1,4 +1,4 @@
-import type { Kind, Origin, Pin, SessionEvent, Stopped, Thinking, ToolProtocol } from './events';
+import type { Kind, Origin, Pin, SessionEvent, Stopped, Thinking, Tool, ToolProtocol } from './events';
 
 export type Block = {
   id: number;
@@ -6,10 +6,12 @@ export type Block = {
   origin: Origin;
   content: string;
   cutOff: boolean;
+  // Tool Call only: its tool, absent for bash.
+  tool?: Tool;
   // Tool Result only: its Tool Call, and how the run stopped early.
   call?: number;
   stopped?: Stopped;
-  // Note from a Tool Pair only: the pair's command, for its title.
+  // Note from a Tool Pair only: the pair's call (callText), for its title.
   source?: string;
   // Note from a Compaction only: the blocks it replaced and the instruction (FR-16).
   compacted?: { sources: number[]; instruction: string };
@@ -65,6 +67,9 @@ export function pairOf(blocks: Pick<Block, 'id' | 'kind' | 'call'>[], id: number
   return result ? [id, result.id] : [id];
 }
 
+// A Tool Call as the user reads it: the bash command, or the tool name and its query.
+export const callText = ({ tool, content }: Pick<Block, 'tool' | 'content'>): string => (tool && tool !== 'bash' ? `${tool} ${content}` : content);
+
 const NEW_ENTRY = { title: null, removed: false, moved: false, pinChanged: false, revision: 1, hidden: false, sentPin: null, sentRevision: 1 };
 
 function setPin(state: State, id: number, pin: Pin | null) {
@@ -79,7 +84,7 @@ const pairIn = (state: State, id: number) => pairOf([...state.entries.values()],
 
 const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   BlockAdded: (state, e) => {
-    const block = { id: e.id, kind: e.kind, origin: e.origin, content: e.content, cutOff: e.cutOff === true,
+    const block = { id: e.id, kind: e.kind, origin: e.origin, content: e.content, cutOff: e.cutOff === true, ...(e.tool && { tool: e.tool }),
       ...(e.call !== undefined && { call: e.call }), ...(e.stopped && { stopped: e.stopped }), ...(e.file && { file: e.file }) };
     const pin = e.pin ?? null;
     state.entries.set(e.id, { ...block, ...NEW_ENTRY, pin, sentPin: pin });
@@ -109,8 +114,8 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   // so the other calls of the answer keep their results right after them.
   PairToNote: (state, e) => {
     const [call, result] = pairIn(state, e.call).map(id => entry(state, id));
-    const content = `[Tool bash: ${call!.content}]\n${result!.content}`;
-    state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'tool', content, source: call!.content, cutOff: false, ...NEW_ENTRY, pin: call!.pin });
+    const content = `[Tool ${call!.tool ?? 'bash'}: ${call!.content}]\n${result!.content}`;
+    state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'tool', content, source: callText(call!), cutOff: false, ...NEW_ENTRY, pin: call!.pin });
     insert(state, afterCalls(state.order.map(id => entry(state, id)), e.call), e.id);
     for (const b of [call!, result!]) Object.assign(b, { removed: true, hidden: true });
   },

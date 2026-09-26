@@ -487,7 +487,7 @@ const rowFg = (row: Row) =>
 // Status line: a running command, the streaming answer (both with the row's spinner), else the last action.
 function statusOf(gate: Gate, spin: string): Status | null {
   const r = gate.running();
-  if (r) return { text: `${spin} running: ${cell(titleOf(r.call), 50).trimEnd()} · ${Math.round((Date.now() - r.started) / 1000)}s / ${gate.timeout}s`, tone: 'warn' };
+  if (r) return { text: `${spin} running: ${cell(titleOf(r.call), 50).trimEnd()} · ${Math.round((Date.now() - r.started) / 1000)}s / ${r.timeout}s`, tone: 'warn' };
   if (gate.compacting()?.phase === 'running') return { text: `${spin} compacting with ${gate.compacting()!.profile}`, tone: 'warn' };
   const s = gate.streaming();
   if (!s) return gate.status();

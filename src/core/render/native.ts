@@ -1,5 +1,6 @@
 import type { Thinking } from '../log/events';
 import type { Block, Context } from '../log/fold';
+import { callArguments } from '../toolcall/bash';
 
 export type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
 export type AssistantMessage = { role: 'assistant'; content: string; reasoning_content?: string; tool_calls?: ToolCall[] };
@@ -30,7 +31,7 @@ function addCall({ messages }: Request, ids: Map<number, string>, b: Block) {
   const last = messages.at(-1);
   const joined = last?.role === 'assistant' ? last : null;
   const earlier = joined?.tool_calls ?? [];
-  const call: ToolCall = { id: callId(earlier.length), type: 'function', function: { name: 'bash', arguments: JSON.stringify({ command: b.content }) } };
+  const call: ToolCall = { id: callId(earlier.length), type: 'function', function: { name: b.tool ?? 'bash', arguments: callArguments(b.tool ?? 'bash', b.content) } };
   ids.set(b.id, call.id);
   const message = { ...joined, role: 'assistant' as const, content: joined?.content ?? '', tool_calls: [...earlier, call] };
   if (joined) messages[messages.length - 1] = message;
