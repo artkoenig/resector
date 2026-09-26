@@ -1,7 +1,6 @@
+// File Notes (FR-27, FR-29): `@file <path>[:a-b]` references in the input, and the snapshot a reference becomes on send.
 import type { SessionEvent } from '../log/events';
 import type { Context } from '../log/fold';
-
-// File Notes (FR-27, FR-29): `@file <path>[:a-b]` references in the input, and the snapshot a reference becomes on send.
 
 // A file as the harness reads it: its text, or null when it does not exist (or is no readable file).
 export type ReadFile = (path: string) => string | null;

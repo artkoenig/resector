@@ -16,13 +16,15 @@ export async function start({ resume }: Start) {
     process.stderr.write(message);
     process.exit(code);
   };
+  // $EDITOR takes the terminal over while it runs.
+  const terminal = { env: process.env, suspend: () => renderer.suspend(), resume: () => renderer.resume() };
   await render(
     () => (
       <Launch
         paths={configPaths({ home: homedir(), cwd: process.cwd(), env: process.env })}
         store={projectSessionStore(homedir(), process.cwd())}
-        editor={createEditor({ env: process.env, suspend: () => renderer.suspend(), resume: () => renderer.resume() })}
-        openFile={createFileEditor({ env: process.env, suspend: () => renderer.suspend(), resume: () => renderer.resume() })}
+        editor={createEditor(terminal)}
+        openFile={createFileEditor(terminal)}
         clipboard={createClipboard({ osc52: text => renderer.copyToClipboardOSC52(text), command: copyCommand(process.platform, process.env) })}
         resume={resume}
         onQuit={() => exit(0)}

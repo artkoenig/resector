@@ -596,8 +596,9 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
   function addInput(input: string) {
     const { files, text } = references(input);
     for (const file of files) {
-      setSelected(nextId());
-      append({ type: 'FileReferenced', id: nextId(), file });
+      const id = nextId();
+      append({ type: 'FileReferenced', id, file });
+      setSelected(id);
     }
     if (text) {
       addUser(text);

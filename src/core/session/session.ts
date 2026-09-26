@@ -15,7 +15,8 @@ type RequestSent = Extract<SessionEvent, { type: 'RequestSent' }>;
 
 // What a new session starts with besides System prompt and Tools Block: the environment Note (FR-28) and the
 // project instructions (`AGENTS.md`, else `CLAUDE.md`), read once now (FR-29). Both pinned top.
-export type SessionNotes = { environment?: string; instructions?: { file: string; content: string } | null };
+export type Instructions = { file: string; content: string };
+export type SessionNotes = { environment?: string; instructions?: Instructions | null };
 
 export function newSession(profile: string, systemPrompt: string, { environment, instructions }: SessionNotes = {}): SessionEvent[] {
   const events: SessionEvent[] = [

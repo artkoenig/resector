@@ -4,6 +4,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Environment } from '../../core/notes/environment';
 import type { ReadFile } from '../../core/notes/files';
+import type { Instructions } from '../../core/session/session';
 
 // A path relative to the project root, or absolute; null when it is no readable file.
 export const projectFiles = (root: string): ReadFile => path => {
@@ -18,7 +19,7 @@ export const projectFiles = (root: string): ReadFile => path => {
 const INSTRUCTIONS = ['AGENTS.md', 'CLAUDE.md'];
 
 // `AGENTS.md`, else `CLAUDE.md`, in the project root.
-export function projectInstructions(root: string): { file: string; content: string } | null {
+export function projectInstructions(root: string): Instructions | null {
   const file = INSTRUCTIONS.find(f => existsSync(resolve(root, f)));
   return file ? { file, content: readFileSync(resolve(root, file), 'utf8') } : null;
 }

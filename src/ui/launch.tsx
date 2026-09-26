@@ -1,11 +1,11 @@
 // Startup: read the config (or run the first-start setup), open a new or resumed session, then show the Gate.
+import { resolve } from 'node:path';
 import { createSignal, onMount, Show } from 'solid-js';
 import { connect } from '../adapters/backend/connect';
 import { discover, LOCAL_SERVERS, type DiscoveredModel, type LocalServer } from '../adapters/backend/discover';
 import { createRunner } from '../adapters/bash/runner';
 import { createSplit } from '../adapters/bash/split';
 import type { Clipboard } from '../adapters/clipboard/clipboard';
-import { resolve } from 'node:path';
 import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
 import { probeEnvironment, projectFiles, projectInstructions } from '../adapters/fs/project';
 import type { OpenSession, SessionStore } from '../adapters/store/sessions';
