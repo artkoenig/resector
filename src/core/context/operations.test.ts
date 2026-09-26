@@ -194,3 +194,14 @@ test('a block moves past the Tool Calls and Tool Results of an answer as a whole
   const struck = [...events, { type: 'Remove', id: 9 } as SessionEvent];
   expect(move(...at(struck, 4), 1)).toEqual({ event: { type: 'Move', id: 4, after: 8 } });
 });
+
+test('undo passes over the harness refreshing the environment Note (FR-28)', () => {
+  const events = session({ type: 'Edit', id: 2, revision: 2, content: 'x' }, { type: 'Edit', id: 3, revision: 2, content: 'env', harness: true });
+  expect(undo(events)).toEqual({ event: { type: 'Undo', eventId: 5 } });
+  expect(undo(session({ type: 'Edit', id: 3, revision: 2, content: 'env', harness: true }))).toEqual({ error: 'nothing to undo' });
+});
+
+test('an edit after a harness Revision is numbered after it', () => {
+  const events = session({ type: 'Edit', id: 3, revision: 2, content: 'env', harness: true });
+  expect(edit(events, at(events, 3)[1], 'mine')).toEqual({ event: { type: 'Edit', id: 3, revision: 3, content: 'mine' } });
+});

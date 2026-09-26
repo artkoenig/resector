@@ -41,7 +41,7 @@ User-controlled rewrite of selected Context Blocks by the LLM, following a user 
 _Avoid_: summarization, auto-compact
 
 **Note**:
-Context Block of free text without API role semantics, keeping a reference to its origin: a moved Tool Pair, a Compaction result, the session environment (working directory, OS, date, branch; refreshed by the harness when it changes), project instructions or a file.
+Context Block of free text without API role semantics, keeping a reference to its origin: a moved Tool Pair, a Compaction result, the session environment (working directory, OS and shell, date, branch; refreshed by the harness when it changes), project instructions or a file.
 
 **Thinking**:
 Context Block holding the model's reasoning for one answer, placed before that answer. Stays in the Context until the user removes it; the model's chat template may still drop it from the rendered request.

@@ -13,6 +13,11 @@ export type Block = {
   source?: string;
   // Note from a Compaction only: the blocks it replaced and the instruction (FR-16).
   compacted?: { sources: number[]; instruction: string };
+  // Note from a file only: the file (FR-27, FR-29); unread: an @file reference not read yet.
+  file?: string;
+  unread?: true;
+  // An unread reference whose file cannot be read now (set at the Gate, never logged).
+  missing?: string;
   // Tool Call only: no Tool Result yet, so it awaits approval (FR-23).
   pending?: boolean;
   title: string | null;
@@ -74,10 +79,19 @@ const pairIn = (state: State, id: number) => pairOf([...state.entries.values()],
 const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   BlockAdded: (state, e) => {
     const block = { id: e.id, kind: e.kind, origin: e.origin, content: e.content, cutOff: e.cutOff === true,
-      ...(e.call !== undefined && { call: e.call }), ...(e.stopped && { stopped: e.stopped }) };
-    state.entries.set(e.id, { ...block, ...NEW_ENTRY, pin: null });
-    const at = e.call === undefined ? firstBottom(state) : afterCalls(state.order.map(id => entry(state, id)), e.call);
+      ...(e.call !== undefined && { call: e.call }), ...(e.stopped && { stopped: e.stopped }), ...(e.file && { file: e.file }) };
+    const pin = e.pin ?? null;
+    state.entries.set(e.id, { ...block, ...NEW_ENTRY, pin, sentPin: pin });
+    const at = e.call === undefined ? (pin === 'top' ? afterTop(state) : firstBottom(state)) : afterCalls(state.order.map(id => entry(state, id)), e.call);
     insert(state, at, e.id);
+  },
+  FileReferenced: (state, e) => {
+    state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'file', file: e.file, unread: true, content: '', cutOff: false, ...NEW_ENTRY, pin: null });
+    insert(state, firstBottom(state), e.id);
+  },
+  FileRead: (state, e) => {
+    const { unread: _, ...read } = entry(state, e.id);
+    state.entries.set(e.id, { ...read, content: e.content });
   },
   Move: (state, e) => {
     take(state, e.id);

@@ -5,12 +5,12 @@ import { toolNames } from '../core/toolcall/bash';
 export const formatTokens = (t: number): string =>
   t >= 1024 && t % 1024 === 0 ? `${t / 1024}k` : t >= 1000 ? `${(t / 1000).toFixed(1)}k` : String(t);
 
-type Titled = Pick<Block, 'kind' | 'content'> & Partial<Pick<Block, 'title' | 'call' | 'source' | 'compacted'>>;
+type Titled = Pick<Block, 'kind' | 'content'> & Partial<Pick<Block, 'title' | 'call' | 'source' | 'compacted' | 'file' | 'origin'>>;
 const firstLine = (text: string) => (text.split('\n').find(l => l.trim()) ?? '').trim();
 
 // FR-4: display label only, never sent. A rename wins; default = first non-empty line of the content;
 // origin titles: `System prompt`, the tool names, `→ <call>` (the call from `blocks`), `⇄ <call>` (a Note from a Tool Pair),
-// `◇ N blocks compacted` (a Note from a Compaction, FR-16).
+// `◇ N blocks compacted` (a Note from a Compaction, FR-16), `@file <path>` (FR-27, FR-29), `Environment` (FR-28).
 export function titleOf(block: Titled, blocks: readonly Pick<Block, 'id' | 'content'>[] = []): string {
   if (block.title) return block.title;
   if (block.kind === 'System') return 'System prompt';
@@ -21,6 +21,8 @@ export function titleOf(block: Titled, blocks: readonly Pick<Block, 'id' | 'cont
 function originTitle(block: Titled, blocks: readonly Pick<Block, 'id' | 'content'>[]): string | null {
   if (block.kind === 'Tool Result') return `→ ${firstLine(blocks.find(b => b.id === block.call)?.content ?? '')}`;
   if (block.source !== undefined) return `⇄ ${firstLine(block.source)}`;
+  if (block.file !== undefined) return `@file ${block.file}`;
+  if (block.origin === 'environment') return 'Environment';
   return block.compacted ? `◇ ${count(block.compacted.sources.length, 'block')} compacted` : null;
 }
 
@@ -37,6 +39,7 @@ export const flagsOf = (block: Block, next?: number, dropped = false): string =>
     block.cutOff ? ' ⚠ cut off' : '',
     block.pending ? (block.id === next ? ' ? approve' : ' · queued') : '',
     block.stopped ? ` ⚠ ${block.stopped}` : '',
+    block.unread ? (block.missing ? ' ⚠ not found' : ' @ read at send') : '',
     dropped ? ' ✂ template' : '',
   ]
     .join('')

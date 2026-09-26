@@ -1,6 +1,7 @@
 // Sessions (FR-32–FR-35): a new Session Log, how a session is referred to, and its summary in /sessions.
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
+import { fileNote } from '../notes/files';
 import { TOOLS } from '../toolcall/bash';
 
 export type SessionSummary = { title: string; renamed: boolean; profile: string; blocks: number; tokens: number | null };
@@ -12,12 +13,25 @@ const TITLE_LENGTH = 60;
 type BlockAdded = Extract<SessionEvent, { type: 'BlockAdded' }>;
 type RequestSent = Extract<SessionEvent, { type: 'RequestSent' }>;
 
-export const newSession = (profile: string, systemPrompt: string): SessionEvent[] => [
-  { type: 'SessionCreated', profile, protocol: 'native' },
-  { type: 'BlockAdded', id: 1, kind: 'System', origin: 'config', content: systemPrompt },
-  // Always sent, never edited (FR-12).
-  { type: 'BlockAdded', id: 2, kind: 'Tools', origin: 'config', content: TOOLS },
-];
+// What a new session starts with besides System prompt and Tools Block: the environment Note (FR-28) and the
+// project instructions (`AGENTS.md`, else `CLAUDE.md`), read once now (FR-29). Both pinned top.
+export type Instructions = { file: string; content: string };
+export type SessionNotes = { environment?: string; instructions?: Instructions | null };
+
+export function newSession(profile: string, systemPrompt: string, { environment, instructions }: SessionNotes = {}): SessionEvent[] {
+  const events: SessionEvent[] = [
+    { type: 'SessionCreated', profile, protocol: 'native' },
+    { type: 'BlockAdded', id: 1, kind: 'System', origin: 'config', content: systemPrompt },
+    // Always sent, never edited (FR-12).
+    { type: 'BlockAdded', id: 2, kind: 'Tools', origin: 'config', content: TOOLS },
+  ];
+  if (environment !== undefined) events.push({ type: 'BlockAdded', id: events.length, kind: 'Note', origin: 'environment', content: environment, pin: 'top' });
+  if (instructions) {
+    const { file, content } = instructions;
+    events.push({ type: 'BlockAdded', id: events.length, kind: 'Note', origin: 'file', file, content: fileNote(file, content), pin: 'top' });
+  }
+  return events;
+}
 
 // Title = the last session rename, else the first line of the first User message (FR-34).
 function sessionTitle(events: SessionEvent[]): Pick<SessionSummary, 'title' | 'renamed'> {

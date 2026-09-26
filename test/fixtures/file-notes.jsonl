@@ -1,0 +1,14 @@
+{"type":"SessionCreated","profile":"default","protocol":"native"}
+{"type":"BlockAdded","id":1,"kind":"System","origin":"config","content":"You are an agent."}
+{"type":"BlockAdded","id":2,"kind":"Tools","origin":"config","content":"[{\"name\":\"bash\",\"description\":\"Run a bash command.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"}},\"required\":[\"command\"]}}]"}
+{"type":"BlockAdded","id":3,"kind":"Note","origin":"environment","content":"[environment]\ncwd: /p\nos: linux x64 · shell: bash\ndate: 2026-09-26\ngit branch: main","pin":"top"}
+{"type":"BlockAdded","id":4,"kind":"Note","origin":"file","file":"AGENTS.md","content":"[AGENTS.md]\n# Rules\n","pin":"top"}
+{"type":"FileReferenced","id":5,"file":"src/a.ts:2-3"}
+{"type":"FileReferenced","id":6,"file":"gone.ts"}
+{"type":"Remove","id":6}
+{"type":"BlockAdded","id":7,"kind":"User","origin":"user","content":"explain"}
+{"type":"FileRead","id":5,"content":"[src/a.ts:2-3]\n2: b\n3: c"}
+{"type":"Edit","id":3,"revision":2,"content":"[environment]\ncwd: /p\nos: linux x64 · shell: bash\ndate: 2026-09-27\ngit branch: main","harness":true}
+{"type":"RequestSent","hash":"h","tokens":120}
+{"type":"BlockAdded","id":8,"kind":"Assistant","origin":"model","content":"It returns b and c."}
+{"type":"ResponseReceived","usage":{"prompt_tokens":120,"completion_tokens":6},"cached":0}

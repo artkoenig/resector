@@ -14,7 +14,7 @@ const session = (...then: SessionEvent[]): SessionEvent[] => [
   { type: 'BlockAdded', id: 6, kind: 'Assistant', origin: 'model', content: 'found it' },
   ...then,
 ];
-const NOTHING = { error: 'nothing to compact (System, Tools and pending Tool Calls are excluded)' };
+const NOTHING = { error: 'nothing to compact (System, Tools and pending Tool Calls, unread @file references are excluded)' };
 
 test('the sources are the marked blocks in Context order (FR-13)', () => {
   expect(sourcesOf(fold(session()), new Set([6, 3]), 1)).toEqual({ sources: [3, 6] });
@@ -68,4 +68,9 @@ test('reduction is the share of tokens saved, in whole percent', () => {
   expect(reduction(3, 2)).toBe(33);
   expect(reduction(100, 120)).toBe(-20);
   expect(reduction(0, 5)).toBe(0);
+});
+
+test('an unread @file reference is not compacted: it is read only on send (FR-27)', () => {
+  const events = session({ type: 'FileReferenced', id: 9, file: 'a.ts' });
+  expect(sourcesOf(fold(events), new Set(), 9)).toEqual(NOTHING);
 });

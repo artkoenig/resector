@@ -1,4 +1,5 @@
 // Startup: read the config (or run the first-start setup), open a new or resumed session, then show the Gate.
+import { resolve } from 'node:path';
 import { createSignal, onMount, Show } from 'solid-js';
 import { connect } from '../adapters/backend/connect';
 import { discover, LOCAL_SERVERS, type DiscoveredModel, type LocalServer } from '../adapters/backend/discover';
@@ -6,11 +7,13 @@ import { createRunner } from '../adapters/bash/runner';
 import { createSplit } from '../adapters/bash/split';
 import type { Clipboard } from '../adapters/clipboard/clipboard';
 import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
+import { probeEnvironment, projectFiles, projectInstructions } from '../adapters/fs/project';
 import type { OpenSession, SessionStore } from '../adapters/store/sessions';
 import type { Split } from '../core/approval/approval';
 import type { Editor } from '../core/context/operations';
 import type { SessionEvent } from '../core/log/events';
 import { fold } from '../core/log/fold';
+import { environmentText } from '../core/notes/environment';
 import { newSession, summarize, type SessionRef } from '../core/session/session';
 import { App } from './app';
 import { errorText } from './format';
@@ -24,8 +27,9 @@ export type LaunchOptions = {
   store: SessionStore;
   // Project root: where bash runs (FR-21); default the working directory.
   cwd?: string;
-  // $EDITOR for `e` (FR-8).
+  // $EDITOR for `e` (FR-8), and on a file itself (`e` on an @file reference, FR-27).
   editor: Editor;
+  openFile: (file: string) => Promise<void>;
   // Copy on select.
   clipboard: Clipboard;
   // -c [id]: true = the last session (FR-32).
@@ -46,6 +50,9 @@ export function Launch(props: LaunchOptions) {
   // tree-sitter-bash, loaded once (FR-22).
   let split: Split | undefined;
   const [current, setCurrent] = createSignal('');
+  const root = props.cwd ?? process.cwd();
+  const environment = () => environmentText(probeEnvironment(root));
+  const project = { read: projectFiles(root), environment, open: (path: string) => props.openFile(resolve(root, path)) };
 
   const load = () => {
     const loaded = loadConfig(props.paths);
@@ -71,7 +78,8 @@ export function Launch(props: LaunchOptions) {
   function create(loaded: Loaded) {
     const opened = props.store.create();
     const profile = loaded.profile();
-    const events = newSession(profile.name, loaded.systemPrompt(profile));
+    // The project instructions are read once, now (FR-29).
+    const events = newSession(profile.name, loaded.systemPrompt(profile), { environment: environment(), instructions: projectInstructions(root) });
     events.forEach(opened.log.append);
     return { opened, events, notice: { text: 'new session', tone: 'ok' as const } };
   }
@@ -106,11 +114,10 @@ export function Launch(props: LaunchOptions) {
     session = opened;
     setCurrent(opened.id);
     setFound(null);
-    const root = props.cwd ?? process.cwd();
     const runner = createRunner({ cwd: root, timeout: loaded.config.bash?.timeout ?? DEFAULT_TIMEOUT });
     const approval = { split, root, permissions: () => config.permissions };
     const instruction = () => config.compactionInstruction();
-    setGate({ backend, runner, approval, editor: props.editor, clipboard: props.clipboard, log: opened.log, events, notice, reconnect: reconnect(profile, opened.id), openSessions: () => setView('sessions'), instruction, compactor: compactor(profile, opened.id) });
+    setGate({ backend, runner, approval, editor: props.editor, clipboard: props.clipboard, log: opened.log, events, project, notice, reconnect: reconnect(profile, opened.id), openSessions: () => setView('sessions'), instruction, compactor: compactor(profile, opened.id) });
   }
 
   // /sessions (FR-33): switching sessions reconnects; the Gate comes back with the session's logged events.

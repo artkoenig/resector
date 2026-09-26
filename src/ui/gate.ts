@@ -8,6 +8,8 @@ import * as compaction from '../core/compaction/compaction';
 import * as ops from '../core/context/operations';
 import type { Kind, SessionEvent, SessionLog } from '../core/log/events';
 import { afterCalls, fold, pairOf, type Block } from '../core/log/fold';
+import { refreshEnvironment } from '../core/notes/environment';
+import { parseReference, peekReferences, readReferences, references, type ReadFile } from '../core/notes/files';
 import { renderNative, renderPrefixes, sentBlocks, type Request } from '../core/render/native';
 import { answerBlocks } from '../core/toolcall/answer';
 import type { Runner } from '../core/toolcall/bash';
@@ -26,6 +28,7 @@ export type GateOptions = {
   clipboard: Clipboard;
   log: SessionLog;
   events: SessionEvent[];
+  project: Project;
   reconnect: () => Promise<Backend>;
   openSessions: () => void;
   notice?: Status;
@@ -34,6 +37,9 @@ export type GateOptions = {
   compactor?: () => Promise<Compactor | null>;
 };
 export type Compactor = { profile: string; backend: Backend };
+// The project on disk: files for @file references (FR-27), the environment Note's text now (FR-28), and $EDITOR on
+// a file of the project (`e` on a reference).
+export type Project = { read: ReadFile; environment: () => string; open: (path: string) => Promise<void> };
 // Tool Approval (FR-22, FR-25): the splitter, the project root arguments must stay in, and the config's rules as read
 // at open and on /reload (ignored: project allow patterns).
 export type Approval = { split: Split; root: string; permissions: () => { rules: Rule[]; ignored: string[] } };
@@ -80,7 +86,7 @@ const APPROVE = 'y run once · a allow for session · n reject · e edit';
 const cacheMiss = ({ predicted, cached }: ChatResult) =>
   predicted !== null && cached !== null && cached < predicted ? `cache: predicted ${predicted} · server reused ${cached}` : null;
 
-export function createGate({ log, reconnect, openSessions, runner, approval, editor, clipboard, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, ...options }: GateOptions) {
+export function createGate({ log, reconnect, openSessions, runner, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, ...options }: GateOptions) {
   const [events, setEvents] = createSignal(options.events);
   const [counted, setCounted] = createSignal<{ prefixes: Request[]; split: Counted } | null>(null);
   const [streaming, setStreaming] = createSignal<Streaming | null>(null);
@@ -95,12 +101,18 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
   const [compacting, setCompacting] = createSignal<Compaction | null>(null);
   // Bumped when the server's cache changed without a new request to count (a Compaction on its slot).
   const [recount, setRecount] = createSignal(0);
+  // Bumped when a referenced file may have changed (edited via `e`): the Gate shows it as it is now.
+  const [reread, setReread] = createSignal(0);
 
   const append = (event: SessionEvent) => {
     log.append(event);
     setEvents([...events(), event]);
   };
-  const context = createMemo(() => fold(events()));
+  // Unread @file references show the file as it would be read now; only sending reads them (FR-27).
+  const context = createMemo(() => {
+    reread();
+    return peekReferences(fold(events()), project.read);
+  });
   const sent = createMemo(() => sentBlocks(context()));
   // An unchanged request (e.g. after a rename) keeps the memo value, so nothing is recounted.
   const prefixes = createMemo(() => renderPrefixes(context()), [], { equals: same });
@@ -153,6 +165,26 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
       e => setStatus({ text: String(e), tone: 'error' }),
     );
   });
+
+  // The environment Note, refreshed when the environment changed (FR-28).
+  function refresh() {
+    const edit = refreshEnvironment(events(), context(), project.environment());
+    if (edit) append(edit);
+  }
+  refresh();
+
+  // On send: the references are read into snapshots, a missing file aborts (FR-27); the environment is refreshed.
+  function prepare(): boolean {
+    const read = readReferences(context(), project.read);
+    if ('error' in read) {
+      setSelected(read.id);
+      setStatus({ text: `${read.error} – sending aborted`, tone: 'error' });
+      return false;
+    }
+    read.events.forEach(append);
+    refresh();
+    return true;
+  }
 
   function addUser(content: string) {
     const id = nextId();
@@ -216,7 +248,7 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
   const edited = (b: Block) => `edited → revision ${b.revision} · u = undo`;
   // e: the selected block in $EDITOR; a changed save becomes a new Revision (FR-8). Checked first: a
   // block that cannot be edited is not opened.
-  async function edit() {
+  async function editBlock() {
     const block = selectedBlock();
     const error = block ? ops.editable(block) : null;
     if (!block || error) return error && setStatus({ text: error, tone: 'info' });
@@ -227,6 +259,19 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
       if (block.pending && blockOf(block.id).revision !== block.revision) advance([edited(blockOf(block.id))]);
     } catch (e) {
       setStatus({ text: `editor failed: ${errorText(e)} – unchanged`, tone: 'error' });
+    }
+  }
+  // On an unread @file reference, e opens the file itself (FR-27).
+  const edit = () => (selectedBlock()?.unread ? openReference(selectedBlock()!) : editBlock());
+  // The file of an unread @file reference in $EDITOR; it is read on send.
+  async function openReference(block: Block) {
+    const { path } = parseReference(block.file!);
+    try {
+      await project.open(path);
+      setReread(reread() + 1);
+      setStatus({ text: `${path} – read at send`, tone: 'info' });
+    } catch (e) {
+      setStatus({ text: `editor failed: ${errorText(e)}`, tone: 'error' });
     }
   }
   // Text selected with the mouse, copied on release.
@@ -349,8 +394,9 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     if (pending) setSelected(pending.id);
     if (pending) return { text: `Tool Calls await approval – ${APPROVE} on the ? approve row`, tone: 'warn' };
     const changed = lastAnswer() !== null && !same(lastAnswer(), request());
-    const last = sent().filter(b => b.pin !== 'bottom').at(-1)?.kind;
-    return changed || last === 'User' || last === 'Tool Result' ? null : { text: 'nothing to send – Tab to write', tone: 'info' };
+    // The last unpinned block: a User message, a Tool Result or a Note (e.g. an @file reference) asks for an answer.
+    const last = sent().filter(b => !b.pin).at(-1)?.kind;
+    return changed || last === 'User' || last === 'Tool Result' || last === 'Note' ? null : { text: 'nothing to send – Tab to write', tone: 'info' };
   }
 
   async function send() {
@@ -360,6 +406,7 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
       setStatus(blocked);
       return;
     }
+    if (!prepare()) return;
     const requested = prefixes();
     const payload = requested.at(-1)!;
     const abort = new AbortController();
@@ -544,10 +591,20 @@ export function createGate({ log, reconnect, openSessions, runner, approval, edi
     const name = text.trim().split(/\s/)[0]!;
     if (name in commands) commands[name as CommandName](text.trim().slice(name.length).trim());
     else if (/^\/\w+$/.test(name)) setStatus({ text: `unknown command ${name} – ${COMMANDS.map(c => c.name).join(' ')}`, tone: 'error' });
-    else if (text.trim()) {
+    else if (text.trim()) addInput(text);
+  }
+  // `@file` references become rows of their own before the text; only a text is sent right away (FR-27).
+  function addInput(input: string) {
+    const { files, text } = references(input);
+    for (const file of files) {
+      const id = nextId();
+      append({ type: 'FileReferenced', id, file });
+      setSelected(id);
+    }
+    if (text) {
       addUser(text);
       void send();
-    }
+    } else setStatus({ text: `${count(files.length, 'file reference')} added – read at send · e opens the file · Enter sends`, tone: 'info' });
   }
 
   // Calls still pending when the Gate opens (resume) are decided like fresh ones.
