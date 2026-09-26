@@ -26,6 +26,14 @@ test('global and project config are found in their standard places and merged', 
   expect(loaded?.profile()).toMatchObject({ name: 'qwen', window: 4096 });
 });
 
+test('the project config may only tighten permissions: its allow entries are ignored (FR-25)', () => {
+  put(join(home, '.config/resector/config.jsonc'), '{ "permission": { "make *": "allow" } }');
+  put(join(cwd, '.resector/config.jsonc'), '{ "permission": { "curl *": "deny", "git commit *": "allow" } }');
+  const { permissions } = loadConfig(configPaths({ home, cwd, env: {} }))!;
+  expect(permissions.rules.filter(r => r.source !== 'built-in').map(r => [r.pattern, r.source])).toEqual([['make *', 'config'], ['curl *', 'project']]);
+  expect(permissions.ignored).toEqual(['git commit *']);
+});
+
 test('without any config file there is nothing to load (first start)', () => {
   expect(loadConfig(configPaths({ home, cwd, env: {} }))).toBeNull();
 });

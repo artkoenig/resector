@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'bun:test';
+import { afterEach, beforeAll, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,7 +8,9 @@ import { startFakeLlamaCpp } from '../../test/fake-llamacpp';
 import { frameMatching } from '../../test/frames';
 import { connectLlamaCpp } from '../adapters/backend/llamacpp';
 import { createRunner } from '../adapters/bash/runner';
+import { createSplit } from '../adapters/bash/split';
 import { createSessionLog } from '../adapters/store/session-log';
+import { permissionRules, type Permissions, type Split } from '../core/approval/approval';
 import { newSession } from '../core/session/session';
 import { TOOLS } from '../core/toolcall/bash';
 import { App } from './app';
@@ -24,13 +26,20 @@ afterEach(() => {
 // Where bash runs in these tests.
 const project = realpathSync(mkdtempSync(join(tmpdir(), 'resector-project-')));
 
+let split: Split;
+beforeAll(async () => {
+  split = await createSplit();
+});
+
 // $EDITOR for `e`: the text as the user saves it; default unchanged.
 let editor: (text: string) => Promise<string>;
 // What copy on select put into the clipboard.
 let copied: string[];
 
-// `users`: User blocks already in the Session Log, not yet sent.
-async function start({ timeout = 120, compactor, users = [] }: { timeout?: number; compactor?: GateOptions['compactor']; users?: string[] } = {}) {
+// `users`: User blocks already in the Session Log, not yet sent; `global`, `project`: permission rules of the config.
+// `calls`: pending Tool Calls after them, as at a resume.
+type Start = { timeout?: number; compactor?: GateOptions['compactor']; users?: string[]; calls?: string[]; global?: Permissions; project?: Permissions };
+async function start({ timeout = 120, compactor, users = [], calls = [], global, project: own }: Start = {}) {
   editor = async text => text;
   copied = [];
   fake = startFakeLlamaCpp({ nCtx: 4096 });
@@ -40,11 +49,13 @@ async function start({ timeout = 120, compactor, users = [] }: { timeout?: numbe
   const initial = [
     ...newSession('default', 'You are an agent.'),
     ...users.map((content, i) => ({ type: 'BlockAdded' as const, id: i + 3, kind: 'User' as const, origin: 'user' as const, content })),
+    ...calls.map((content, i) => ({ type: 'BlockAdded' as const, id: users.length + i + 3, kind: 'Tool Call' as const, origin: 'model' as const, content })),
   ];
   initial.forEach(log.append);
   const opened: string[] = [];
+  const approval = { split, root: project, permissions: () => permissionRules(global, own) };
   ui = await testRender(
-    () => <App backend={backend} runner={runner} editor={text => editor(text)} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} reconnect={async () => backend} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
+    () => <App backend={backend} runner={runner} approval={approval} editor={text => editor(text)} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} reconnect={async () => backend} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
     { width: 80, height: 20 },
   );
   await frameMatching(ui, f => f.includes(users.length ? ' / 4k' : '52 / 4k') && !f.includes('… / 4k'));
@@ -491,11 +502,16 @@ test('the preview scrolls with PgUp/PgDn and ⇧↑↓; a newly selected block s
 
 const bash = (command: string) => ({ name: 'bash', arguments: JSON.stringify({ command }) });
 type Sent = { messages: Record<string, unknown>[]; tools?: { function: { name: string } }[] };
-// The model answers `go` with `text` and bash calls; the Gate stops at the first ? approve.
-async function asked(commands: string[], { text = '', timeout = 120 } = {}) {
-  const started = await start({ timeout });
+// The model answers `go` with `text` and bash calls.
+async function answered(commands: string[], { text = '', ...options }: { text?: string } & Start = {}) {
+  const started = await start(options);
   fake.reply({ chunks: text ? [text] : [], calls: commands.map(bash) });
   await write('go');
+  return started;
+}
+// The same; the Gate stops at the first ? approve.
+async function asked(commands: string[], { text = '', ...options }: { text?: string } & Start = {}) {
+  const started = await answered(commands, { text, ...options });
   await frameMatching(ui, f => f.includes('? approve –') && !/Tool Call .* … /.test(f));
   return started;
 }
@@ -548,12 +564,12 @@ test('a Tool Call waits at ? approve; y runs it once, its result is a Tool Resul
 test('Enter in input mode while a Tool Call awaits approval adds the User block but sends nothing (FR-6)', async () => {
   const { events } = await asked(['echo hi']);
   ui.mockInput.pressTab();
-  await frameMatching(ui, f => f.includes('enter send'));
+  await frameMatching(ui, f => f.includes('adds a block and sends the Context'));
   await ui.mockInput.typeText('also this');
   ui.mockInput.pressEnter();
   const frame = await frameMatching(ui, f => f.includes('Tool Calls await approval') && f.includes('also this'));
   expect(line(frame, /also this/)).toMatch(/5\s+User\s+also this/);
-  expect(previewed(frame)).toBe('echo hi');
+  expect(previewed(frame)).toMatch(/^ask\s+echo hi\s+no rule → default ask$/);
   expect(fake.chatRequests).toHaveLength(1);
   expect(events().at(-1)).toEqual({ type: 'BlockAdded', id: 5, kind: 'User', origin: 'user', content: 'also this' });
 });
@@ -578,8 +594,8 @@ test('several calls are decided one by one in order; results keep call order (FR
   await frameMatching(ui, f => f.includes('approve the earlier Tool Call first'));
   await press('up');
   await press('y');
-  frame = await frameMatching(ui, f => f.includes('? approve –') && previewed(f) === 'echo two');
-  expect(previewed(frame)).toBe('echo two');
+  frame = await frameMatching(ui, f => f.includes('? approve –') && /^ask\s+echo two\s/.test(previewed(f)));
+  expect(frame).toMatch(/^┃ echo two/m);
   await press('n');
   frame = await frameMatching(ui, f => f.includes('tool loop paused'));
   expect(frame).toMatch(/4\s+Tool Call\s+echo one[^]*5\s+Tool Call\s+echo two[^]*6\s+Tool Result\s+→ echo one[^]*7\s+Tool Result\s+→ echo two/);
@@ -651,7 +667,7 @@ test('the mouse wheel over the block table selects the previous or next block', 
 });
 
 test('an Assistant block of only whitespace is titled (empty)', async () => {
-  await asked(['ls'], { text: '\n\n\n' });
+  await asked(['pwd'], { text: '\n\n\n' });
   expect(line(ui.captureCharFrame(), /Assistant/)).toMatch(/Assistant\s+\(empty\)/);
 });
 
@@ -711,6 +727,85 @@ test('a Tool Call awaiting approval is edited; y runs the edited command (FR-22)
   await press('y');
   frame = await frameMatching(ui, f => f.includes('tool loop paused'));
   expect(events().at(-1)).toEqual({ type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'right\n[exit 0]', call: 4 });
+});
+
+test('an allowed call runs without asking; the Gate then shows its result, nothing is sent (FR-22, FR-23)', async () => {
+  const { events } = await answered(['ls -d .', 'git status --short | wc -l']);
+  const frame = await frameMatching(ui, f => f.includes('tool loop paused'));
+  expect(frame).not.toContain('? approve');
+  expect(events().filter(e => e.kind === 'Tool Result').map(e => [e.call, e.content])).toEqual([[4, '.\n[exit 0]'], [5, expect.stringMatching(/\[exit 0\]$/)]]);
+  expect(fake.chatRequests).toHaveLength(1);
+});
+
+test('a denied call is not run: its result says "denied by rule", the next call is still decided (FR-23)', async () => {
+  const { events } = await answered(['touch denied.txt', 'echo next'], { global: { 'touch *': 'deny' } });
+  const frame = await frameMatching(ui, f => f.includes('⚠ denied by rule: touch denied.txt · ? approve'));
+  expect(line(frame, /echo next/)).toMatch(/\? approve/);
+  expect(await Bun.file(join(project, 'denied.txt')).exists()).toBe(false);
+  expect(events().at(-1)).toEqual({ type: 'BlockAdded', id: 6, kind: 'Tool Result', origin: 'tool', content: 'denied by rule', call: 4 });
+});
+
+test('the preview of a pending call shows each sub-command with the rule deciding it (FR-22)', async () => {
+  await asked(['ls && touch x.txt', 'cat /etc/hostname']);
+  const frame = ui.captureCharFrame();
+  expect(frame).toMatch(/┃ allow\s+ls\s+built-in rule "ls \*"/);
+  expect(frame).toMatch(/┃ ask\s+touch x\.txt\s+no rule → default ask/);
+});
+
+test('a shows the session rule first; a again logs it and runs the call, and every later match runs too (FR-23, FR-25)', async () => {
+  const { events } = await asked(['touch one.txt', 'touch two.txt']);
+  await press('a');
+  await frameMatching(ui, f => f.includes('allow for this session: "touch *" – press a again to confirm'));
+  expect(events().some(e => e.type === 'AllowRuleAdded')).toBe(false);
+  await press('a');
+  const frame = await frameMatching(ui, f => f.includes('allowed for session: "touch *" – review the results, Enter sends'));
+  expect(frame).not.toContain('? approve');
+  expect(events().filter(e => e.type === 'AllowRuleAdded' || e.kind === 'Tool Result').map(e => e.pattern ?? e.content)).toEqual(['touch *', '[exit 0]', '[exit 0]']);
+  expect(await Bun.file(join(project, 'two.txt')).exists()).toBe(true);
+  expect(fake.chatRequests).toHaveLength(1);
+});
+
+test('any other key than a again cancels allow for session', async () => {
+  const { events } = await asked(['touch never.txt']);
+  await press('a');
+  await frameMatching(ui, f => f.includes('press a again to confirm'));
+  await press('down');
+  await press('a');
+  await frameMatching(ui, f => f.includes('press a again to confirm'));
+  expect(events().some(e => e.type === 'AllowRuleAdded')).toBe(false);
+});
+
+test('a is not offered where an argument points outside the project', async () => {
+  const { events } = await asked(['cat /etc/hostname']);
+  await press('a');
+  await frameMatching(ui, f => f.includes('cannot allow for session: argument outside project: /etc/hostname – y runs'));
+  expect(events().some(e => e.type === 'AllowRuleAdded')).toBe(false);
+});
+
+test('e on a pending call: the new Revision is decided again by the rules (FR-23)', async () => {
+  const { events } = await asked(['touch edited.txt']);
+  editor = async () => 'ls -d .\n';
+  await press('e');
+  await frameMatching(ui, f => f.includes('edited → revision 2 · u = undo – review the results, Enter sends'));
+  expect(events().slice(-2)).toEqual([
+    { type: 'Edit', id: 4, revision: 2, content: 'ls -d .' },
+    { type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: '.\n[exit 0]', call: 4 },
+  ]);
+});
+
+test('calls pending when the Gate opens are decided by the rules at once', async () => {
+  const { events } = await start({ users: ['go'], calls: ['ls -d .', 'touch resumed.txt'] });
+  await frameMatching(ui, f => f.includes('? approve –') && /Tool Call\s+touch resumed\.txt.*\? approve/.test(f));
+  expect(events().at(-1)).toEqual({ type: 'BlockAdded', id: 6, kind: 'Tool Result', origin: 'tool', content: '.\n[exit 0]', call: 4 });
+});
+
+test('project allow entries are ignored; the Gate says so (FR-25)', async () => {
+  await start({ project: { 'touch *': 'allow', 'curl *': 'deny' } });
+  expect(ui.captureCharFrame()).toContain('project config: allow "touch *" ignored (project config may only tighten)');
+  fake.reply({ chunks: [], calls: [bash('touch project.txt')] });
+  await write('go');
+  await frameMatching(ui, f => f.includes('? approve –'));
+  expect(await Bun.file(join(project, 'project.txt')).exists()).toBe(false);
 });
 
 test('an editor that fails leaves the block unchanged', async () => {

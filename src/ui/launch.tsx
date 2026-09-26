@@ -3,9 +3,11 @@ import { createSignal, onMount, Show } from 'solid-js';
 import { connect } from '../adapters/backend/connect';
 import { discover, LOCAL_SERVERS, type DiscoveredModel, type LocalServer } from '../adapters/backend/discover';
 import { createRunner } from '../adapters/bash/runner';
+import { createSplit } from '../adapters/bash/split';
 import type { Clipboard } from '../adapters/clipboard/clipboard';
 import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
 import type { OpenSession, SessionStore } from '../adapters/store/sessions';
+import type { Split } from '../core/approval/approval';
 import type { Editor } from '../core/context/operations';
 import type { SessionEvent } from '../core/log/events';
 import { fold } from '../core/log/fold';
@@ -41,6 +43,8 @@ export function Launch(props: LaunchOptions) {
   const [gate, setGate] = createSignal<GateOptions | null>(null);
   const [view, setView] = createSignal<'gate' | 'sessions'>('gate');
   let session: OpenSession | null = null;
+  // tree-sitter-bash, loaded once (FR-22).
+  let split: Split | undefined;
   const [current, setCurrent] = createSignal('');
 
   const load = () => {
@@ -89,6 +93,7 @@ export function Launch(props: LaunchOptions) {
 
   // which: a session to resume, else a new session; a new one is dropped again if its backend fails.
   async function open(loaded: Loaded, which: SessionRef | undefined) {
+    split ??= await createSplit();
     const { opened, events, notice } = which ? resume(loaded, which) : create(loaded);
     const profile = fold(events).profile;
     const backend = await connect(loaded.profile(profile), opened.id).catch(e => {
@@ -101,9 +106,11 @@ export function Launch(props: LaunchOptions) {
     session = opened;
     setCurrent(opened.id);
     setFound(null);
-    const runner = createRunner({ cwd: props.cwd ?? process.cwd(), timeout: loaded.config.bash?.timeout ?? DEFAULT_TIMEOUT });
+    const root = props.cwd ?? process.cwd();
+    const runner = createRunner({ cwd: root, timeout: loaded.config.bash?.timeout ?? DEFAULT_TIMEOUT });
+    const approval = { split, root, permissions: () => config.permissions };
     const instruction = () => config.compactionInstruction();
-    setGate({ backend, runner, editor: props.editor, clipboard: props.clipboard, log: opened.log, events, notice, reconnect: reconnect(profile, opened.id), openSessions: () => setView('sessions'), instruction, compactor: compactor(profile, opened.id) });
+    setGate({ backend, runner, approval, editor: props.editor, clipboard: props.clipboard, log: opened.log, events, notice, reconnect: reconnect(profile, opened.id), openSessions: () => setView('sessions'), instruction, compactor: compactor(profile, opened.id) });
   }
 
   // /sessions (FR-33): switching sessions reconnects; the Gate comes back with the session's logged events.

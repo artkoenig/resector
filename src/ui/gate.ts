@@ -2,6 +2,7 @@
 import { createEffect, createMemo, createSignal } from 'solid-js';
 import type { Clipboard } from '../adapters/clipboard/clipboard';
 import type { Backend, ChatResult, Counted } from '../core/backend';
+import { evaluate, sessionAllowed, sessionRules, type Rule, type Split, type Verdict } from '../core/approval/approval';
 import { warmRows } from '../core/cache/cache';
 import * as compaction from '../core/compaction/compaction';
 import * as ops from '../core/context/operations';
@@ -10,15 +11,17 @@ import { afterCalls, fold, pairOf, type Block } from '../core/log/fold';
 import { renderNative, renderPrefixes, sentBlocks, type Request } from '../core/render/native';
 import { answerBlocks } from '../core/toolcall/answer';
 import type { Runner } from '../core/toolcall/bash';
-import { count, errorText, formatTokens } from './format';
+import { count, errorText, formatTokens, titleOf } from './format';
 
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
 // events: the Session Log so far (new or resumed); reconnect: re-reads the config and opens the session's
 // Model Profile again (/reload, FR-44); openSessions: shows /sessions; notice: initial status line.
-// runner: runs approved bash calls (FR-21); editor: $EDITOR for `e` (FR-8); clipboard: copy on select.
+// runner: runs approved bash calls (FR-21); approval: decides which may run (FR-22); editor: $EDITOR for `e` (FR-8);
+// clipboard: copy on select.
 export type GateOptions = {
   backend: Backend;
   runner: Runner;
+  approval: Approval;
   editor: ops.Editor;
   clipboard: Clipboard;
   log: SessionLog;
@@ -31,6 +34,9 @@ export type GateOptions = {
   compactor?: () => Promise<Compactor | null>;
 };
 export type Compactor = { profile: string; backend: Backend };
+// Tool Approval (FR-22, FR-25): the splitter, the project root arguments must stay in, and the config's rules as read
+// at open and on /reload (ignored: project allow patterns).
+export type Approval = { split: Split; root: string; permissions: () => { rules: Rule[]; ignored: string[] } };
 
 // Slash commands (FR-6), in suggestion order.
 export const COMMANDS = [
@@ -69,17 +75,17 @@ export type Compaction = Compactor & {
 // Undone operations whose event type does not read as one.
 const UNDONE: Partial<Record<SessionEvent['type'], string>> = { PairToNote: 'Tool Pair → Note' };
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-const APPROVE = 'y run once · n reject · e edit';
+const APPROVE = 'y run once · a allow for session · n reject · e edit';
 // The prediction checked against the server (FR-41); a server reusing more than predicted is harmless.
 const cacheMiss = ({ predicted, cached }: ChatResult) =>
   predicted !== null && cached !== null && cached < predicted ? `cache: predicted ${predicted} · server reused ${cached}` : null;
 
-export function createGate({ log, reconnect, openSessions, runner, editor, clipboard, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, ...options }: GateOptions) {
+export function createGate({ log, reconnect, openSessions, runner, approval, editor, clipboard, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, ...options }: GateOptions) {
   const [events, setEvents] = createSignal(options.events);
   const [counted, setCounted] = createSignal<{ prefixes: Request[]; split: Counted } | null>(null);
   const [streaming, setStreaming] = createSignal<Streaming | null>(null);
   const [running, setRunning] = createSignal<Running | null>(null);
-  const [status, setStatus] = createSignal<Status | null>(options.notice ?? null);
+  const [status, setStatus] = createSignal<Status | null>(withHint(options.notice ?? null, ignoredHint(approval)));
   const [selected, setSelected] = createSignal(1);
   // Marked blocks (Space) for Compaction; UI state, not logged.
   const [marked, setMarked] = createSignal<ReadonlySet<number>>(new Set());
@@ -217,6 +223,8 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
     try {
       const text = await editor(block.content);
       operate(b => ops.edit(events(), b, text), b => edited(blockOf(b.id)));
+      // A pending call edited is decided again by the rules (FR-23).
+      if (block.pending && blockOf(block.id).revision !== block.revision) advance([edited(blockOf(block.id))]);
     } catch (e) {
       setStatus({ text: `editor failed: ${errorText(e)} – unchanged`, tone: 'error' });
     }
@@ -232,39 +240,68 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
     setMarked(new Set([...marked()].filter(id => !pair.includes(id)).concat(on ? pair : [])));
   }
 
-  // The status line for the Tool Call to decide on next (FR-23); the call itself is in the preview.
-  const askFor = (): Status => ({ text: `? approve – ${APPROVE}`, tone: 'warn' });
-
-  // The status line after an answer: how it ended, else the call to decide on next.
-  function answerStatus(result: ChatResult, notRun: string | null, next: Block | undefined): Status {
+  // The status line after an answer without calls to decide on: how it ended.
+  function answerStatus(result: ChatResult, notRun: string | null): Status {
     const whileThinking = result.content || result.calls.length || !result.thinking ? '' : ' while thinking';
     if (result.finish === 'aborted') return { text: `⚠ aborted${whileThinking} – partial answer kept (cut off)`, tone: 'warn' };
     if (result.finish === 'length') return { text: `⚠ cut off at max_tokens${whileThinking}`, tone: 'warn' };
     if (notRun) return { text: `⚠ tool call not run: ${notRun}`, tone: 'warn' };
-    return next ? askFor() : { text: 'answer complete', tone: 'ok' };
+    return { text: 'answer complete', tone: 'ok' };
   }
 
-  // The answer's text and Tool Calls become blocks; the first call to decide on is selected.
+  // The answer's text and Tool Calls become blocks; its calls are decided by the rules.
   function finish(result: ChatResult) {
     const { events, notRun } = answerBlocks(result, nextId());
     events.forEach(append);
     append({ type: 'ResponseReceived', usage: result.usage, cached: result.cached });
-    const next = ops.nextCall(context());
-    if (next) setSelected(next.id);
-    const status = answerStatus(result, notRun, next);
     const miss = cacheMiss(result);
+    if (ops.nextCall(context())) return advance([notRun && `⚠ tool call not run: ${notRun}`, miss && `⚠ ${miss}`].filter((n): n is string => !!n));
+    const status = answerStatus(result, notRun);
     setStatus(miss ? { text: `${status.text} · ⚠ ${miss}`, tone: 'warn' } : status);
   }
 
-  // After a decision: the next call awaiting approval, else back at the Gate – approval never sends (FR-23).
-  function decided(result: Block) {
-    const next = ops.nextCall(context());
-    setSelected(next?.id ?? result.id);
-    const ended = result.stopped ? `⚠ ${result.stopped}` : null;
-    if (next) setStatus(ended ? { text: `${ended} · ${askFor().text}`, tone: 'warn' } : askFor());
-    else setStatus({ text: `${ended ?? 'tool loop paused'} – review the results, Enter sends`, tone: ended ? 'warn' : 'ok' });
+  // Tool Approval (FR-22–FR-25) ----------------------------------------------------------------------------
+  // The rules for a call: built-in and config rules, then the ones allowed for this session; last match wins.
+  const rules = () => [...approval.permissions().rules, ...sessionAllowed(events())];
+  const verdictOf = (call: Block): Verdict => evaluate(call.content, { rules: rules(), split: approval.split, root: approval.root });
+
+  // Decides the pending calls in order (FR-24): an allowed one runs, a denied one is answered "denied by rule", the
+  // first to ask for is selected. Then back at the Gate – approval never sends (FR-23). notes: what happened so far.
+  function advance(notes: string[] = []) {
+    for (let call = ops.nextCall(context()); call; call = ops.nextCall(context())) {
+      const { action } = verdictOf(call);
+      if (action === 'allow') return void run(call, notes);
+      if (action === 'ask') {
+        setSelected(call.id);
+        return setStatus({ text: [...notes, `? approve – ${APPROVE}`].join(' · '), tone: 'warn' });
+      }
+      setSelected(nextId());
+      apply(ops.deny(context(), call, nextId()));
+      notes = [...notes, `⚠ denied by rule: ${titleOf(call)}`];
+    }
+    setStatus({ text: `${notes.join(' · ') || 'tool loop paused'} – review the results, Enter sends`, tone: notes.length ? 'warn' : 'ok' });
   }
-  const resultOf = (call: Block) => context().blocks.find(b => b.call === call.id)!;
+
+  // Runs the call (FR-21); its output streams into a live Tool Result row, then the next call is decided.
+  async function run(call: Block, notes: string[]) {
+    const abort = new AbortController();
+    setRunning({ call, output: '', started: Date.now(), abort });
+    setSelected(nextId());
+    setStatus(null);
+    try {
+      const onOutput = (text: string) => setRunning({ ...running()!, output: running()!.output + text });
+      const result = await runner.run(call.content, { signal: abort.signal, onOutput });
+      setRunning(null);
+      setSelected(nextId());
+      append(ops.toolResult(call, nextId(), result, runner.timeout));
+      advance(result.stopped ? [...notes, `⚠ ${result.stopped}`] : notes);
+    } catch (e) {
+      setRunning(null);
+      setSelected(call.id);
+      setStatus({ text: `bash failed: ${errorText(e)}`, tone: 'error' });
+    }
+  }
+
   // The selected Tool Call, if it may be decided on now.
   function decidable(): Block | null {
     const block = selectedBlock();
@@ -273,31 +310,36 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
     return error ? null : block!;
   }
 
-  // y: run the call once (FR-21); its output streams into a live Tool Result row.
-  async function approve() {
+  // y: run the call once – unless a rule denies it by now (/reload).
+  function approve() {
+    const call = decidable();
+    if (call) void (verdictOf(call).action === 'deny' ? advance() : run(call, []));
+  }
+
+  // a: allow the call's command prefixes for the session (FR-23, FR-25), shown first; the same key again saves
+  // them as Session Log events, then the call runs as allowed.
+  function allowForSession() {
     const call = decidable();
     if (!call) return;
-    const abort = new AbortController();
-    setRunning({ call, output: '', started: Date.now(), abort });
-    setSelected(nextId());
-    setStatus(null);
-    try {
-      const onOutput = (text: string) => setRunning({ ...running()!, output: running()!.output + text });
-      const run = await runner.run(call.content, { signal: abort.signal, onOutput });
-      setRunning(null);
-      append(ops.toolResult(call, nextId(), run, runner.timeout));
-      decided(resultOf(call));
-    } catch (e) {
-      setRunning(null);
-      setSelected(call.id);
-      setStatus({ text: `bash failed: ${errorText(e)}`, tone: 'error' });
+    const found = sessionRules(verdictOf(call));
+    if ('error' in found) return setStatus({ text: found.error, tone: 'info' });
+    const patterns = found.patterns.map(p => `"${p}"`).join(', ');
+    const asked = `allow ${call.id}`;
+    if (confirming() !== asked) {
+      setConfirming(asked);
+      return setStatus({ text: `allow for this session: ${patterns} – press a again to confirm, any other key cancels`, tone: 'warn' });
     }
+    setConfirming(null);
+    for (const pattern of found.patterns) append({ type: 'AllowRuleAdded', pattern });
+    advance([`allowed for session: ${patterns}`]);
   }
 
   // n: not run; the result says "rejected by user" (FR-23).
   function reject() {
     const call = decidable();
-    if (call && apply(ops.reject(context(), call, nextId()))) decided(resultOf(call));
+    if (!call || !apply(ops.reject(context(), call, nextId()))) return;
+    setSelected(nextId() - 1);
+    advance();
   }
 
   // Why the Context cannot be sent now, or null: calls await approval, or the model has answered
@@ -484,7 +526,7 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
   async function reload() {
     try {
       setBackend(await reconnect());
-      setStatus({ text: 'config reloaded', tone: 'ok' });
+      setStatus(withHint({ text: 'config reloaded', tone: 'ok' }, ignoredHint(approval)));
     } catch (e) {
       setStatus({ text: `reload failed: ${errorText(e)}`, tone: 'error' });
     }
@@ -507,6 +549,9 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
       void send();
     }
   }
+
+  // Calls still pending when the Gate opens (resume) are decided like fresh ones.
+  if (ops.nextCall(context())) queueMicrotask(() => advance(status() ? [status()!.text] : []));
 
   return {
     context,
@@ -543,8 +588,11 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
     refine,
     leaveInstruction,
     editProposal: () => void editProposal(),
-    approve: () => void approve(),
+    approve,
+    allowForSession,
     reject,
+    // Why the rules ask for a pending call, per sub-command (FR-22); null for any other block.
+    verdict: (block: Block): Verdict | null => (block.pending ? verdictOf(block) : null),
     select: (delta: number) => selectAt(rows().indexOf(selected()) + delta),
     move,
     pin,
@@ -565,3 +613,11 @@ export function createGate({ log, reconnect, openSessions, runner, editor, clipb
 }
 
 export type Gate = ReturnType<typeof createGate>;
+
+// Project config may only tighten: its allow entries are ignored, and the Gate says so (FR-25).
+function ignoredHint(approval: Approval): string | null {
+  const { ignored } = approval.permissions();
+  return ignored.length ? `project config: allow ${ignored.map(p => `"${p}"`).join(', ')} ignored (project config may only tighten)` : null;
+}
+const withHint = (status: Status | null, hint: string | null): Status | null =>
+  hint ? { text: status ? `${status.text} · ${hint}` : hint, tone: 'warn' } : status;

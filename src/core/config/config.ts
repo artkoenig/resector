@@ -2,6 +2,7 @@
 import { dirname, isAbsolute, join } from 'node:path';
 import { parse, printParseErrorCode, type ParseError } from 'jsonc-parser';
 import { z } from 'zod';
+import { permissionRules, type Permissions } from '../approval/approval';
 
 
 const BackendKindSchema = z.enum(['llamacpp', 'ollama', 'lmstudio', 'omlx']);
@@ -32,11 +33,13 @@ const ProfileSchema = z.strictObject({
   systemPrompt: z.string().optional().describe('System prompt file, relative to this config file'),
 });
 
+const PermissionSchema = z.record(z.string(), z.enum(['allow', 'ask', 'deny']));
+
 const ConfigSchema = z.strictObject({
   $schema: z.string().optional(),
   profiles: z.record(z.string(), ProfileSchema).default({}),
   defaultProfile: z.string().optional().describe('Model Profile for new sessions'),
-  permission: z.record(z.string(), z.enum(['allow', 'ask', 'deny'])).optional().describe('bash command pattern → decision; project config may only tighten'),
+  permission: PermissionSchema.optional().describe('bash command pattern → decision; project config may only tighten'),
   keybindings: z.record(z.string(), z.string()).optional().describe('Action → key'),
   bash: z.strictObject({ timeout: z.number().positive().optional().describe('Seconds (default 120)') }).optional(),
 });
@@ -48,14 +51,20 @@ export const configJsonSchema = () => z.toJSONSchema(ConfigSchema, { io: 'input'
 
 export type Config = z.infer<typeof ConfigSchema>;
 export type ModelProfile = z.infer<typeof ProfileSchema> & { name: string; endpoint: string };
-export type ConfigFile = { source: string; text: string };
+// project: the project config, which may only tighten permissions (FR-25).
+export type ConfigFile = { source: string; text: string; project?: boolean };
 
 export function readConfig(files: ConfigFile[]) {
-  const result = ConfigSchema.safeParse(files.map(parseFile).reduce(merge, {}));
+  const parsed = files.map(file => ({ ...file, json: parseFile(file) }));
+  const result = ConfigSchema.safeParse(parsed.map(f => f.json).reduce(merge, {}));
   if (!result.success) throw new Error(`invalid config: ${result.error.issues.map(describe).join('; ')}`);
   const config = result.data;
+  // Rules keep their file: global ones first, then the project's without its allows (FR-25).
+  const permissions = (project: boolean) =>
+    parsed.filter(f => (f.project ?? false) === project).reduce<Permissions>((all, f) => ({ ...all, ...permissionOf(f.source, f.json) }), {});
   return {
     config,
+    permissions: permissionRules(permissions(false), permissions(true)),
     profile(name = config.defaultProfile): ModelProfile {
       if (name === undefined) throw new Error('no defaultProfile in config');
       const profile = config.profiles[name];
@@ -95,12 +104,19 @@ function resolvePaths(json: Json, dir: string): Json {
   return json;
 }
 
+// A file's own permission rules; one overridden by a later file is checked here.
+function permissionOf(source: string, json: Json): Permissions {
+  const result = PermissionSchema.optional().safeParse(json.permission);
+  if (!result.success) throw new Error(`invalid config: ${source}: ${result.error.issues.map(i => describe({ ...i, path: ['permission', ...i.path] })).join('; ')}`);
+  return result.data ?? {};
+}
+
 const describe = (issue: z.core.$ZodIssue) => (issue.path.length ? `${issue.path.join('.')}: ` : '') + issue.message;
 
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 // Objects merge key by key; anything else (arrays included) is replaced by the later file.
-// Project permission loosening (FR-25) is filtered by the approval rules (#10), not here.
+// Permission rules are read per file, so project loosening can be ignored (FR-25).
 function merge(base: Json, override: Json): Json {
   const result = { ...base };
   for (const [key, value] of Object.entries(override)) {

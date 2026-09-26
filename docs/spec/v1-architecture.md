@@ -93,7 +93,7 @@ Per-block split via offset mapping / prefix differences; remainder = `Template` 
 ## 5. Tool Approval
 
 - Rules from config (global `allow|ask|deny`, project only `ask|deny`) + session `AllowRuleAdded` events; last match wins; default `ask`; built-in read-only allow list.
-- tree-sitter-bash splits compound commands; each sub-command evaluated; parse failure → `ask`; path arguments leaving the project root → `ask`.
+- tree-sitter-bash splits compound commands; each sub-command evaluated; parse failure → `ask`; path arguments (incl. redirect targets) leaving the project root, or not literal (`$VAR`, `$(…)`), → `ask`; a built-in read-only command writing a file by redirection → `ask`.
 - "Allow for session" stores `<prefix> *` derived via an arity table (e.g. `git checkout *`, `bun test *`).
 - Runner: `bash -c`, cwd = project root, stdin `/dev/null`, timeout (default 120 s), kill on `Esc`.
 

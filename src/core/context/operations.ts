@@ -13,7 +13,7 @@ export const isFixed = (block: Block) => block.kind === 'System' || block.kind =
 const NAME = { System: 'System prompt', Tools: 'Tools Block' } as Record<string, string>;
 const fixed = (block: Block) => ({ error: `${NAME[block.kind]} is fixed` });
 // A Tool Call awaiting approval keeps its place until it has a result.
-const AWAITS = { error: 'Tool Call awaits approval – y run once · n reject · e edit' };
+const AWAITS = { error: 'Tool Call awaits approval – y run once · a allow for session · n reject · e edit' };
 // Why an operation may not touch the block, if not.
 const guard = (block: Block) => (isFixed(block) ? fixed(block) : block.pending ? AWAITS : null);
 const UNDOABLE = new Set<SessionEvent['type']>(['Move', 'Pin', 'Unpin', 'Remove', 'Rename', 'Edit', 'PairToNote', 'Compact']);
@@ -104,8 +104,12 @@ export const toolResult = (call: Block, id: number, run: RunResult, timeout: num
   ...(run.stopped && { stopped: run.stopped }),
 });
 
-// n: the call is not run; its result tells the model so (FR-23).
-export function reject(context: Context, call: Block, id: number): Outcome {
+// A call not run: its result tells the model why.
+const notRun = (content: string) => (context: Context, call: Block, id: number): Outcome => {
   const error = approvable(context, call);
-  return error ? { error } : { event: { type: 'BlockAdded', id, kind: 'Tool Result', origin: 'tool', content: 'rejected by user', call: call.id } };
-}
+  return error ? { error } : { event: { type: 'BlockAdded', id, kind: 'Tool Result', origin: 'tool', content, call: call.id } };
+};
+// n: the user rejects the call (FR-23).
+export const reject = notRun('rejected by user');
+// A deny rule matches the call (FR-23).
+export const deny = notRun('denied by rule');

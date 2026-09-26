@@ -34,6 +34,8 @@ export type SessionEvent =
   | { type: 'Compact'; sources: number[]; instruction: string; noteId: number; content: string }
   // Display label only, never sent; empty = reset to the default title.
   | { type: 'Rename'; id: number; title: string }
+  // "Allow for session" (FR-23, FR-25): an allow rule for the rest of the session, also after resume.
+  | { type: 'AllowRuleAdded'; pattern: string }
   // Counter-event (NFR-3): cancels the event at index `eventId` of the Session Log.
   | { type: 'Undo'; eventId: number }
   | { type: 'ResponseReceived'; usage: Usage | null; cached: number | null };
