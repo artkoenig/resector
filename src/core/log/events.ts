@@ -1,6 +1,6 @@
 // Session Log events (architecture §3). One JSON object per line in the session file.
 
-export type Kind = 'System' | 'Tools' | 'User' | 'Assistant' | 'Tool Call' | 'Tool Result' | 'Note';
+export type Kind = 'System' | 'Tools' | 'User' | 'Thinking' | 'Assistant' | 'Tool Call' | 'Tool Result' | 'Note';
 export type Origin = 'config' | 'user' | 'model' | 'tool' | 'compaction';
 // How a bash run ended early (FR-21): Esc killed it, or it ran into the timeout.
 export type Stopped = 'killed' | 'timeout';

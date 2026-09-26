@@ -149,6 +149,51 @@ test('Esc aborts streaming; the partial answer is kept as cut off', async () => 
   ]);
 });
 
+test('reasoning streams dimmed into its own Thinking row, the status says thinking; it is logged before the answer (FR-46, FR-50)', async () => {
+  const { events } = await start();
+  fake.reply({ thinking: ['plan ', 'it'], chunks: ['hello'] });
+  await write('hi there');
+  const frame = await frameMatching(ui, f => f.includes('answer complete'));
+  expect(order(frame)).toEqual(['1 System', '2 bash', '3 hi', '4 plan', '5 hello']);
+  expect(line(frame, /Thinking/)).toMatch(/4\s+Thinking\s+plan it\s/);
+  expect(events().slice(-3)).toEqual([
+    { type: 'BlockAdded', id: 4, kind: 'Thinking', origin: 'model', content: 'plan it' },
+    { type: 'BlockAdded', id: 5, kind: 'Assistant', origin: 'model', content: 'hello' },
+    { type: 'ResponseReceived', usage: null, cached: 0 },
+  ]);
+  expect(fake.chatRequests).toHaveLength(1);
+});
+
+test('cut off while thinking: the Thinking row streams with status thinking, Esc keeps it ⚠ cut off without Assistant block (FR-19, FR-50)', async () => {
+  const { events } = await start();
+  fake.reply({ thinking: ['Let me see'], chunks: [], hang: true });
+  await write('hi there');
+  const streaming = await frameMatching(ui, f => /4\s+Thinking\s+Let me see/.test(f));
+  expect(streaming).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] model is thinking/);
+  expect(previewed(streaming)).toBe('Let me see');
+  await escape();
+  const frame = await frameMatching(ui, f => f.includes('⚠ cut off ✂'));
+  // Flags beyond their column are cut, not wrapped.
+  expect(line(frame, /Thinking/)).toMatch(/4\s+Thinking\s+Let me see\s+0\s+[●○]\s+⚠ cut off ✂ t…$/);
+  expect(frame).not.toMatch(/Assistant/);
+  expect(events().slice(-2)).toEqual([
+    { type: 'BlockAdded', id: 4, kind: 'Thinking', origin: 'model', content: 'Let me see', cutOff: true },
+    { type: 'ResponseReceived', usage: null, cached: null },
+  ]);
+});
+
+test('a Thinking block the chat template drops counts 0 tokens, is dimmed and flagged ✂ template; the cache is cold from there (FR-48)', async () => {
+  await start();
+  fake.reply({ thinking: ['plan it'], chunks: ['hello'] });
+  await write('hi there');
+  const frame = await frameMatching(ui, f => f.includes('answer complete') && /Thinking.*✂ template/.test(f));
+  expect(line(frame, /Thinking/)).toMatch(/4\s+Thinking\s+plan it\s+0\s+○\s+✂ template/);
+  expect(cache(frame)).toEqual(['1●', '2●', '3●', '4○', '5○']);
+  // Dimmed: the title in the muted colour.
+  const title = ui.captureSpans().lines.flatMap(l => l.spans).find(s => s.text.includes('plan it'))!;
+  expect(Array.from(title.fg.buffer.slice(0, 3)).join()).toBe('138,138,138');
+});
+
 test('while the answer streams, ↑↓ select and the preview scrolls; the Context stays as sent', async () => {
   const { events } = await start();
   fake.reply({ chunks: ['Hal'], hang: true });

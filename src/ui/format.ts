@@ -29,13 +29,15 @@ const changesOf = (block: Block): string =>
   (block.revised ? `✎${block.revision}` : '') + ((block.pinChanged && { top: '⤒', bottom: '⤓' }[block.pin!]) || '') + (block.moved ? '⇄' : '');
 
 // Changes since the last request, then persistent status flags.
-// next: the Tool Call to decide on now; later pending calls are queued (FR-24).
-export const flagsOf = (block: Block, next?: number): string =>
+// next: the Tool Call to decide on now; later pending calls are queued (FR-24); dropped: a Thinking
+// block the chat template drops (FR-48).
+export const flagsOf = (block: Block, next?: number, dropped = false): string =>
   [
     changesOf(block),
     block.cutOff ? ' ⚠ cut off' : '',
     block.pending ? (block.id === next ? ' ? approve' : ' · queued') : '',
     block.stopped ? ` ⚠ ${block.stopped}` : '',
+    dropped ? ' ✂ template' : '',
   ]
     .join('')
     .trim();

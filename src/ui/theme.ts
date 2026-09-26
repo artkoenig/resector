@@ -17,6 +17,7 @@ export const KIND_COLOR: Record<Kind, string> = {
   System: '#9d7cd8',
   Tools: '#5c9cf5',
   User: ACCENT,
+  Thinking: '#a9a1e1',
   Assistant: '#56b6c2',
   'Tool Call': '#e5c07b',
   'Tool Result': '#b4b4b4',
