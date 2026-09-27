@@ -41,7 +41,7 @@ Tool Call in which the model asks the user one or more questions, each with at l
 _Avoid_: prompt, ask, approval
 
 **Compaction**:
-User-controlled rewrite of selected Context Blocks by the LLM, following a user instruction, into one Note at the position of the first source. The model sees only the selected blocks and the instruction. The user reviews the proposal and accepts, discards or refines it (refine starts again from the sources). On accept the sources count as removed; undo brings them back.
+Rewrite of selected Context Blocks by the LLM, following an instruction, into one Note at the position of the first source. The model sees only the selected blocks and the instruction. Started by the user, who reviews the proposal and accepts, discards or refines it (refine starts again from the sources), or by a Context Policy, whose result is accepted without review. On accept the sources count as removed; undo brings them back.
 _Avoid_: summarization, auto-compact
 
 **Note**:
@@ -56,7 +56,7 @@ View restriction at the Review Gate to Context Blocks of one Kind: User, Thinkin
 _Avoid_: search, hide
 
 **Context Policy**:
-Named set of rules that edits the Context automatically, using only the ordinary Context operations. Its operations are recorded in the Session Log like the user's, attributed to the policy, visible at the Review Gate and undoable. At most one is active per session; it is chosen at session start and can be switched at the Review Gate.
+Named set of rules that edits the Context automatically, using only the ordinary Context operations. Applied before every request; its operations are recorded in the Session Log like the user's, attributed to the policy and visible at the Review Gate. An undone operation is applied again before the next request as long as the policy is active. At most one is active per session; it is chosen at session start and can be switched at the Review Gate.
 _Avoid_: mode, strategy, autopilot, auto-compact
 
 **Model Profile**:
