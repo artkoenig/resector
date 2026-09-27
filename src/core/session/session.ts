@@ -37,8 +37,12 @@ export function newSession(profile: string, systemPrompt: string, { environment,
 // The blocks a session starts with (System prompt, Tools Block, environment Note, project instructions): those
 // added right after SessionCreated, before the first message.
 export function openingBlocks(events: SessionEvent[]): Set<number> {
-  const end = events.findIndex((e, i) => i > 0 && (e.type !== 'BlockAdded' || !['System', 'Tools', 'Note'].includes(e.kind)));
-  return new Set(events.slice(1, end < 0 ? undefined : end).map(e => (e as BlockAdded).id));
+  const ids = new Set<number>();
+  for (const e of events.slice(1) as Partial<BlockAdded>[]) {
+    if (!['System', 'Tools', 'Note'].includes(e.kind!)) break;
+    ids.add(e.id!);
+  }
+  return ids;
 }
 
 // Title = the last session rename, else the first line of the first User message (FR-34).
