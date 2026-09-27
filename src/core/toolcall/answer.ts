@@ -11,11 +11,12 @@ const errorOf = ({ parsed }: Parsed) => ('error' in parsed ? [parsed.error] : []
 const block = (kind: 'Thinking' | 'Assistant', id: number, content: string, cutOff: boolean): BlockAdded =>
   ({ type: 'BlockAdded', id, kind, origin: 'model', content, ...(cutOff && { cutOff }) });
 
-// The reasoning, then the text – none without text when calls follow or when cut off while thinking.
+// The reasoning, then the text – none without text when calls follow or when cut off while thinking. Text of
+// only whitespace (a line break some models write before a call) counts as none.
 function textBlocks(thinking: string, content: string, cutOff: boolean, calls: boolean, first: number): BlockAdded[] {
   const whileThinking = cutOff && !content;
   const reasoning = thinking ? [block('Thinking', first, thinking, whileThinking)] : [];
-  const answered = content || !(calls || (thinking && whileThinking));
+  const answered = content.trim() || !(calls || (thinking && whileThinking));
   return [...reasoning, ...(answered ? [block('Assistant', first + reasoning.length, content, cutOff)] : [])];
 }
 

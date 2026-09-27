@@ -878,8 +878,17 @@ test('the mouse wheel over the block table selects the previous or next block', 
 });
 
 test('an Assistant block of only whitespace is titled (empty)', async () => {
-  await asked(['pwd'], { text: '\n\n\n' });
-  expect(line(ui.captureCharFrame(), /Assistant/)).toMatch(/Assistant\s+\(empty\)/);
+  await start();
+  fake.reply({ chunks: ['\n\n\n'] });
+  await write('hi there');
+  const frame = await frameMatching(ui, f => f.includes('answer complete'));
+  expect(line(frame, /Assistant/)).toMatch(/Assistant\s+\(empty\)/);
+});
+
+test('only whitespace before a call adds no Assistant block', async () => {
+  const { events } = await asked(['pwd'], { text: '\n\n\n' });
+  expect(ui.captureCharFrame()).not.toMatch(/Assistant/);
+  expect(events().filter(e => e.kind === 'Assistant')).toEqual([]);
 });
 
 test('e edits the block in $EDITOR: a new Revision flagged ✎2 until sent, the request carries it (FR-5, FR-8)', async () => {
