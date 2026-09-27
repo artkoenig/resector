@@ -8,7 +8,7 @@ Local LLMs (7B–30B, 8k–32k window) degrade fast when the context fills with 
 
 ## 2. Product
 
-A text-based (TUI) coding agent whose core is editing the **Context**: the user sees each **Context Block** with its exact token count and cache effect, and can edit, move, pin, remove or compact it. This happens at the **Review Gate**, a pause before *every* request to the model — including follow-up requests in the tool loop. UX model: opencode. UI language: English.
+A text-based (TUI) coding agent whose core is editing the **Context**: the user sees each **Context Block** with its exact token count and cache effect, and can edit, move, remove or compact it. This happens at the **Review Gate**, a pause before *every* request to the model — including follow-up requests in the tool loop. UX model: opencode. UI language: English.
 
 ## 3. Users & scope
 
@@ -24,10 +24,10 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 - **FR-2** Header: Model Profile name · Context bar · tokens / window. The bar shows one segment per block in Context order (plus Template), width proportional to tokens, coloured by kind; the selected block's segment is highlighted; free space is shaded. Over the window the bar is scaled to the Context and marks the window edge. Tokens yellow ≥ 90 %, red with `over by X` above the window. With inexact tokenizer: `±X` drift. Nothing else (no backend, protocol, state tag, cache summary or per-kind totals); cache state is visible per row (FR-3).
 - **FR-3** Table columns: `# · Kind · Title · Tokens · Cache ●/○ · Flags`. Kinds written out (System, Tools, User, Thinking, Assistant, Tool Call, Tool Result, Note). Last row `Template` (BOS, generation prompt overhead), not selectable. Sum of all rows = exact request size.
 - **FR-4** Title is a display label only, never sent. Default = first non-empty line of content; origin titles: `System prompt`, tool names, the call, `→ <call>`, `@<path>`, `⇄ <call>`, `◇ N blocks compacted`.
-- **FR-5** Flags show only changes since the last request and reset after sending: `✎n` new Revision, `⤒`/`⤓` pin set/changed, `⇄` moved by user. Status flags persist: `✂ template` (FR-48), `⚠ cut off`, `⚠ malformed`, `? approve`, `⚠ killed`, `⚠ timeout`.
+- **FR-5** Flags show only changes since the last request and reset after sending: `✎n` new Revision, `⇄` moved by user. Status flags persist: `✂ template` (FR-48), `⚠ cut off`, `⚠ malformed`, `? approve`, `⚠ killed`, `⚠ timeout`.
 - **FR-6** Two modes, `Tab` toggles. **Context mode** (default): list focused; `Enter` sends the Context. **Input mode**: `Enter` with text adds a User block, returns to Context mode and sends the Context (if sending is blocked, e.g. by Tool Calls awaiting approval, the block stays and the status line says why); `Tab`/`Esc` return without adding; `⌥⌫` deletes a word. `/` or `@` in Context mode opens Input mode with it typed. Typing `/` shows command suggestions above the input (name, argument, description), filtered while typing: `↑↓` choose, `Tab` complete, `Enter` run. v1 commands: `/sessions`, `/rename`, `/reload`, `/tools <tool>` (switches a tool on or off in the Tools Block, a new Revision, `u` undoes it; the tool names are suggested; a call of a tool switched off is not run), `/filter <kind>` (FR-51).
 - **FR-7** Streaming: the answer appears live as a new row (spinner in Tokens column); afterwards back to the Gate. `Esc` aborts; the partial answer is kept with `⚠ cut off`.
-- **FR-51** Kind Filter: `/filter <kind>` shows only the blocks of one Kind, `/filter off` all again. Values, case-insensitive: `user`, `thinking`, `assistant`, `tool-calls` (Tool Calls with their Tool Results, never one without the other), `note`; after `/filter ` they are suggested in this order, `off` first while a filter is on; an unknown value is an error listing the values; `/filter` alone shows the current filter and the values. View only: the Context, what is sent and the Session Log are unchanged; the filter lasts until turned off, `Esc` does not clear it. Strict: System, Tools Block and pinned blocks not matching are hidden too, except a Compaction's proposal under review. A line below the header shows `filter: <kind> · shown/all blocks · tokens/total tokens`; nothing matching (removed blocks aside) shows `no <kind> blocks`. A hidden selection moves to the next shown row, else the previous; `⌥↑↓` does nothing while a filter is on; changing the filter clears the marks.
+- **FR-51** Kind Filter: `/filter <kind>` shows only the blocks of one Kind, `/filter off` all again. Values, case-insensitive: `user`, `thinking`, `assistant`, `tool-calls` (Tool Calls with their Tool Results, never one without the other), `note`; after `/filter ` they are suggested in this order, `off` first while a filter is on; an unknown value is an error listing the values; `/filter` alone shows the current filter and the values. View only: the Context, what is sent and the Session Log are unchanged; the filter lasts until turned off, `Esc` does not clear it. Strict: System and Tools Block are hidden too, except a Compaction's proposal under review. A line below the header shows `filter: <kind> · shown/all blocks · tokens/total tokens`; nothing matching (removed blocks aside) shows `no <kind> blocks`. A hidden selection moves to the next shown row, else the previous; `⌥↑↓` does nothing while a filter is on; changing the filter clears the marks.
 
 ### 4.2 Context operations (Context mode)
 
@@ -37,7 +37,6 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 | `⌥↑` `⌥↓` | move block |
 | `e` | edit block in `$EDITOR` (new Revision) |
 | `d` | remove (struck through until sent, then hidden; undoable) |
-| `p` | pin cycle: top → bottom → off |
 | `Space` | mark / unmark, then select the next row (like `d`) |
 | `c` | compact marked blocks (or current) |
 | `t` | thinking: cycle the chat template's modes, `off → on → on:<effort>` (FR-49) |
@@ -45,8 +44,8 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 | `q` | quit |
 
 - **FR-8** Editable: all kinds except Tools Block and executed Tool Calls. A Tool Call awaiting approval is editable (FR-22). Edit keeps the kind.
-- **FR-9** Tool Pair: removed/compacted only as a whole; editing the result in place keeps the pair; moving or pinning it asks for confirmation (same key again) and turns it into a Note `[Tool <tool>: <cmd or query>]` + result.
-- **FR-10** Pin top = right after System + Tools Block (+ environment/project Notes); pin bottom = very end, sent as user-role Note. Pinned blocks keep their order and can be reordered among themselves.
+- **FR-9** Tool Pair: removed/compacted only as a whole; editing the result in place keeps the pair; moving it asks for confirmation (same key again) and turns it into a Note `[Tool <tool>: <cmd or query>]` + result.
+- **FR-10** _Removed: blocks are no longer pinned (ADR 0002)._
 - **FR-11** *Dropped:* no trash view; removed blocks come back only via undo (`u`).
 - **FR-12** The Tools Block (`bash`) is always sent and never edited; no tool toggle.
 
@@ -76,8 +75,8 @@ A text-based (TUI) coding agent whose core is editing the **Context**: the user 
 ### 4.6 Files & Notes
 
 - **FR-27** `@<path>[:a-b]` in the input adds a file reference row. While the path is typed, project files (git: tracked + untracked, not ignored) matching it are suggested above the input, file name matches first: `↑↓` choose, `Tab`/`Enter` complete. Before sending, `e` on it opens the file itself in `$EDITOR`. On send the file (or line range) is read and becomes a Note with origin `@<path>`; from then on a plain snapshot, never tracked, refreshed or marked stale. Missing file at send → sending aborts with `file not found: <path>`.
-- **FR-28** Environment Note (origin `environment`, pinned top): cwd, OS/shell, date (no time), git branch. Regenerated before each request; replaced only when changed (new Revision, `✎`).
-- **FR-29** Project instructions (`AGENTS.md`, else `CLAUDE.md`) are read once when a session is created → Note (origin file), pinned top. Snapshot like `@path`; not re-read on resume.
+- **FR-28** Environment Note (origin `environment`, created right after the Tools Block): cwd, OS/shell, date (no time), git branch. Regenerated before each request; replaced in place only when changed (new Revision, `✎`).
+- **FR-29** Project instructions (`AGENTS.md`, else `CLAUDE.md`) are read once when a session is created → Note (origin file) after the environment Note. Snapshot like `@path`; not re-read on resume.
 
 ### 4.7 System prompt
 

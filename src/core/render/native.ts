@@ -59,11 +59,6 @@ const ADD: Record<Block['kind'], Add> = {
   'Tool Result': (r, ids, b) => void r.messages.push({ role: 'tool', tool_call_id: ids.get(b.call!)!, content: b.content }),
 };
 
-// Adds one block to the request being rendered; `ids`: call id per Tool Call block so far.
-function addBlock(request: Request, ids: Map<number, string>, b: Block) {
-  if (b.pin === 'bottom') request.messages.push({ role: 'user', content: b.content });
-  else ADD[b.kind](request, ids, b);
-}
 
 // Requests for the first 1, 2, … sent blocks: a block owns the tokens its step adds (per-block split).
 // The last one is the whole request.
@@ -72,12 +67,12 @@ export function renderPrefixes(context: Context): Request[] {
   const ids = new Map<number, string>();
   const thinking = context.thinking && { thinking: context.thinking };
   return sentBlocks(context).map(b => {
-    addBlock(request, ids, b);
+    ADD[b.kind](request, ids, b);
     return { messages: [...request.messages], tools: request.tools, ...thinking };
   });
 }
 
 // native Tool Protocol (architecture §4 "Rendering"): Tools Block → tools field; Thinking, Assistant text
-// and its Tool Calls → one assistant message with reasoning_content and tool_calls; each Tool Result → a tool message; a Note and a
-// bottom pin are user-role messages (FR-9, FR-10).
+// and its Tool Calls → one assistant message with reasoning_content and tool_calls; each Tool Result → a tool message; a Note is a
+// user-role message (FR-9).
 export const renderNative = (context: Context): Request => renderPrefixes(context).at(-1) ?? EMPTY_REQUEST;

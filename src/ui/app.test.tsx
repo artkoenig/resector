@@ -329,14 +329,13 @@ test('while the answer streams, ↑↓ select and the preview scrolls; the Conte
   await press('up');
   frame = await frameMatching(ui, f => previewed(f) === 'hi there');
   await press('d');
-  await press('p');
   await press('down');
   frame = await frameMatching(ui, f => previewed(f).startsWith('Hal'));
   expect(frame).not.toContain('removed');
   expect(events().at(-1).type).toBe('RequestSent');
   await escape();
   await frameMatching(ui, f => f.includes('⚠ cut off'));
-  expect(events().filter(e => ['Remove', 'Pin'].includes(e.type))).toEqual([]);
+  expect(events().filter(e => e.type === 'Remove')).toEqual([]);
 });
 
 // User blocks not yet sent, the last one selected.
@@ -353,7 +352,7 @@ const press = async (key: string, modifiers?: { meta?: boolean }) => {
 };
 const order = (frame: string) => [...frame.matchAll(/^[ ┃] [ ●] +(\d+) {2}\w+ +(\S+)/gm)].map(m => `${m[1]} ${m[2]}`);
 
-test('⌥↑⌥↓ move the selected block inside its area and flag it ⇄ until sent', async () => {
+test('⌥↑⌥↓ move the selected block and flag it ⇄ until sent', async () => {
   const { events } = await withUsers('first', 'second');
   await press('up', { meta: true });
   let frame = await frameMatching(ui, f => /3\s+User\s+second/.test(f));
@@ -370,31 +369,15 @@ test('⌥↑⌥↓ move the selected block inside its area and flag it ⇄ until
   expect(frame).not.toContain('⇄');
 });
 
-test('p cycles pin top → bottom → off; a bottom pin is sent as a user-role message at the very end', async () => {
+test('p pins nothing: pinning is gone (ADR 0002)', async () => {
   const { events } = await withUsers('rules', 'question');
+  const before = events().length;
   await press('up');
   await press('p');
-  let frame = await frameMatching(ui, f => f.includes('pinned ⤒ top'));
-  expect(line(frame, /rules/)).toMatch(/3\s+User\s+rules.*⤒/);
-  await press('p');
-  frame = await frameMatching(ui, f => f.includes('pinned ⤓ bottom'));
-  expect(order(frame)).toEqual(['1 System', '2 bash', '3 question', '4 rules']);
-  expect(line(frame, /rules/)).toMatch(/⤓/);
-  expect(events().slice(-2)).toEqual([{ type: 'Pin', id: 3, at: 'top' }, { type: 'Pin', id: 3, at: 'bottom' }]);
-  fake.reply({ chunks: ['answer'] });
-  ui.mockInput.pressEnter();
-  frame = await frameMatching(ui, f => f.includes('answer complete'));
-  expect(order(frame)).toEqual(['1 System', '2 bash', '3 question', '4 answer', '5 rules']);
-  expect(frame).not.toContain('⤓');
-  expect((fake.chatRequests[0] as { messages: unknown[] }).messages.slice(1)).toEqual([
-    { role: 'user', content: 'question' },
-    { role: 'user', content: 'rules' },
-  ]);
-  await press('down');
-  await press('p');
-  frame = await frameMatching(ui, f => f.includes('unpinned'));
-  expect(order(frame)).toEqual(['1 System', '2 bash', '3 question', '4 answer', '5 rules']);
-  expect(events().at(-1)).toEqual({ type: 'Unpin', id: 3 });
+  const frame = await frameMatching(ui, f => previewed(f) === 'rules');
+  expect(frame).not.toContain('p pin');
+  expect(order(frame)).toEqual(['1 System', '2 bash', '3 rules', '4 question']);
+  expect(events()).toHaveLength(before);
 });
 
 test('t cycles thinking off → on → on:<effort>, shown in the header, logged and sent with the next request (FR-49)', async () => {
@@ -1090,22 +1073,6 @@ test('⌥↑ on a Tool Pair asks; any other key cancels; the same key again turn
   ]);
 });
 
-test('p on a Tool Pair asks, p again pins its Note; u brings the pair back', async () => {
-  await ran('echo hi');
-  await press('up');
-  await press('up');
-  await press('p');
-  await frameMatching(ui, f => f.includes('press p again to confirm'));
-  await press('p');
-  let frame = await frameMatching(ui, f => f.includes('pinned ⤒ top'));
-  expect(order(frame)).toEqual(['1 System', '2 bash', '3 ⇄', '4 go', '5 ok']);
-  expect(line(frame, /Note/)).toMatch(/⤒/);
-  await press('u');
-  await press('u');
-  frame = await frameMatching(ui, f => f.includes('undone: Tool Pair → Note'));
-  expect(order(frame)).toEqual(['1 System', '2 bash', '3 go', '4 Call', '5 Result', '6 ok']);
-});
-
 // Compaction (FR-13–FR-17) ------------------------------------------------------------------------------------
 
 test('c opens the instruction line with header and the default instruction as hint; Tab copies it, Esc cancels (FR-13)', async () => {
@@ -1292,7 +1259,7 @@ test('a referenced file missing at send aborts sending (FR-27)', async () => {
   expect(events().map(e => e.type)).not.toContain('RequestSent');
 });
 
-test('the environment Note is pinned top; a changed environment is a new Revision before sending (FR-28)', async () => {
+test('the environment Note follows the Tools Block; a changed environment is a new Revision in place before sending (FR-28)', async () => {
   const { events } = await start({ notes: { environment: 'date: 2026-09-26' } });
   let frame = ui.captureCharFrame();
   expect(line(frame, /Environment/)).toMatch(/3\s+Note\s+Environment\s+\d+/);
@@ -1305,13 +1272,21 @@ test('the environment Note is pinned top; a changed environment is a new Revisio
   await write('again');
   frame = await frameMatching(ui, f => f.includes('answer complete') && /6\s+User\s+again/.test(f));
   expect(events().filter(e => e.type === 'Edit')).toEqual([{ type: 'Edit', id: 3, revision: 2, content: 'date: 2026-09-27', harness: true }]);
+  expect(frame.search(/3\s+Note\s+Environment/)).toBeLessThan(frame.search(/4\s+User\s+hi/));
   expect(messages(1)[1]).toEqual({ role: 'user', content: 'date: 2026-09-27' });
 });
 
-test('the project instructions are a pinned-top Note after the environment (FR-29)', async () => {
+test('the project instructions are a Note after the environment (FR-29)', async () => {
   await start({ notes: { environment: 'cwd: /p', instructions: { file: 'AGENTS.md', content: '# Rules' } } });
   const frame = ui.captureCharFrame();
   expect(line(frame, /AGENTS/)).toMatch(/4\s+Note\s+@AGENTS\.md\s+\d+/);
+});
+
+test('the Notes a new session starts with ask for no answer', async () => {
+  await start({ notes: { environment: 'cwd: /p', instructions: { file: 'AGENTS.md', content: '# Rules' } } });
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('nothing to send'));
+  expect(fake.chatRequests).toEqual([]);
 });
 
 test('a file reference alone is sent with Enter, the file as the last user message (FR-27)', async () => {

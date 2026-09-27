@@ -26,20 +26,22 @@ test('each block becomes one chat message with its role', () => {
   });
 });
 
-test('removed blocks are not sent; a bottom pin is sent as a user-role Note at the very end', () => {
+test('removed blocks are not sent; a bottom pin from an older log is sent as its kind, in place (ADR 0002)', () => {
   const context = fold([
     created,
     add(1, 'System', 'sys'),
     add(2, 'User', 'hi'),
     add(3, 'Assistant', 'rules'),
     add(4, 'User', 'gone'),
-    { type: 'Pin', id: 3, at: 'bottom' },
+    add(5, 'User', 'last'),
+    { type: 'Pin', id: 3, at: 'bottom' } as unknown as SessionEvent,
     { type: 'Remove', id: 4 },
   ]);
   expect(renderNative(context).messages).toEqual([
     { role: 'system', content: 'sys' },
     { role: 'user', content: 'hi' },
-    { role: 'user', content: 'rules' },
+    { role: 'assistant', content: 'rules' },
+    { role: 'user', content: 'last' },
   ]);
 });
 
@@ -87,12 +89,11 @@ test('a search call is sent as search with its query', () => {
   });
 });
 
-test('an Assistant block after a Tool Call starts a new message; a bottom-pinned Tool Call is a user-role Note', () => {
-  const context = fold([created, add(1, 'Tool Call', 'ls'), add(2, 'Assistant', 'done'), add(3, 'Tool Call', 'pwd'), { type: 'Pin', id: 3, at: 'bottom' }]);
+test('an Assistant block after a Tool Call starts a new message', () => {
+  const context = fold([created, add(1, 'Tool Call', 'ls'), add(2, 'Assistant', 'done')]);
   expect(renderNative(context).messages).toEqual([
     { role: 'assistant', content: '', tool_calls: [call(0, 'ls')] },
     { role: 'assistant', content: 'done' },
-    { role: 'user', content: 'pwd' },
   ]);
 });
 

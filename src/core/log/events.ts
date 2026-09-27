@@ -11,9 +11,6 @@ export type Tool = 'bash' | 'search' | 'question';
 // Reasoning (FR-49): 'off', 'on', or an effort level the model's chat template accepts (e.g. 'low', 'xhigh').
 export type Thinking = string;
 
-// Pin top = after System and Tools Block (FR-10); bottom = very end, sent as user-role Note.
-export type Pin = 'top' | 'bottom';
-
 export type Usage = { prompt_tokens: number; completion_tokens: number };
 
 export type SessionEvent =
@@ -24,8 +21,8 @@ export type SessionEvent =
   | { type: 'SessionRenamed'; title: string }
   // Tool Call: content = the bash command, the search query or the question's arguments (JSON), `tool` = its tool (absent: bash);
   // Tool Result: `call` = its Tool Call, content = the output (origin user: the answer to a Question).
-  // file: the file a Note was read from; pin: added pinned (environment Note, project instructions).
-  | { type: 'BlockAdded'; id: number; kind: Kind; origin: Origin; content: string; tool?: Tool; cutOff?: true; call?: number; stopped?: Stopped; file?: string; pin?: Pin }
+  // file: the file a Note was read from. Older logs may carry `pin` (ADR 0002): ignored on replay.
+  | { type: 'BlockAdded'; id: number; kind: Kind; origin: Origin; content: string; tool?: Tool; cutOff?: true; call?: number; stopped?: Stopped; file?: string }
   // `@<path>[:a-b]` (FR-27): a reference row, read only on send …
   | { type: 'FileReferenced'; id: number; file: string }
   // … into a snapshot, never refreshed afterwards.
@@ -34,10 +31,9 @@ export type SessionEvent =
   // A new Revision of the block's content (FR-8); the block's first content is Revision 1.
   // harness: the environment Note refreshed (FR-28) or a tool denied by rule taken out of the Tools Block (FR-21), not undoable.
   | { type: 'Edit'; id: number; revision: number; content: string; harness?: true }
-  // Context operations (FR-4, FR-10); `after` is the block the moved block now follows.
+  // Context operations (FR-4); `after` is the block the moved block now follows.
+  // Older logs may carry `Pin`/`Unpin` events (ADR 0002): ignored on replay.
   | { type: 'Move'; id: number; after: number }
-  | { type: 'Pin'; id: number; at: Pin }
-  | { type: 'Unpin'; id: number }
   // Removes the whole Tool Pair when `id` is one of its blocks (FR-9); `others`: marked blocks removed with it, undone together.
   | { type: 'Remove'; id: number; others?: number[] }
   // The Tool Pair of Tool Call `call` becomes Note `id` after the calls and results of its answer (FR-9).

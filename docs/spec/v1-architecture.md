@@ -16,7 +16,7 @@ src/
   core/                    pure, fully mutation-tested
     log/                   Session Log events, JSONL codec, fold → Context
     session/               new session, session summary (title, blocks, tokens)
-    context/               Context Blocks, Revisions, pins, Tool Pairs, undo
+    context/               Context Blocks, Revisions, Tool Pairs, undo
     render/                Context → request per Tool Protocol (native, text-xml)
     tokens/                Tokenizer interface, per-block split, drift, budget (max_tokens, blocking)
     cache/                 prefix diff → invalidation point → rows ●/○
@@ -42,7 +42,7 @@ Core has no I/O; adapters are injected. UI depends on Core, never the reverse.
 ## 3. Session Log & Context
 
 - File: `~/.local/share/resector/sessions/<project-hash>/<id>.jsonl`, one event per line, plus `<id>.lock`.
-- Events: `SessionCreated{profile, protocol}`, `BlockAdded{id, kind, origin: config|user|model|tool|file|environment|compaction, content, cutOff?, call?, stopped?: killed|timeout, file?, pin?}` (`call`: a Tool Result's Tool Call; `file`: the file a Note was read from, as referenced: `path[:a-b]`; `pin`: added pinned, e.g. environment Note and project instructions at session creation), `FileReferenced{id, file}` (an `@path` row, unread), `FileRead{id, content}` (its snapshot on send), `Edit{id, revision, content, harness?}` (`harness`: the environment Note refreshed, not undoable), `Move{id, after}`, `Pin{id, top|bottom}`, `Unpin`, `Remove` (a Tool Pair as a whole), `PairToNote{id, call}` (moving/pinning a Tool Pair: Note `id` replaces it after the calls and results of its answer), `Compact{sources, instruction, noteId, content}`, `Rename{id, title}` (block display title; no longer created, still read from older logs), `SessionRenamed{title}`, `ProfileFallback{profile}`, `AllowRuleAdded{pattern}`, `RequestSent{hash, tokens}`, `ResponseReceived{usage, cached}`, `Undo{eventId}`.
+- Events: `SessionCreated{profile, protocol}`, `BlockAdded{id, kind, origin: config|user|model|tool|file|environment|compaction, content, cutOff?, call?, stopped?: killed|timeout, file?}` (`call`: a Tool Result's Tool Call; `file`: the file a Note was read from, as referenced: `path[:a-b]`), `FileReferenced{id, file}` (an `@path` row, unread), `FileRead{id, content}` (its snapshot on send), `Edit{id, revision, content, harness?}` (`harness`: the environment Note refreshed, not undoable), `Move{id, after}`, `Remove` (a Tool Pair as a whole), `PairToNote{id, call}` (moving a Tool Pair: Note `id` replaces it after the calls and results of its answer), `Compact{sources, instruction, noteId, content}`, `Rename{id, title}` (block display title; no longer created, still read from older logs), `Pin`/`Unpin` and `BlockAdded.pin` (pins are gone, ADR 0002: still read from older logs, ignored on replay), `SessionRenamed{title}`, `ProfileFallback{profile}`, `AllowRuleAdded{pattern}`, `RequestSent{hash, tokens}`, `ResponseReceived{usage, cached}`, `Undo{eventId}`.
 - **Context = fold(events)**. Undo is a counter-event; nothing is deleted within a session. Deleting a session removes its file.
 - Block storage is protocol-neutral: Tool Call = its bash command, its search query with `tool: search`, or a Question's arguments as JSON with `tool: question`, Tool Result = text (output, then `[exit N]`, `[killed]` or `[timeout after N s]`; for a Question the user's answer, origin `user`), Tools Block = tool definitions as JSON. Thinking, Assistant text and each Tool Call are separate blocks; the renderer merges them into one message. Tool Results follow all Tool Calls of their answer, in call order. A Tool Call without Tool Result awaits approval – a Question awaits its answer instead.
 - Every block but the Tools Block accepts `Edit`; of the Tool Calls only one *pending approval* (FR-8).
@@ -70,7 +70,7 @@ fold(log) → Context
 - `text-xml`: calls as `<function=…><parameter=…>` (Qwen3-Coder syntax) in assistant text; results as user message `<tool_response>…</tool_response>`; Tools Block as compact signatures appended to the system message (own row at the Gate, tokens via prefix difference).
 - Thinking: parsed from `reasoning_content` (llama.cpp `--reasoning-format`, Ollama `thinking`) or `<think>…</think>` in the stream; rendered back as `reasoning_content` of its assistant message where the backend accepts it, else inline `<think>`. The chat template may drop it; the token split then yields 0 → `✂ template`.
 - Thinking (the Gate's, else the profile's) maps to the backend: `chat_template_kwargs.enable_thinking` (off: false, else true), plus an effort as `reasoning_effort` and `chat_template_kwargs.reasoning_effort`. It travels with the request, so the counted chat template renders with it too. The modes offered come from the chat template's Jinja source (`core/render/template.ts`).
-- Moved Tool Pair = user-role Note `[Tool bash: <cmd>]` + result, never tool syntax. Pin bottom = user-role Note at the end.
+- Moved Tool Pair = user-role Note `[Tool bash: <cmd>]` + result, never tool syntax.
 - Tool results use the tool's native text; `resultFormat: toon` renders uniform rows as TOON-style tables. Model output stays JSON.
 
 ### Token counting

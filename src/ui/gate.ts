@@ -116,7 +116,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   // Kind Filter (FR-51): what the block table shows; UI state, not logged.
   const [filter, setFilter] = createSignal<Filter | null>(null);
   const [backend, setBackend] = createSignal(options.backend);
-  // Moving or pinning a Tool Pair asks first: the operation and block awaiting the same key again (FR-9).
+  // Moving a Tool Pair asks first: the operation and block awaiting the same key again (FR-9).
   const [confirming, setConfirming] = createSignal<string | null>(null);
   const [compacting, setCompacting] = createSignal<Compaction | null>(null);
   // Bumped when the server's cache changed without a new request to count (a Compaction on its slot).
@@ -150,7 +150,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     const last = events().findLastIndex(e => e.type === 'ResponseReceived');
     return last < 0 ? null : renderNative(fold(events().slice(0, last + 1)));
   });
-  // The streaming answer (its reasoning first) sits before the bottom pins; a running call's result where it will be added.
+  // The streaming answer (its reasoning first) sits at the end; a running call's result where it will be added.
   const live = createMemo((): Live[] => {
     const c = compacting();
     if (c && c.phase !== 'instruction') return [proposalRow(c)];
@@ -162,9 +162,8 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   });
   // The ids the answer's blocks get: a Thinking block first (FR-46).
   function streamingRows({ thinking, text }: Streaming): Live[] {
-    const before = sent().find(b => b.pin === 'bottom')?.id ?? null;
-    const reasoning: Live[] = thinking ? [{ id: nextId(), kind: 'Thinking', content: thinking, before }] : [];
-    const answer: Live[] = text || !thinking ? [{ id: nextId() + reasoning.length, kind: 'Assistant', content: text, before }] : [];
+    const reasoning: Live[] = thinking ? [{ id: nextId(), kind: 'Thinking', content: thinking, before: null }] : [];
+    const answer: Live[] = text || !thinking ? [{ id: nextId() + reasoning.length, kind: 'Assistant', content: text, before: null }] : [];
     return [...reasoning, ...answer];
   }
   // Selectable rows in order: sent blocks and the live rows.
@@ -232,7 +231,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     setSelected(id);
   }
 
-  // Appends the operation's event, or shows why not (FR-10, NFR-3). Returns whether it was applied.
+  // Appends the operation's event, or shows why not (NFR-3). Returns whether it was applied.
   function apply(result: ops.Outcome): boolean {
     if ('error' in result) setStatus({ text: result.error, tone: 'info' });
     else append(result.event);
@@ -246,7 +245,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     setStatus(text ? { text, tone: 'info' } : null);
   }
 
-  // A Tool Pair is moved or pinned as a Note: the first press asks, the same key again converts it,
+  // A Tool Pair is moved as a Note: the first press asks, the same key again converts it,
   // then the operation acts on the Note (FR-9). `action` names the operation, `key` its key.
   function viaNote(action: string, key: string, then: () => void) {
     const block = selectedBlock();
@@ -262,7 +261,6 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     setSelected(id);
     then();
   }
-  const PINNED = { top: 'pinned ⤒ top', bottom: 'pinned ⤓ bottom (sent as user-role Note at the end)' };
   // Not while a Kind Filter hides the neighbours the block would move past (FR-51).
   function move(dir: -1 | 1) {
     if (filter()) return;
@@ -270,8 +268,6 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   }
   // A block as it is now, after an operation.
   const blockOf = (id: number) => context().blocks.find(b => b.id === id)!;
-  const pinned = ({ pin }: Block) => (pin ? PINNED[pin] : 'unpinned');
-  const pin = () => viaNote('pin', 'p', () => operate(ops.pin, b => pinned(blockOf(b.id))));
   const whole = (b: Block) => (ops.inPair(b) ? ' (whole Tool Pair)' : '');
   // d: the marked blocks, else the selected one.
   function remove() {
@@ -481,8 +477,10 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
       return { text: pending.tool === 'question' ? QUESTION_HINT : `Tool Calls await approval – ${APPROVE} on the ? approve row`, tone: 'warn' };
     }
     const changed = lastAnswer() !== null && !same(lastAnswer(), request());
-    // The last unpinned block: a User message, a Tool Result or a Note (e.g. an @path reference) asks for an answer.
-    const last = sent().filter(b => !b.pin).at(-1)?.kind;
+    // The last block: a User message, a Tool Result or a Note (e.g. an @path reference) asks for an answer,
+    // not the Notes a new session starts with (environment, project instructions) right after the Tools Block.
+    const opened = sent().some(b => !ops.isFixed(b) && (b.kind !== 'Note' || b.unread));
+    const last = opened ? sent().at(-1)?.kind : undefined;
     return changed || last === 'User' || last === 'Tool Result' || last === 'Note' ? null : { text: 'nothing to send – Tab to write', tone: 'info' };
   }
 
@@ -810,7 +808,6 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     answer,
     select: (delta: number) => selectAt(shown().indexOf(selected()) + delta),
     move,
-    pin,
     remove,
     undo,
     edit: () => void edit(),

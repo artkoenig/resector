@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
 import { TOOLS } from '../toolcall/bash';
-import { approvable, decline, deny, edit, isFixed, inPair, move, nextCall, pin, reject, remove, removeAll, toggleTool, withoutDenied, toNote, toolResult, undo } from './operations';
+import { approvable, decline, deny, edit, isFixed, inPair, move, nextCall, reject, remove, removeAll, toggleTool, withoutDenied, toNote, toolResult, undo } from './operations';
 
 const session = (...then: SessionEvent[]): SessionEvent[] => [
   { type: 'SessionCreated', profile: 'default', protocol: 'native' },
@@ -17,7 +17,7 @@ const at = (events: SessionEvent[], id: number) => {
   return [context, context.blocks.find(b => b.id === id)!] as const;
 };
 const FIXED = { error: 'System prompt is fixed' };
-const BOUNDARY = { error: 'boundary reached (fixed / pinned area)' };
+const BOUNDARY = { error: 'boundary reached' };
 
 test('move up anchors the block after the neighbour’s predecessor', () => {
   expect(move(...at(session(), 3), -1)).toEqual({ event: { type: 'Move', id: 3, after: 1 } });
@@ -34,25 +34,10 @@ test('move skips struck-through blocks', () => {
   expect(move(...at(events, 4), -1)).toEqual({ event: { type: 'Move', id: 4, after: 1 } });
 });
 
-test('move stops at System, the ends, and the pinned areas', () => {
+test('move stops at System and the ends', () => {
   expect(move(...at(session(), 1), 1)).toEqual(FIXED);
   expect(move(...at(session(), 2), -1)).toEqual(BOUNDARY);
   expect(move(...at(session(), 4), 1)).toEqual(BOUNDARY);
-  const pinned = session({ type: 'Pin', id: 2, at: 'top' }, { type: 'Pin', id: 4, at: 'bottom' });
-  expect(move(...at(pinned, 3), -1)).toEqual(BOUNDARY);
-  expect(move(...at(pinned, 3), 1)).toEqual(BOUNDARY);
-});
-
-test('pinned blocks reorder among themselves', () => {
-  const pinned = session({ type: 'Pin', id: 2, at: 'top' }, { type: 'Pin', id: 3, at: 'top' });
-  expect(move(...at(pinned, 3), -1)).toEqual({ event: { type: 'Move', id: 3, after: 1 } });
-});
-
-test('pin cycles top → bottom → off', () => {
-  expect(pin(at(session(), 2)[1])).toEqual({ event: { type: 'Pin', id: 2, at: 'top' } });
-  expect(pin(at(session({ type: 'Pin', id: 2, at: 'top' }), 2)[1])).toEqual({ event: { type: 'Pin', id: 2, at: 'bottom' } });
-  expect(pin(at(session({ type: 'Pin', id: 2, at: 'bottom' }), 2)[1])).toEqual({ event: { type: 'Unpin', id: 2 } });
-  expect(pin(at(session(), 1)[1])).toEqual(FIXED);
 });
 
 test('remove any block but System', () => {
@@ -72,8 +57,14 @@ test('undo names the latest Context operation not yet undone', () => {
   const events = session({ type: 'Remove', id: 2 }, { type: 'Rename', id: 3, title: 'x' }, { type: 'RequestSent', hash: 'h', tokens: 1 });
   expect(undo(events)).toEqual({ event: { type: 'Undo', eventId: 6 } });
   expect(undo([...events, { type: 'Undo', eventId: 6 }])).toEqual({ event: { type: 'Undo', eventId: 5 } });
-  for (const op of [{ type: 'Move', id: 3, after: 1 }, { type: 'Pin', id: 3, at: 'top' }, { type: 'Unpin', id: 3 }, { type: 'Edit', id: 3, revision: 2, content: 'x' }] as SessionEvent[])
+  for (const op of [{ type: 'Move', id: 3, after: 1 }, { type: 'Edit', id: 3, revision: 2, content: 'x' }] as SessionEvent[])
     expect(undo(session(op))).toEqual({ event: { type: 'Undo', eventId: 5 } });
+});
+
+test('undo passes over Pin and Unpin from older logs: replay ignores them (ADR 0002)', () => {
+  const legacy = [{ type: 'Pin', id: 3, at: 'top' }, { type: 'Unpin', id: 3 }] as unknown as SessionEvent[];
+  expect(undo(session({ type: 'Remove', id: 2 }, ...legacy))).toEqual({ event: { type: 'Undo', eventId: 5 } });
+  expect(undo(session(...legacy))).toEqual({ error: 'nothing to undo' });
 });
 
 test('undo has nothing to cancel without Context operations', () => {
@@ -90,7 +81,6 @@ test('the Tools Block is fixed like System (FR-12)', () => {
   const [context, block] = at(session(tools), 5);
   expect(isFixed(block)).toBe(true);
   expect(move(context, block, -1)).toEqual({ error: 'Tools Block is fixed' });
-  expect(pin(block)).toEqual({ error: 'Tools Block is fixed' });
   expect(remove(block)).toEqual({ error: 'Tools Block cannot be removed' });
   expect(isFixed(at(session(), 2)[1])).toBe(false);
 });
@@ -123,10 +113,9 @@ test('the harness takes denied tools out of the Tools Block, not undoable; nothi
   expect(withoutDenied(session(), fold(session()), ['question'])).toBeNull();
 });
 
-test('a Tool Call awaiting approval is not moved, pinned or removed', () => {
+test('a Tool Call awaiting approval is not moved or removed', () => {
   const events = session(call(6));
   expect(move(...at(events, 6), -1)).toEqual(AWAITS);
-  expect(pin(at(events, 6)[1])).toEqual(AWAITS);
   expect(remove(at(events, 6)[1])).toEqual(AWAITS);
   expect(remove(at([...events, answered(7, 6)], 6)[1])).toEqual({ event: { type: 'Remove', id: 6 } });
 });

@@ -14,7 +14,8 @@ type BlockAdded = Extract<SessionEvent, { type: 'BlockAdded' }>;
 type RequestSent = Extract<SessionEvent, { type: 'RequestSent' }>;
 
 // What a new session starts with besides System prompt and Tools Block: the environment Note (FR-28) and the
-// project instructions (`AGENTS.md`, else `CLAUDE.md`), read once now (FR-29). Both pinned top.
+// project instructions (`AGENTS.md`, else `CLAUDE.md`), read once now (FR-29). Both
+// ordinary Notes right after the Tools Block.
 export type Instructions = { file: string; content: string };
 export type SessionNotes = { environment?: string; instructions?: Instructions | null };
 
@@ -25,10 +26,10 @@ export function newSession(profile: string, systemPrompt: string, { environment,
     // Always sent, never edited (FR-12).
     { type: 'BlockAdded', id: 2, kind: 'Tools', origin: 'config', content: TOOLS },
   ];
-  if (environment !== undefined) events.push({ type: 'BlockAdded', id: events.length, kind: 'Note', origin: 'environment', content: environment, pin: 'top' });
+  if (environment !== undefined) events.push({ type: 'BlockAdded', id: events.length, kind: 'Note', origin: 'environment', content: environment });
   if (instructions) {
     const { file, content } = instructions;
-    events.push({ type: 'BlockAdded', id: events.length, kind: 'Note', origin: 'file', file, content: fileNote(file, content), pin: 'top' });
+    events.push({ type: 'BlockAdded', id: events.length, kind: 'Note', origin: 'file', file, content: fileNote(file, content) });
   }
   return events;
 }

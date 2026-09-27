@@ -1,4 +1,4 @@
-// Context operations at the Review Gate (FR-4, FR-10, NFR-3): each yields the event to append, or why not.
+// Context operations at the Review Gate (FR-4, NFR-3): each yields the event to append, or why not.
 import type { SessionEvent, Tool } from '../log/events';
 import { undone, type Block, type Context } from '../log/fold';
 import * as bash from '../toolcall/bash';
@@ -9,7 +9,7 @@ type Undo = Extract<SessionEvent, { type: 'Undo' }>;
 
 type BlockAdded = Extract<SessionEvent, { type: 'BlockAdded' }>;
 
-// System and Tools Block stay first: never moved, pinned, removed or marked (FR-12).
+// System and Tools Block stay first: never moved, removed or marked (FR-12).
 export const isFixed = (block: Block) => block.kind === 'System' || block.kind === 'Tools';
 const NAME = { System: 'System prompt', Tools: 'Tools Block' } as Record<string, string>;
 const fixed = (block: Block) => ({ error: `${NAME[block.kind]} is fixed` });
@@ -17,7 +17,7 @@ const fixed = (block: Block) => ({ error: `${NAME[block.kind]} is fixed` });
 const AWAITS = { error: 'Tool Call awaits approval – y run once · a allow for session · n reject · e edit' };
 // Why an operation may not touch the block, if not.
 const guard = (block: Block) => (isFixed(block) ? fixed(block) : block.pending ? AWAITS : null);
-const UNDOABLE = new Set<SessionEvent['type']>(['Move', 'Pin', 'Unpin', 'Remove', 'Rename', 'Edit', 'PairToNote', 'Compact']);
+const UNDOABLE = new Set<SessionEvent['type']>(['Move', 'Remove', 'Rename', 'Edit', 'PairToNote', 'Compact']);
 
 const isTool = (block: Block | undefined) => block?.kind === 'Tool Call' || block?.kind === 'Tool Result';
 // Tool Call and Tool Result behave as a unit once the call has run (FR-9).
@@ -29,20 +29,12 @@ export function move({ blocks }: Context, block: Block, dir: -1 | 1): Outcome {
   const live = blocks.filter(b => !b.removed);
   let far = live.indexOf(block) + dir;
   const neighbour = live[far];
-  // Blocks move only inside their area: top pins, unpinned, bottom pins; System stays first.
-  if (!neighbour || isFixed(neighbour) || neighbour.pin !== block.pin) return { error: 'boundary reached (fixed / pinned area)' };
+  // System and Tools Block stay first.
+  if (!neighbour || isFixed(neighbour)) return { error: 'boundary reached' };
   // The calls and results of an answer are passed as a whole: a block between them breaks the protocol.
   while (isTool(live[far]) && isTool(live[far + dir])) far += dir;
   const after = dir === 1 ? live[far]! : blocks[blocks.indexOf(live[far]!) - 1]!;
   return { event: { type: 'Move', id: block.id, after: after.id } };
-}
-
-// p cycles top → bottom → off.
-export function pin(block: Block): Outcome {
-  const blocked = guard(block);
-  if (blocked) return blocked;
-  if (block.pin === 'bottom') return { event: { type: 'Unpin', id: block.id } };
-  return { event: { type: 'Pin', id: block.id, at: block.pin === 'top' ? 'bottom' : 'top' } };
 }
 
 export function remove(block: Block): Outcome {

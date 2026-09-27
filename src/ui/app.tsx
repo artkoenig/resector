@@ -240,7 +240,6 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     y: gate.approve,
     a: gate.allowForSession,
     n: gate.reject,
-    p: gate.pin,
     d: gate.remove,
     u: gate.undo,
     e: gate.edit,
@@ -695,7 +694,7 @@ const LOOK_KEYS: Hint[] = [['q', 'quit']];
 // With marks only what acts on all marked blocks.
 const MARKED_KEYS: Hint[] = [['d', 'remove'], ['c', 'compact'], ['space', 'mark'], ['esc', 'unmark'], ['q', 'quit']];
 const MOVE: Hint = ['⌥↑↓', 'move'];
-const KEYS: Hint[] = [MOVE, ['e', 'edit'], ['d', 'remove'], ['p', 'pin'], ['space', 'mark'], ['c', 'compact'], ['t', 'thinking'], ['u', 'undo'], ['q', 'quit']];
+const KEYS: Hint[] = [MOVE, ['e', 'edit'], ['d', 'remove'], ['space', 'mark'], ['c', 'compact'], ['t', 'thinking'], ['u', 'undo'], ['q', 'quit']];
 
 // Colours of a row: a removed one is muted throughout, one the chat template drops all but its flags.
 const rowFg = (row: Row) =>

@@ -42,11 +42,11 @@ test('the summary counts the Context blocks and takes the tokens of the last req
   expect(summarize(events)).toEqual({ title: 'a', renamed: false, profile: 'gemma', blocks: 2, tokens: 14 });
 });
 
-test('a new session pins the environment Note and the project instructions at the top (FR-28, FR-29)', () => {
+test('a new session starts with the environment Note and the project instructions right after the Tools Block (FR-28, FR-29)', () => {
   const events = newSession('qwen', 'sys', { environment: 'cwd: /p', instructions: { file: 'AGENTS.md', content: '# Rules\n' } });
   expect(events.slice(3)).toEqual([
-    { type: 'BlockAdded', id: 3, kind: 'Note', origin: 'environment', content: 'cwd: /p', pin: 'top' },
-    { type: 'BlockAdded', id: 4, kind: 'Note', origin: 'file', file: 'AGENTS.md', content: '[AGENTS.md]\n# Rules\n', pin: 'top' },
+    { type: 'BlockAdded', id: 3, kind: 'Note', origin: 'environment', content: 'cwd: /p' },
+    { type: 'BlockAdded', id: 4, kind: 'Note', origin: 'file', file: 'AGENTS.md', content: '[AGENTS.md]\n# Rules\n' },
   ]);
   expect(summarize(events).blocks).toBe(4);
   expect(newSession('qwen', 'sys', { environment: 'cwd: /p', instructions: null })).toHaveLength(4);

@@ -42,9 +42,8 @@ function originTitle(block: Titled, blocks: readonly Called[]): string | null {
   return block.compacted ? `◇ ${count(block.compacted.sources.length, 'block')} compacted` : null;
 }
 
-// FR-5: changes since the last request: new Revision, pin set/changed, moved.
-const changesOf = (block: Block): string =>
-  (block.revised ? `✎${block.revision}` : '') + ((block.pinChanged && { top: '⤒', bottom: '⤓' }[block.pin!]) || '') + (block.moved ? '⇄' : '');
+// FR-5: changes since the last request: new Revision, moved.
+const changesOf = (block: Block): string => (block.revised ? `✎${block.revision}` : '') + (block.moved ? '⇄' : '');
 
 // A pending call: decided now (a Question is answered), or queued (FR-24).
 const pendingFlag = (block: Block, next?: number): string => {
