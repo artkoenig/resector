@@ -56,7 +56,7 @@ View restriction at the Review Gate to Context Blocks of one Kind: User, Thinkin
 _Avoid_: search, hide
 
 **Context Policy**:
-Named set of rules that edits the Context automatically, using only the ordinary Context operations. Applied before every request; its operations are recorded in the Session Log like the user's, attributed to the policy and visible at the Review Gate. An undone operation is applied again before the next request as long as the policy is active. At most one is active per session; it is chosen at session start and can be switched at the Review Gate.
+Named set of rules that edits the Context automatically, using only the ordinary Context operations. Applied before every request; its operations are recorded in the Session Log like the user's, attributed to the policy and visible at the Review Gate. An undone operation is applied again before the next request as long as the policy is active. At most one is active at a time; it is switched on and off at the Review Gate, belongs to the running app rather than to a Session, and is off after every start. Context operations in the Session Log name who made them: the user or the policy; the Session does not depend on it.
 _Avoid_: mode, strategy, autopilot, auto-compact
 
 **Model Profile**:
