@@ -16,11 +16,12 @@ src/
   core/                    pure, fully mutation-tested
     log/                   Session Log events, JSONL codec, fold → Context
     session/               new session, session summary (title, blocks, tokens)
-    context/               Context Blocks, Revisions, pins, Tool Pairs, undo
+    context/               Context Blocks, Revisions, Tool Pairs, undo
     render/                Context → request per Tool Protocol (native, text-xml)
     tokens/                Tokenizer interface, per-block split, drift, budget (max_tokens, blocking)
     cache/                 prefix diff → invalidation point → rows ●/○
     compaction/            compaction request + proposal state machine
+    policy/                Context Policy interface: view of the Context, operations checked by context/ rules, the hook's passes; built-in thinking-trail (FR-55)
     notes/                 @path references and snapshots, environment Note text and refresh
     approval/              permission rules, evaluation of split commands, session rules
     toolcall/              parse tool calls (native + text-xml), malformed detection, split thinking
@@ -31,7 +32,7 @@ src/
     search/                search runner: ddgr on the process runner
     editor/                $EDITOR on a temporary file, or on a project file (`e` on an @path reference); suspends the TUI
     clipboard/             copy on select: OSC 52 + pbcopy / wl-copy / xclip
-    fs/                    @path read, environment probe, AGENTS.md
+    fs/                    @path read, environment probe, AGENTS.md, Context Policy modules
     store/                 session files, lock files, session index
   ui/                      OpenTUI + Solid views: Gate, preview, input, /sessions
   main.ts                  CLI (`resector`, `-c [id]`, `--version`, `--export-fixture`)
@@ -42,7 +43,8 @@ Core has no I/O; adapters are injected. UI depends on Core, never the reverse.
 ## 3. Session Log & Context
 
 - File: `~/.local/share/resector/sessions/<project-hash>/<id>.jsonl`, one event per line, plus `<id>.lock`.
-- Events: `SessionCreated{profile, protocol}`, `BlockAdded{id, kind, origin: config|user|model|tool|file|environment|compaction, content, cutOff?, call?, stopped?: killed|timeout, file?, pin?}` (`call`: a Tool Result's Tool Call; `file`: the file a Note was read from, as referenced: `path[:a-b]`; `pin`: added pinned, e.g. environment Note and project instructions at session creation), `FileReferenced{id, file}` (an `@path` row, unread), `FileRead{id, content}` (its snapshot on send), `Edit{id, revision, content, harness?}` (`harness`: the environment Note refreshed, not undoable), `Move{id, after}`, `Pin{id, top|bottom}`, `Unpin`, `Remove` (a Tool Pair as a whole), `PairToNote{id, call}` (moving/pinning a Tool Pair: Note `id` replaces it after the calls and results of its answer), `Compact{sources, instruction, noteId, content}`, `Rename{id, title}` (block display title; no longer created, still read from older logs), `SessionRenamed{title}`, `ProfileFallback{profile}`, `AllowRuleAdded{pattern}`, `RequestSent{hash, tokens}`, `ResponseReceived{usage, cached}`, `Undo{eventId}`.
+- Events: `SessionCreated{profile, protocol}`, `BlockAdded{id, kind, origin: config|user|model|tool|file|environment|compaction, content, cutOff?, call?, stopped?: killed|timeout, file?}` (`call`: a Tool Result's Tool Call; `file`: the file a Note was read from, as referenced: `path[:a-b]`), `FileReferenced{id, file}` (an `@path` row, unread), `FileRead{id, content}` (its snapshot on send), `Edit{id, revision, content, harness?}` (`harness`: the environment Note refreshed, not undoable), `Move{id, after}`, `Remove` (a Tool Pair as a whole), `PairToNote{id, call}` (moving a Tool Pair: Note `id` replaces it after the calls and results of its answer), `Compact{sources, instruction, noteId, content}`, `Rename{id, title}` (block display title; no longer created, still read from older logs), `Pin`/`Unpin` and `BlockAdded.pin` (pins are gone, ADR 0002: still read from older logs, ignored on replay), `SessionRenamed{title}`, `ProfileFallback{profile}`, `AllowRuleAdded{pattern}`, `RequestSent{hash, tokens}`, `ResponseReceived{usage, cached}`, `Undo{eventId}`.
+- `Edit`, `Move`, `Remove`, `PairToNote` and `Compact` carry `by`: `user` or the Context Policy's name (ADR 0001). Information only: replay never reads it; older logs and harness edits carry none.
 - **Context = fold(events)**. Undo is a counter-event; nothing is deleted within a session. Deleting a session removes its file.
 - Block storage is protocol-neutral: Tool Call = its bash command, its search query with `tool: search`, or a Question's arguments as JSON with `tool: question`, Tool Result = text (output, then `[exit N]`, `[killed]` or `[timeout after N s]`; for a Question the user's answer, origin `user`), Tools Block = tool definitions as JSON. Thinking, Assistant text and each Tool Call are separate blocks; the renderer merges them into one message. Tool Results follow all Tool Calls of their answer, in call order. A Tool Call without Tool Result awaits approval – a Question awaits its answer instead.
 - Every block but the Tools Block accepts `Edit`; of the Tool Calls only one *pending approval* (FR-8).
@@ -58,6 +60,7 @@ fold(log) → Context
   → tokenize via backend template → per-block tokens + Template overhead
   → cache diff vs last sent prompt → invalidation point (rows ●/○)
   → Gate: user edits … Enter
+  → active Context Policy (if any): view → operations → events `by: <policy>`, again until none (≤ 8 passes; error → stop, not sent)
   → budget check (Context < window − drift) → send with max_tokens = window − Context, pinned id_slot
   → stream → append Assistant / Tool Call blocks
   → per Tool Call: parse → approval → run bash → Tool Result
@@ -70,7 +73,7 @@ fold(log) → Context
 - `text-xml`: calls as `<function=…><parameter=…>` (Qwen3-Coder syntax) in assistant text; results as user message `<tool_response>…</tool_response>`; Tools Block as compact signatures appended to the system message (own row at the Gate, tokens via prefix difference).
 - Thinking: parsed from `reasoning_content` (llama.cpp `--reasoning-format`, Ollama `thinking`) or `<think>…</think>` in the stream; rendered back as `reasoning_content` of its assistant message where the backend accepts it, else inline `<think>`. The chat template may drop it; the token split then yields 0 → `✂ template`.
 - Thinking (the Gate's, else the profile's) maps to the backend: `chat_template_kwargs.enable_thinking` (off: false, else true), plus an effort as `reasoning_effort` and `chat_template_kwargs.reasoning_effort`. It travels with the request, so the counted chat template renders with it too. The modes offered come from the chat template's Jinja source (`core/render/template.ts`).
-- Moved Tool Pair = user-role Note `[Tool bash: <cmd>]` + result, never tool syntax. Pin bottom = user-role Note at the end.
+- Moved Tool Pair = user-role Note `[Tool bash: <cmd>]` + result, never tool syntax.
 - Tool results use the tool's native text; `resultFormat: toon` renders uniform rows as TOON-style tables. Model output stays JSON.
 
 ### Token counting
@@ -87,7 +90,7 @@ Per-block split via offset mapping / prefix differences; remainder = `Template` 
 ### Prefix cache
 
 - Invalidation point = first differing token between the new rendered prompt and the last sent one plus its answer. A row is `●` if all its tokens lie before it, else `○`; the answer counts with its end of turn. No prefill time estimate.
-- llama.cpp: token ids via `/tokenize`; one pinned `id_slot` per session (`hash(session id) mod total_slots`), `n_cache_reuse: 0` per request; the server always evaluates the last prompt token. The prediction starts cold for each connection (new, resumed, `/reload`).
+- llama.cpp: token ids via `/tokenize`; one pinned `id_slot` per session (`hash(session id) mod total_slots`), `n_cache_reuse: 0` per request; the server always evaluates the last prompt token. The prediction starts cold for each connection (new, resumed).
 - oMLX: no token ids; its cache probe `/admin/api/cache/probe` predicts hits in whole cache blocks. It sees a request's blocks only shortly after the answer, so the unchanged messages of the last request also count, rounded down to whole blocks. Without the probe (e.g. admin API key required): message-level comparison with the last request and its answer (approximate).
 - Verified against `timings.cache_n` / `usage.prompt_tokens_details.cached_tokens`: a server reusing fewer tokens than predicted is warned about (FR-41); SWA/recurrent models are not detectable via the API.
 - Compaction requests on the same model/slot leave the session cache cold (shown in status).
@@ -102,7 +105,8 @@ Per-block split via offset mapping / prefix differences; remainder = `Template` 
 ## 6. Configuration
 
 - JSONC + `$schema`; global `~/.config/resector/config.jsonc`, project `.resector/config.jsonc`, deep merge; `RESECTOR_CONFIG` overrides the path. `system.md`, `compaction.md` next to config; per-profile `systemPrompt` path.
-- Read at start and on `/reload`. Never written by runtime changes, except the first-start port scan writing the chosen profile.
+- Read when a session opens (start, switching in `/sessions`); a change takes a restart (ADR 0001). Never written by runtime changes, except the first-start port scan writing the chosen profile.
+- Context Policies: `policies/<name>.ts` next to the global config, plus built-ins, imported once at start (a file named like a built-in replaces it); the default export is the policy function `(PolicyContext) => PolicyOperation[]` (`core/policy/policy.ts`). None from the project. The active one is app state: off at start, kept across `/sessions`, never logged (FR-52–FR-54). The built-in `thinking-trail` (`core/policy/thinking-trail.ts`, FR-55) imports only the interface's types, as a file there would.
 - Session log stores only the profile name; values come from current config, session overrides from the log on top.
 
 ## 7. Testing

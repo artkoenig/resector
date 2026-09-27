@@ -1,4 +1,4 @@
-// Context operations at the Review Gate (FR-4, FR-10, NFR-3): each yields the event to append, or why not.
+// Context operations at the Review Gate (FR-4, NFR-3): each yields the event to append, or why not.
 import type { SessionEvent, Tool } from '../log/events';
 import { undone, type Block, type Context } from '../log/fold';
 import * as bash from '../toolcall/bash';
@@ -9,40 +9,50 @@ type Undo = Extract<SessionEvent, { type: 'Undo' }>;
 
 type BlockAdded = Extract<SessionEvent, { type: 'BlockAdded' }>;
 
-// System and Tools Block stay first: never moved, pinned, removed or marked (FR-12).
+// System and Tools Block stay first: never moved, removed or marked (FR-12).
 export const isFixed = (block: Block) => block.kind === 'System' || block.kind === 'Tools';
 const NAME = { System: 'System prompt', Tools: 'Tools Block' } as Record<string, string>;
 const fixed = (block: Block) => ({ error: `${NAME[block.kind]} is fixed` });
 // A Tool Call awaiting approval keeps its place until it has a result.
 const AWAITS = { error: 'Tool Call awaits approval – y run once · a allow for session · n reject · e edit' };
 // Why an operation may not touch the block, if not.
-const guard = (block: Block) => (isFixed(block) ? fixed(block) : block.pending ? AWAITS : null);
-const UNDOABLE = new Set<SessionEvent['type']>(['Move', 'Pin', 'Unpin', 'Remove', 'Rename', 'Edit', 'PairToNote', 'Compact']);
+export const untouchable = (block: Block) => (isFixed(block) ? fixed(block) : block.pending ? AWAITS : null);
+const UNDOABLE = new Set<SessionEvent['type']>(['Move', 'Remove', 'Rename', 'Edit', 'PairToNote', 'Compact']);
 
 const isTool = (block: Block | undefined) => block?.kind === 'Tool Call' || block?.kind === 'Tool Result';
 // Tool Call and Tool Result behave as a unit once the call has run (FR-9).
 export const inPair = (block: Block) => block.kind === 'Tool Result' || (block.kind === 'Tool Call' && !block.pending);
 
 export function move({ blocks }: Context, block: Block, dir: -1 | 1): Outcome {
-  const blocked = guard(block);
+  const blocked = untouchable(block);
   if (blocked) return blocked;
   const live = blocks.filter(b => !b.removed);
   let far = live.indexOf(block) + dir;
   const neighbour = live[far];
-  // Blocks move only inside their area: top pins, unpinned, bottom pins; System stays first.
-  if (!neighbour || isFixed(neighbour) || neighbour.pin !== block.pin) return { error: 'boundary reached (fixed / pinned area)' };
+  // System and Tools Block stay first.
+  if (!neighbour || isFixed(neighbour)) return { error: 'boundary reached' };
   // The calls and results of an answer are passed as a whole: a block between them breaks the protocol.
   while (isTool(live[far]) && isTool(live[far + dir])) far += dir;
   const after = dir === 1 ? live[far]! : blocks[blocks.indexOf(live[far]!) - 1]!;
   return { event: { type: 'Move', id: block.id, after: after.id } };
 }
 
-// p cycles top → bottom → off.
-export function pin(block: Block): Outcome {
-  const blocked = guard(block);
+// A Context Policy's move: the block right after `after`, a block sent next (ADR 0001). A Tool Pair is turned into a Note first.
+export function moveAfter({ blocks }: Context, block: Block, after: number): Outcome {
+  const blocked = untouchable(block) ?? (inPair(block) ? { error: 'a Tool Pair moves as a Note' } : null);
   if (blocked) return blocked;
-  if (block.pin === 'bottom') return { event: { type: 'Unpin', id: block.id } };
-  return { event: { type: 'Pin', id: block.id, at: block.pin === 'top' ? 'bottom' : 'top' } };
+  const live = blocks.filter(b => !b.removed);
+  const error = misplaced(live.filter(b => b !== block), after);
+  if (error) return { error };
+  if (live[live.indexOf(block) - 1]!.id === after) return { error: 'unchanged – already there' };
+  return { event: { type: 'Move', id: block.id, after } };
+}
+// Why a block may not go right after `after` among the other blocks sent, if not.
+function misplaced(others: Block[], after: number): string | null {
+  const at = others.findIndex(b => b.id === after);
+  if (at < 0) return `no block ${after} to move after`;
+  if (others[at + 1]?.kind === 'Tools') return 'System and Tools Block stay first';
+  return isTool(others[at]) && isTool(others[at + 1]) ? 'not between the Tool Calls and Tool Results of an answer' : null;
 }
 
 export function remove(block: Block): Outcome {
@@ -74,9 +84,9 @@ export function editable(block: Block): string | null {
   return block.kind === 'Tool Call' && !block.pending ? 'executed Tool Calls are immutable' : null;
 }
 
-// Moving or pinning a Tool Pair turns it into Note `id` first (FR-9).
+// Moving a Tool Pair turns it into Note `id` first (FR-9).
 export function toNote(block: Block, id: number): Outcome {
-  const blocked = guard(block);
+  const blocked = untouchable(block);
   if (blocked) return blocked;
   if (!inPair(block)) return { error: 'not a Tool Pair' };
   return { event: { type: 'PairToNote', id, call: block.kind === 'Tool Call' ? block.id : block.call! } };
@@ -87,10 +97,19 @@ export function toNote(block: Block, id: number): Outcome {
 export function edit(events: SessionEvent[], block: Block, edited: string): Outcome {
   const error = editable(block);
   if (error) return { error };
-  const content = block.content.endsWith('\n') ? edited : edited.replace(block.kind === 'Tool Call' ? /\n+$/ : /\n$/, '');
+  return revise(events, block, block.content.endsWith('\n') ? edited : edited.replace(block.kind === 'Tool Call' ? /\n+$/ : /\n$/, ''));
+}
+
+// The content as the block's next Revision, unless unchanged.
+export function revise(events: SessionEvent[], block: Block, content: string): Outcome {
   if (content === block.content) return { error: 'unchanged – no new Revision' };
   return { event: { type: 'Edit', id: block.id, revision: nextRevision(events, block.id), content } };
 }
+
+// The Context operations whose events name who made them (ADR 0001); a harness edit keeps its marker instead.
+const ATTRIBUTED = new Set<SessionEvent['type']>(['Move', 'Remove', 'Edit', 'PairToNote', 'Compact']);
+export const attributed = (event: SessionEvent, by: string): SessionEvent =>
+  ATTRIBUTED.has(event.type) && !('harness' in event) ? ({ ...event, by } as SessionEvent) : event;
 
 // /tools <name>: the Tools Block with the tool switched on or off, as a new Revision; a tool denied by rule stays off.
 export function toggleTool(events: SessionEvent[], { blocks }: Context, name: string, denied: Tool[]): Outcome {

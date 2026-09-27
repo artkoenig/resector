@@ -11,8 +11,9 @@ export type Tool = 'bash' | 'search' | 'question';
 // Reasoning (FR-49): 'off', 'on', or an effort level the model's chat template accepts (e.g. 'low', 'xhigh').
 export type Thinking = string;
 
-// Pin top = after System and Tools Block (FR-10); bottom = very end, sent as user-role Note.
-export type Pin = 'top' | 'bottom';
+// Who made a Context operation: `user` or the Context Policy's name (ADR 0001). Information only: replay never reads it;
+// older logs and harness edits carry none.
+type By = { by?: string };
 
 export type Usage = { prompt_tokens: number; completion_tokens: number };
 
@@ -24,8 +25,8 @@ export type SessionEvent =
   | { type: 'SessionRenamed'; title: string }
   // Tool Call: content = the bash command, the search query or the question's arguments (JSON), `tool` = its tool (absent: bash);
   // Tool Result: `call` = its Tool Call, content = the output (origin user: the answer to a Question).
-  // file: the file a Note was read from; pin: added pinned (environment Note, project instructions).
-  | { type: 'BlockAdded'; id: number; kind: Kind; origin: Origin; content: string; tool?: Tool; cutOff?: true; call?: number; stopped?: Stopped; file?: string; pin?: Pin }
+  // file: the file a Note was read from. Older logs may carry `pin` (ADR 0002): ignored on replay.
+  | { type: 'BlockAdded'; id: number; kind: Kind; origin: Origin; content: string; tool?: Tool; cutOff?: true; call?: number; stopped?: Stopped; file?: string }
   // `@<path>[:a-b]` (FR-27): a reference row, read only on send …
   | { type: 'FileReferenced'; id: number; file: string }
   // … into a snapshot, never refreshed afterwards.
@@ -33,17 +34,16 @@ export type SessionEvent =
   | { type: 'RequestSent'; hash: string; tokens: number }
   // A new Revision of the block's content (FR-8); the block's first content is Revision 1.
   // harness: the environment Note refreshed (FR-28) or a tool denied by rule taken out of the Tools Block (FR-21), not undoable.
-  | { type: 'Edit'; id: number; revision: number; content: string; harness?: true }
-  // Context operations (FR-4, FR-10); `after` is the block the moved block now follows.
-  | { type: 'Move'; id: number; after: number }
-  | { type: 'Pin'; id: number; at: Pin }
-  | { type: 'Unpin'; id: number }
+  | ({ type: 'Edit'; id: number; revision: number; content: string; harness?: true } & By)
+  // Context operations (FR-4); `after` is the block the moved block now follows.
+  // Older logs may carry `Pin`/`Unpin` events (ADR 0002): ignored on replay.
+  | ({ type: 'Move'; id: number; after: number } & By)
   // Removes the whole Tool Pair when `id` is one of its blocks (FR-9); `others`: marked blocks removed with it, undone together.
-  | { type: 'Remove'; id: number; others?: number[] }
+  | ({ type: 'Remove'; id: number; others?: number[] } & By)
   // The Tool Pair of Tool Call `call` becomes Note `id` after the calls and results of its answer (FR-9).
-  | { type: 'PairToNote'; id: number; call: number }
+  | ({ type: 'PairToNote'; id: number; call: number } & By)
   // Accepted Compaction (FR-16): Note `noteId` with `content` replaces `sources` at the first one's place.
-  | { type: 'Compact'; sources: number[]; instruction: string; noteId: number; content: string }
+  | ({ type: 'Compact'; sources: number[]; instruction: string; noteId: number; content: string } & By)
   // Display label only, never sent; empty = reset to the default title.
   | { type: 'Rename'; id: number; title: string }
   // "Allow for session" (FR-23, FR-25): an allow rule for the rest of the session, also after resume.

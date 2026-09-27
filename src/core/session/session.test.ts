@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { TOOLS } from '../toolcall/bash';
-import { newSession, summarize } from './session';
+import { newSession, openingBlocks, summarize } from './session';
 
 const start = newSession('qwen', 'You are an agent.');
 const user = (id: number, content: string): SessionEvent => ({ type: 'BlockAdded', id, kind: 'User', origin: 'user', content });
@@ -42,12 +42,23 @@ test('the summary counts the Context blocks and takes the tokens of the last req
   expect(summarize(events)).toEqual({ title: 'a', renamed: false, profile: 'gemma', blocks: 2, tokens: 14 });
 });
 
-test('a new session pins the environment Note and the project instructions at the top (FR-28, FR-29)', () => {
+test('a new session starts with the environment Note and the project instructions right after the Tools Block (FR-28, FR-29)', () => {
   const events = newSession('qwen', 'sys', { environment: 'cwd: /p', instructions: { file: 'AGENTS.md', content: '# Rules\n' } });
   expect(events.slice(3)).toEqual([
-    { type: 'BlockAdded', id: 3, kind: 'Note', origin: 'environment', content: 'cwd: /p', pin: 'top' },
-    { type: 'BlockAdded', id: 4, kind: 'Note', origin: 'file', file: 'AGENTS.md', content: '[AGENTS.md]\n# Rules\n', pin: 'top' },
+    { type: 'BlockAdded', id: 3, kind: 'Note', origin: 'environment', content: 'cwd: /p' },
+    { type: 'BlockAdded', id: 4, kind: 'Note', origin: 'file', file: 'AGENTS.md', content: '[AGENTS.md]\n# Rules\n' },
   ]);
   expect(summarize(events).blocks).toBe(4);
   expect(newSession('qwen', 'sys', { environment: 'cwd: /p', instructions: null })).toHaveLength(4);
+});
+
+test('the blocks a session starts with are those newSession added, not file references added later', () => {
+  const events: SessionEvent[] = [
+    ...newSession('qwen', 'sys', { environment: 'cwd: /p', instructions: { file: 'AGENTS.md', content: '# Rules\n' } }),
+    { type: 'FileReferenced', id: 5, file: 'a.txt' },
+    user(6, 'hi'),
+  ];
+  expect([...openingBlocks(events)]).toEqual([1, 2, 3, 4]);
+  expect([...openingBlocks([...newSession('qwen', 'sys'), user(3, 'hi'), user(4, 'again')])]).toEqual([1, 2]);
+  expect([...openingBlocks(newSession('qwen', 'sys'))]).toEqual([1, 2]);
 });

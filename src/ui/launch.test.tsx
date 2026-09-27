@@ -27,9 +27,10 @@ function put(path: string, text: string) {
   writeFileSync(path, text);
 }
 
-type Setup = { config?: (url: string) => string; systemMd?: string; servers?: (url: string) => LocalServer[]; sessions?: Record<string, SessionEvent[]>; locks?: Record<string, number>; resume?: true | string; files?: Record<string, string> };
+// policies: Context Policy modules by name, in policies/ next to the global config.
+type Setup = { config?: (url: string) => string; systemMd?: string; compactionMd?: string; policies?: Record<string, string>; servers?: (url: string) => LocalServer[]; sessions?: Record<string, SessionEvent[]>; locks?: Record<string, number>; resume?: true | string; files?: Record<string, string> };
 
-async function launch({ config, systemMd, servers, sessions = {}, locks = {}, resume, files = {} }: Setup = {}) {
+async function launch({ config, systemMd, compactionMd, policies = {}, servers, sessions = {}, locks = {}, resume, files = {} }: Setup = {}) {
   fake = startFakeLlamaCpp({ nCtx: 4096, model: 'qwen3-8b.gguf' });
   const root = mkdtempSync(join(tmpdir(), 'resector-launch-'));
   const project = join(root, 'project');
@@ -38,6 +39,8 @@ async function launch({ config, systemMd, servers, sessions = {}, locks = {}, re
   const paths = configPaths({ home: join(root, 'home'), cwd: project, env: {} });
   if (config) put(paths.global, config(fake.url));
   if (systemMd) put(join(dirname(paths.global), 'system.md'), systemMd);
+  if (compactionMd) put(join(dirname(paths.global), 'compaction.md'), compactionMd);
+  for (const [name, text] of Object.entries(policies)) put(join(dirname(paths.global), 'policies', `${name}.ts`), text);
   const fatal: string[] = [];
   let created = 0;
   const store = openSessionStore(join(root, 'sessions'), { id: () => (created++ ? `ses_new${created - 1}` : 'ses_test') });
@@ -145,29 +148,12 @@ test('a Model Profile whose backend cannot be opened fails before the Gate', asy
   expect(fatal).toEqual(['ollama backend not supported yet']);
 });
 
-test('/reload re-reads the config and reconnects; an invalid config keeps the current one', async () => {
-  const { paths } = await launch({ config: url => profileConfig(url) });
-  await frameMatching(ui, f => f.includes('/ 2k'));
-  put(paths.global, profileConfig(fake.url).replace('2048', '3072'));
-  await command('/reload');
-  expect(await frameMatching(ui, f => f.includes('/ 3k'))).toContain('config reloaded');
-  put(paths.global, '{ "profiles": ');
-  await command('/reload');
-  // The config path is long enough to wrap in the error band, so whitespace and the band's ┃ are ignored.
-  const frame = (await frameMatching(ui, f => f.includes('reload failed'))).replace(/\s+/g, '');
-  expect(frame).toMatch(/\/3k.*✗reloadfailed┃/);
-  expect(frame.replace(/┃/g, '')).toMatch(/config\.jsonc:1:\d+:ValueExpected/);
-});
-
-test('Compaction runs on compactionProfile with the instruction from compaction.md, both as of the last /reload (FR-13, FR-17)', async () => {
+test('Compaction runs on compactionProfile with the instruction from compaction.md, both as read at start (FR-13, FR-17)', async () => {
   const other = startFakeLlamaCpp({ nCtx: 1024 });
   try {
     const second = `, "compactionProfile": "small" }, "small": { "backend": "llamacpp", "endpoint": "${other.url}"`;
-    const { paths } = await launch({ config: url => profileConfig(url, second) });
-    put(join(dirname(paths.global), 'compaction.md'), 'keep names\n');
+    await launch({ config: url => profileConfig(url, second), compactionMd: 'keep names\n' });
     await frameMatching(ui, f => f.includes('/ 2k'));
-    await command('/reload');
-    await frameMatching(ui, f => f.includes('config reloaded'));
     fake.reply({ chunks: ['ok'] });
     await command('long story');
     await frameMatching(ui, f => /4\s+User\s+long story/.test(f) && f.includes('answer complete'));
@@ -397,14 +383,14 @@ test('/sessions with more sessions than fit: rows never overlap, the list follow
   expect(frame.split('\n')[2]).toMatch(/^ {5}Title/);
 });
 
-test('a new session starts with the environment Note and AGENTS.md, else CLAUDE.md, pinned top (FR-28, FR-29)', async () => {
+test('a new session starts with the environment Note and AGENTS.md, else CLAUDE.md, right after the Tools Block (FR-28, FR-29)', async () => {
   const { log } = await launch({ config: url => profileConfig(url), files: { 'AGENTS.md': '# Agents', 'CLAUDE.md': '# Claude' } });
   const frame = await frameMatching(ui, f => f.includes('/ 2k') && !f.includes('… / 2k'));
   expect(frame).toMatch(/3\s+Note\s+Environment/);
   expect(frame).toMatch(/4\s+Note\s+@AGENTS\.md/);
   expect(log().slice(3)).toEqual([
-    { type: 'BlockAdded', id: 3, kind: 'Note', origin: 'environment', content: expect.stringMatching(/^\[environment\]\ncwd: .*\nos: .* · shell: bash\ndate: \d{4}-\d\d-\d\d\ngit branch: /), pin: 'top' },
-    { type: 'BlockAdded', id: 4, kind: 'Note', origin: 'file', file: 'AGENTS.md', content: '[AGENTS.md]\n# Agents', pin: 'top' },
+    { type: 'BlockAdded', id: 3, kind: 'Note', origin: 'environment', content: expect.stringMatching(/^\[environment\]\ncwd: .*\nos: .* · shell: bash\ndate: \d{4}-\d\d-\d\d\ngit branch: /) },
+    { type: 'BlockAdded', id: 4, kind: 'Note', origin: 'file', file: 'AGENTS.md', content: '[AGENTS.md]\n# Agents' },
   ]);
 });
 
@@ -412,4 +398,50 @@ test('resuming does not read the project instructions again (FR-29)', async () =
   const { log } = await launch({ config: url => profileConfig(url), sessions: { ses_test: chat('local') }, resume: true, files: { 'AGENTS.md': '# Agents' } });
   await frameMatching(ui, f => f.includes('resumed'));
   expect(log().some(e => e.file === 'AGENTS.md')).toBe(false);
+});
+
+// Upper-cases every User block: one pass, then nothing to change.
+const SHOUT = `export default (context: { blocks: { id: number; kind: string; content: string }[] }) =>
+  context.blocks.filter(b => b.kind === 'User' && b.content !== b.content.toUpperCase()).map(b => ({ op: 'edit', id: b.id, content: b.content.toUpperCase() }));
+`;
+
+test('a Context Policy from the config directory is loaded, switched on, and edits the Context as itself before the request (ADR 0001)', async () => {
+  const { log } = await launch({ config: url => profileConfig(url), policies: { shout: SHOUT, broken: 'export default (;' } });
+  const opened = await frameMatching(ui, f => f.includes('/ 2k') && f.includes('– not loaded'));
+  expect(opened).toMatch(/policy broken: .* – not loaded/);
+  await command('/policy s');
+  await frameMatching(ui, f => f.includes('policy shout on'));
+  expect(ui.captureCharFrame()).toMatch(/local · thinking off · policy shout/);
+  fake.reply({ chunks: ['ok'] });
+  await command('hi there');
+  const answered = await frameMatching(ui, f => f.includes('answer complete'));
+  expect(answered).toContain('shout: 1 block edited · answer complete');
+  expect(log().filter(e => e.type === 'Edit' && !e.harness)).toEqual([{ type: 'Edit', id: 4, revision: 2, content: 'HI THERE', by: 'shout' }]);
+  expect(JSON.stringify(fake.chatRequests[0])).toContain('HI THERE');
+});
+
+test('the built-in thinking-trail is offered and switched on without any policy file', async () => {
+  await launch({ config: url => profileConfig(url) });
+  await frameMatching(ui, f => f.includes('/ 2k'));
+  ui.mockInput.pressTab();
+  await ui.flush();
+  await ui.mockInput.typeText('/policy ');
+  expect(await frameMatching(ui, f => f.includes('switch on'))).toMatch(/thinking-trail\s+switch on/);
+  await ui.mockInput.typeText('t');
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('policy thinking-trail on'));
+  expect(ui.captureCharFrame()).toMatch(/local · thinking off · policy thinking-trail/);
+});
+
+test('the active policy belongs to the app: it stays when switching sessions and is not logged', async () => {
+  const { log } = await launch({ config: url => profileConfig(url), policies: { shout: SHOUT }, sessions: { ses_a: titled('local', 'fix the build') } });
+  await frameMatching(ui, f => f.includes('/ 2k'));
+  await command('/policy shout');
+  await frameMatching(ui, f => f.includes('policy shout on'));
+  await command('/sessions');
+  await frameMatching(ui, f => f.includes('Sessions ·'));
+  await key('down');
+  await key('enter');
+  expect(await frameMatching(ui, f => f.includes('resumed "fix the build"'))).toMatch(/local · thinking off · policy shout/);
+  expect(JSON.stringify(log())).not.toContain('shout');
 });

@@ -72,7 +72,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   // The project's files, listed when the input opens: @path completion (FR-27).
   const [files, setFiles] = createSignal<string[]>([]);
   createEffect(on(mode, m => m === 'input' && setFiles(props.project.list())));
-  // Suggestions above the input: commands while it is a single `/word` (FR-6), the tools after `/tools `, the filter values after `/filter ` (FR-51), project files while an @path
+  // Suggestions above the input: commands while it is a single `/word` (FR-6), the tools after `/tools `, the filter values after `/filter ` (FR-51), the policies after `/policy `, project files while an @path
   // is typed at its end (FR-27). Tab completes; Enter runs a command taking no argument, else completes too.
   const suggestions = createMemo((): Suggestion[] => {
     if (mode() !== 'input') return [];
@@ -87,16 +87,25 @@ export function App(props: GateOptions & { onQuit: () => void }) {
         label: name, description: gate.toolsOn().includes(name) ? 'on → off' : 'off → on', draft: `/tools ${name}`, run: `/tools ${name}`,
       }));
     }
-    const kind = /^\/filter (\S*)$/.exec(draft());
-    if (kind) {
-      const off = gate.filter() ? [{ name: 'off', description: 'show all blocks' }] : [];
-      return [...off, ...FILTERS.map(f => ({ name: f.name, description: f.kinds.join(' + ') }))]
-        .filter(f => f.name.startsWith(kind[1]!.toLowerCase()))
-        .map(f => ({ label: f.name, description: f.description, draft: `/filter ${f.name}`, run: `/filter ${f.name}` }));
-    }
+    const value = valueSuggestions(draft());
+    if (value) return value;
     const found = fileCompletions(draft(), files());
     return found ? found.paths.map(path => ({ label: path, description: '', draft: `${draft().slice(0, found.at)}${path} `, run: null })) : [];
   });
+  // The values after `/filter ` (FR-51) and `/policy `, `off` first while one is on; null for any other draft.
+  function valueSuggestions(text: string): Suggestion[] | null {
+    const [, command, typed] = /^\/(filter|policy) (\S*)$/.exec(text) ?? [];
+    if (!command) return null;
+    const values = command === 'filter' ? filterValues() : policyValues();
+    return values
+      .filter(v => v.name.toLowerCase().startsWith(typed!.toLowerCase()))
+      .map(v => ({ label: v.name, description: v.description, draft: `/${command} ${v.name}`, run: `/${command} ${v.name}` }));
+  }
+  const filterValues = () => [...(gate.filter() ? [{ name: 'off', description: 'show all blocks' }] : []), ...FILTERS.map(f => ({ name: f.name, description: f.kinds.join(' + ') }))];
+  const policyValues = () => [
+    ...(gate.policy() ? [{ name: 'off', description: 'no policy' }] : []),
+    ...gate.policyNames().map(name => ({ name, description: name === gate.policy() ? 'active' : 'switch on' })),
+  ];
   const chosen = () => Math.min(suggested(), suggestions().length - 1);
   const suggestion = () => suggestions()[chosen()];
   const editDraft = (text: string) => {
@@ -240,7 +249,6 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     y: gate.approve,
     a: gate.allowForSession,
     n: gate.reject,
-    p: gate.pin,
     d: gate.remove,
     u: gate.undo,
     e: gate.edit,
@@ -618,7 +626,8 @@ function Header(props: { gate: Gate; width: number }) {
   };
   const tone = () => ({ ok: undefined, warn: TONE.warn, over: TONE.error })[budget()?.tone ?? 'ok'];
   const profile = () => props.gate.profile();
-  const thinking = () => ` · thinking ${thinkingLabel(props.gate.thinking())}`;
+  // The active Context Policy follows the thinking mode (ADR 0001).
+  const thinking = () => ` · thinking ${thinkingLabel(props.gate.thinking())}${props.gate.policy() ? ` · policy ${props.gate.policy()}` : ''}`;
   return (
     <HeaderBand
       width={props.width}
@@ -695,7 +704,7 @@ const LOOK_KEYS: Hint[] = [['q', 'quit']];
 // With marks only what acts on all marked blocks.
 const MARKED_KEYS: Hint[] = [['d', 'remove'], ['c', 'compact'], ['space', 'mark'], ['esc', 'unmark'], ['q', 'quit']];
 const MOVE: Hint = ['⌥↑↓', 'move'];
-const KEYS: Hint[] = [MOVE, ['e', 'edit'], ['d', 'remove'], ['p', 'pin'], ['space', 'mark'], ['c', 'compact'], ['t', 'thinking'], ['u', 'undo'], ['q', 'quit']];
+const KEYS: Hint[] = [MOVE, ['e', 'edit'], ['d', 'remove'], ['space', 'mark'], ['c', 'compact'], ['t', 'thinking'], ['u', 'undo'], ['q', 'quit']];
 
 // Colours of a row: a removed one is muted throughout, one the chat template drops all but its flags.
 const rowFg = (row: Row) =>

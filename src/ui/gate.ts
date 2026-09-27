@@ -10,7 +10,9 @@ import type { Kind, SessionEvent, SessionLog, Thinking } from '../core/log/event
 import { afterCalls, fold, pairOf, type Block } from '../core/log/fold';
 import { refreshEnvironment } from '../core/notes/environment';
 import { parseReference, peekReferences, readReferences, references, type ReadFile } from '../core/notes/files';
+import { applyPolicy, summary, type Policy, type Ports } from '../core/policy/policy';
 import { renderNative, renderPrefixes, sentBlocks, type Request } from '../core/render/native';
+import { openingBlocks } from '../core/session/session';
 import { DEFAULT_MODES } from '../core/render/template';
 import { budget, lastDrift, type Budget } from '../core/tokens/budget';
 import { answerBlocks } from '../core/toolcall/answer';
@@ -19,8 +21,7 @@ import { answerText, questionsOf, type Answer, type Question } from '../core/too
 import { count, errorText, formatTokens, thinkingLabel, titleOf } from './format';
 
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
-// events: the Session Log so far (new or resumed); reconnect: re-reads the config and opens the session's
-// Model Profile again (/reload, FR-44); openSessions: shows /sessions; notice: initial status line.
+// events: the Session Log so far (new or resumed); openSessions: shows /sessions; notice: initial status line.
 // runner: runs approved bash calls, searcher: search calls (FR-21); approval: decides which may run (FR-22); editor: $EDITOR for `e` (FR-8);
 // clipboard: copy on select.
 export type GateOptions = {
@@ -33,28 +34,31 @@ export type GateOptions = {
   log: SessionLog;
   events: SessionEvent[];
   project: Project;
-  reconnect: () => Promise<Backend>;
   openSessions: () => void;
   notice?: Status;
   // Default Compaction instruction (FR-13); the Model Profile Compaction runs on, null = the session's own (FR-17).
   instruction?: () => string;
   compactor?: () => Promise<Compactor | null>;
+  policies?: Policies;
 };
+// Context Policies (ADR 0001): the ones loaded at start, and the active one, which belongs to the app, not the session.
+export type Policies = { all: Policy[]; active: () => Policy | null; set: (policy: Policy | null) => void };
+const NO_POLICIES: Policies = { all: [], active: () => null, set: () => {} };
 export type Compactor = { profile: string; backend: Backend };
 // The project on disk: files for @path references and their completion (FR-27), the environment Note's text now
 // (FR-28), and $EDITOR on a file of the project (`e` on a reference).
 export type Project = { read: ReadFile; list: () => string[]; environment: () => string; open: (path: string) => Promise<void> };
 // Tool Approval (FR-22, FR-25): the splitter, the project root arguments must stay in, and the config's rules as read
-// at open and on /reload (ignored: project allow patterns).
+// when the session opened (ignored: project allow patterns).
 export type Approval = { split: Split; root: string; permissions: () => { rules: Rule[]; ignored: string[] } };
 
 // Slash commands (FR-6), in suggestion order.
 export const COMMANDS = [
   { name: '/sessions', arg: '', description: 'list, resume, rename, delete sessions' },
   { name: '/rename', arg: '<title>', description: 'rename session' },
-  { name: '/reload', arg: '', description: 're-read config' },
   { name: '/tools', arg: '<tool>', description: 'switch a tool on or off' },
   { name: '/filter', arg: '<kind>', description: 'show only blocks of one Kind' },
+  { name: '/policy', arg: '<name>', description: 'switch a Context Policy on or off' },
 ] as const;
 // What a Kind Filter takes (FR-51), in glossary order: the Kinds each shows; a Tool Call never without its Tool Result.
 export type Filter = { name: string; kinds: readonly Kind[] };
@@ -97,6 +101,12 @@ export type Compaction = Compactor & {
 
 // Undone operations whose event type does not read as one.
 const UNDONE: Partial<Record<SessionEvent['type'], string>> = { PairToNote: 'Tool Pair → Note' };
+// The last block: a User message, a Tool Result or a Note (e.g. an @path reference) asks for an answer,
+// not the Notes a new session starts with (environment, project instructions).
+function asksForAnswer(blocks: Block[], opening: Set<number>): boolean {
+  const last = blocks.findLast(b => !opening.has(b.id))?.kind;
+  return last === 'User' || last === 'Tool Result' || last === 'Note';
+}
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const APPROVE = 'y run once · a allow for session · n reject · e edit';
 const QUESTION_HINT = 'the model asks – answer in the dock';
@@ -104,7 +114,7 @@ const QUESTION_HINT = 'the model asks – answer in the dock';
 const cacheMiss = ({ predicted, cached }: ChatResult) =>
   predicted !== null && cached !== null && cached < predicted ? `cache: predicted ${predicted} · server reused ${cached}` : null;
 
-export function createGate({ log, reconnect, openSessions, runner, searcher, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, ...options }: GateOptions) {
+export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, policies = NO_POLICIES, ...options }: GateOptions) {
   const [events, setEvents] = createSignal(options.events);
   const [counted, setCounted] = createSignal<{ prefixes: Request[]; split: Counted } | null>(null);
   const [streaming, setStreaming] = createSignal<Streaming | null>(null);
@@ -115,14 +125,16 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   const [marked, setMarked] = createSignal<ReadonlySet<number>>(new Set());
   // Kind Filter (FR-51): what the block table shows; UI state, not logged.
   const [filter, setFilter] = createSignal<Filter | null>(null);
-  const [backend, setBackend] = createSignal(options.backend);
-  // Moving or pinning a Tool Pair asks first: the operation and block awaiting the same key again (FR-9).
+  const backend = () => options.backend;
+  // Moving a Tool Pair asks first: the operation and block awaiting the same key again (FR-9).
   const [confirming, setConfirming] = createSignal<string | null>(null);
   const [compacting, setCompacting] = createSignal<Compaction | null>(null);
   // Bumped when the server's cache changed without a new request to count (a Compaction on its slot).
   const [recount, setRecount] = createSignal(0);
   // Bumped when a referenced file may have changed (edited via `e`): the Gate shows it as it is now.
   const [reread, setReread] = createSignal(0);
+  // The active policy editing the Context before a request; Esc aborts its Compaction.
+  const [policing, setPolicing] = createSignal<AbortController | null>(null);
 
   const append = (event: SessionEvent) => {
     log.append(event);
@@ -150,7 +162,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     const last = events().findLastIndex(e => e.type === 'ResponseReceived');
     return last < 0 ? null : renderNative(fold(events().slice(0, last + 1)));
   });
-  // The streaming answer (its reasoning first) sits before the bottom pins; a running call's result where it will be added.
+  // The streaming answer (its reasoning first) sits at the end; a running call's result where it will be added.
   const live = createMemo((): Live[] => {
     const c = compacting();
     if (c && c.phase !== 'instruction') return [proposalRow(c)];
@@ -162,9 +174,8 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   });
   // The ids the answer's blocks get: a Thinking block first (FR-46).
   function streamingRows({ thinking, text }: Streaming): Live[] {
-    const before = sent().find(b => b.pin === 'bottom')?.id ?? null;
-    const reasoning: Live[] = thinking ? [{ id: nextId(), kind: 'Thinking', content: thinking, before }] : [];
-    const answer: Live[] = text || !thinking ? [{ id: nextId() + reasoning.length, kind: 'Assistant', content: text, before }] : [];
+    const reasoning: Live[] = thinking ? [{ id: nextId(), kind: 'Thinking', content: thinking, before: null }] : [];
+    const answer: Live[] = text || !thinking ? [{ id: nextId() + reasoning.length, kind: 'Assistant', content: text, before: null }] : [];
     return [...reasoning, ...answer];
   }
   // Selectable rows in order: sent blocks and the live rows.
@@ -232,10 +243,10 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     setSelected(id);
   }
 
-  // Appends the operation's event, or shows why not (FR-10, NFR-3). Returns whether it was applied.
+  // Appends the operation's event, or shows why not (NFR-3). Returns whether it was applied.
   function apply(result: ops.Outcome): boolean {
     if ('error' in result) setStatus({ text: result.error, tone: 'info' });
-    else append(result.event);
+    else append(ops.attributed(result.event, 'user'));
     return !('error' in result);
   }
   // A Context operation on the selected block; `describe` gives the status line text afterwards.
@@ -246,7 +257,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     setStatus(text ? { text, tone: 'info' } : null);
   }
 
-  // A Tool Pair is moved or pinned as a Note: the first press asks, the same key again converts it,
+  // A Tool Pair is moved as a Note: the first press asks, the same key again converts it,
   // then the operation acts on the Note (FR-9). `action` names the operation, `key` its key.
   function viaNote(action: string, key: string, then: () => void) {
     const block = selectedBlock();
@@ -262,7 +273,6 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     setSelected(id);
     then();
   }
-  const PINNED = { top: 'pinned ⤒ top', bottom: 'pinned ⤓ bottom (sent as user-role Note at the end)' };
   // Not while a Kind Filter hides the neighbours the block would move past (FR-51).
   function move(dir: -1 | 1) {
     if (filter()) return;
@@ -270,8 +280,6 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   }
   // A block as it is now, after an operation.
   const blockOf = (id: number) => context().blocks.find(b => b.id === id)!;
-  const pinned = ({ pin }: Block) => (pin ? PINNED[pin] : 'unpinned');
-  const pin = () => viaNote('pin', 'p', () => operate(ops.pin, b => pinned(blockOf(b.id))));
   const whole = (b: Block) => (ops.inPair(b) ? ' (whole Tool Pair)' : '');
   // d: the marked blocks, else the selected one.
   function remove() {
@@ -347,7 +355,8 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   }
 
   // The answer's text and Tool Calls become blocks; its calls are decided by the rules.
-  function finish(result: ChatResult) {
+  // `policy`: what the active policy did before the request.
+  function finish(result: ChatResult, policy: string | null) {
     // Calls to a tool denied by rule are parsed too: they are answered "denied by rule" (FR-21).
     const { events, notRun } = answerBlocks(result, nextId(), [...toolsOn(), ...deniedTools(rules())]);
     events.forEach(append);
@@ -355,9 +364,10 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     append({ type: 'ResponseReceived', usage: result.usage, cached: result.cached });
     const miss = cacheMiss(result);
     // Calls to decide, or only a rejected Question already answered: the loop goes on.
-    if (events.some(e => e.kind === 'Tool Call')) return advance([notRun && notRunText(notRun), miss && `⚠ ${miss}`].filter((n): n is string => !!n));
+    if (events.some(e => e.kind === 'Tool Call')) return advance([policy, notRun && notRunText(notRun), miss && `⚠ ${miss}`].filter((n): n is string => !!n));
     const status = answerStatus(result, notRun);
-    setStatus(miss ? { text: `${status.text} · ⚠ ${miss}`, tone: 'warn' } : status);
+    const text = [policy, status.text, miss && `⚠ ${miss}`].filter(Boolean).join(' · ');
+    setStatus({ text, tone: miss ? 'warn' : status.tone });
   }
 
   // Tool Approval (FR-22–FR-25) ----------------------------------------------------------------------------
@@ -442,10 +452,10 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     return error ? null : block!;
   }
 
-  // y: run the call once – unless a rule denies it by now (/reload).
+  // y: run the call once. A call a rule denies never waits here: it is decided at once, an edited one too.
   function approve() {
     const call = decidable();
-    if (call) void (verdictOf(call).action === 'deny' ? advance() : run(call, []));
+    if (call) void run(call, []);
   }
 
   // a: allow the call's command prefixes for the session (FR-23, FR-25) – the preview shows them beforehand; they
@@ -481,9 +491,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
       return { text: pending.tool === 'question' ? QUESTION_HINT : `Tool Calls await approval – ${APPROVE} on the ? approve row`, tone: 'warn' };
     }
     const changed = lastAnswer() !== null && !same(lastAnswer(), request());
-    // The last unpinned block: a User message, a Tool Result or a Note (e.g. an @path reference) asks for an answer.
-    const last = sent().filter(b => !b.pin).at(-1)?.kind;
-    return changed || last === 'User' || last === 'Tool Result' || last === 'Note' ? null : { text: 'nothing to send – Tab to write', tone: 'info' };
+    return changed || asksForAnswer(sent(), openingBlocks(events())) ? null : { text: 'nothing to send – Tab to write', tone: 'info' };
   }
 
   // A Context as big as the window is not sent; the user makes room (FR-18, FR-20).
@@ -497,9 +505,17 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   // first on the Gate's count, so a Context known to be too big reads no references (FR-27); the count right
   // before sending checks again (halted).
   function ready(): boolean {
-    const blocked = unsendable();
-    if (blocked) setStatus(blocked);
-    return !blocked && !(split() && overBudget(split()!.total)) && prepare();
+    return !blocked() && !(split() && overBudget(split()!.total)) && prepare();
+  }
+  // With an active policy the references are read first, then the policy edits the Context; the count right before
+  // sending checks it (FR-54).
+  async function readyWith(policy: Policy): Promise<boolean> {
+    return !blocked() && prepare() && (await runPolicy(policy));
+  }
+  function blocked(): boolean {
+    const why = unsendable();
+    if (why) setStatus(why);
+    return why !== null;
   }
   // After the count right before sending: Esc cancelled it, or the Context does not fit.
   function halted(aborted: boolean, total: number): boolean {
@@ -509,8 +525,13 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     return halt;
   }
 
+  // The check stays synchronous without a policy: a second send in the same tick finds the first streaming.
   async function send() {
-    if (streaming() || running() || !ready()) return;
+    if (streaming() || running() || policing()) return;
+    const policy = policies.active();
+    if (!(policy ? await readyWith(policy) : ready())) return;
+    const did = ran;
+    ran = null;
     const requested = prefixes();
     const payload = requested.at(-1)!;
     const abort = new AbortController();
@@ -518,7 +539,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     setStatus(null);
     try {
       const { total } = await backend().count(requested);
-      if (halted(abort.signal.aborted, total)) return;
+      if (halted(abort.signal.aborted, total)) return withDid(did);
       append({ type: 'RequestSent', hash: Bun.hash(JSON.stringify(payload)).toString(16), tokens: total });
       setMarked(new Set<number>());
       setSelected(nextId());
@@ -531,12 +552,68 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
       };
       const result = await backend().chat(payload, { signal: abort.signal, onDelta, onThinking, maxTokens: budgetOf(total).maxTokens });
       setStreaming(null);
-      finish(result);
+      finish(result, did);
     } catch (e) {
       setStreaming(null);
       setStatus({ text: `backend error: ${errorText(e)}`, tone: 'error' });
+      withDid(did);
     }
     keepSelection();
+  }
+
+  // Context Policy (ADR 0001, FR-52–FR-54) ---------------------------------------------------------------
+  // What the policy did before the request being sent, for its status line.
+  let ran: string | null = null;
+  // A request not sent after the policy ran still says what the policy did.
+  const withDid = (did: string | null) => void (did && setStatus({ ...status()!, text: `${status()!.text} · ${did}` }));
+  // The active policy edits the Context; an error, its Compaction's too, stops the Gate: nothing is sent.
+  async function runPolicy(policy: Policy): Promise<boolean> {
+    const abort = new AbortController();
+    setPolicing(abort);
+    setStatus({ text: `policy ${policy.name} running`, tone: 'warn' });
+    try {
+      const { changes, error } = await applyPolicy(policy, policyPorts(abort.signal));
+      const did = changes.length ? summary(policy.name, changes) : null;
+      if (error) setStatus({ text: [`policy ${policy.name}: ${error} – not sent`, did].filter(Boolean).join(' · '), tone: 'error' });
+      else ran = did;
+      return !error;
+    } catch (e) {
+      setStatus({ text: `policy ${policy.name}: ${errorText(e)} – not sent`, tone: 'error' });
+      return false;
+    } finally {
+      setPolicing(null);
+      keepSelection();
+    }
+  }
+  const policyPorts = (signal: AbortSignal): Ports => ({
+    events, append, window: backend().window, aborted: () => signal.aborted,
+    count: context => backend().count(renderPrefixes(context)),
+    compact: (context, sources, instruction) => policyCompaction(compaction.compactionRequest(context, sources, instruction), signal),
+  });
+  // A policy's Compaction runs like the user's (FR-14, FR-17), without review; its Note is the answer.
+  async function policyCompaction(request: Request, signal: AbortSignal): Promise<string> {
+    const own = await compactor();
+    const on = own?.backend ?? backend();
+    try {
+      const { total } = await on.count([request]);
+      if (total >= on.window) throw new Error(`request ${formatTokens(total)} ≥ window ${formatTokens(on.window)}`);
+      const result = await on.chat(request, { signal, onDelta: () => {}, maxTokens: on.window - total });
+      if (result.finish === 'aborted' || result.finish === 'length') throw new Error(result.finish === 'length' ? 'cut off at max_tokens' : 'aborted');
+      return result.content;
+    } finally {
+      // The session's server cache now holds the compaction request (FR-17).
+      if (!own) setRecount(recount() + 1);
+    }
+  }
+
+  // /policy <name> switches a policy on (FR-53), /policy off off; alone it shows the active one and the names.
+  function switchPolicy(name: string) {
+    const values = ['off', ...policies.all.map(p => p.name)].join(' ');
+    if (!name) return setStatus({ text: `policy ${policies.active()?.name ?? 'off'} · /policy ${values}`, tone: 'info' });
+    const chosen = name === 'off' ? null : policies.all.find(p => p.name === name);
+    if (chosen === undefined) return setStatus({ text: `unknown policy ${name}: ${values}`, tone: 'error' });
+    policies.set(chosen);
+    setStatus({ text: chosen ? `policy ${chosen.name} on – edits the Context before every request` : 'policy off', tone: 'info' });
   }
 
   // Compaction (FR-13–FR-17) ------------------------------------------------------------------------------
@@ -673,19 +750,9 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     }
   }
 
-  async function reload() {
-    try {
-      setBackend(await reconnect());
-      dropDenied();
-      setStatus(withHint({ text: 'config reloaded', tone: 'ok' }, ignoredHint(approval)));
-    } catch (e) {
-      setStatus({ text: `reload failed: ${errorText(e)}`, tone: 'error' });
-    }
-  }
-
   // Thinking for the following requests (FR-49): the one set at the Gate, else the Model Profile's.
   const thinking = (): Thinking => context().thinking ?? backend().thinking ?? 'off';
-  // The modes of the model's chat template, as the backend read them when it connected (setup, /reload).
+  // The modes of the model's chat template, as the backend read them when it connected (session opened, setup).
   const thinkingModes = () => backend().thinkingModes ?? DEFAULT_MODES;
   function cycleThinking() {
     const modes = thinkingModes();
@@ -720,7 +787,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   }
 
   const commands: Record<CommandName, (arg: string) => void> = {
-    '/sessions': openSessions, '/rename': renameSession, '/reload': () => void reload(), '/tools': toggleTool, '/filter': filterBy,
+    '/sessions': openSessions, '/rename': renameSession, '/tools': toggleTool, '/filter': filterBy, '/policy': switchPolicy,
   };
   // Input text: a known command runs with the rest as argument; an unknown `/word` is an error; anything else becomes
   // a User block and is sent right away – if sending is blocked, the block stays and the status says why (FR-6).
@@ -744,7 +811,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     } else setStatus({ text: `${count(files.length, 'file reference')} added – read at send · e opens the file · Enter sends`, tone: 'info' });
   }
 
-  // Tools denied by rule leave the Tools Block (FR-21), at open and on /reload.
+  // Tools denied by rule leave the Tools Block (FR-21), at open.
   function dropDenied() {
     const edit = ops.withoutDenied(events(), context(), deniedTools(rules()));
     if (edit) append(edit);
@@ -763,7 +830,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     live,
     // Streaming or running: only Esc (abort, kill) acts.
     nextCall: () => ops.nextCall(context()),
-    busy: () => streaming() !== null || running() !== null || compacting()?.phase === 'running',
+    busy: () => streaming() !== null || running() !== null || policing() !== null || compacting()?.phase === 'running',
     status,
     rows,
     selected,
@@ -783,11 +850,14 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     // Whether a sent block is still cached; null while counting.
     warm: (id: number) => warm()?.[sent().findIndex(b => b.id === id)] ?? null,
     profile: () => context().profile,
+    // The active Context Policy and the ones to switch on (ADR 0001).
+    policy: () => policies.active()?.name ?? null,
+    policyNames: () => policies.all.map(p => p.name),
     thinking,
     cycleThinking,
     submit,
     send,
-    abort: () => (streaming() ?? running() ?? compacting())?.abort?.abort(),
+    abort: () => (policing() ?? (streaming() ?? running() ?? compacting())?.abort)?.abort(),
     compacting,
     sourceTokens: () => (compacting() ? tokensOf(compacting()!.sources) : null),
     review: () => (compacting()?.phase === 'review' ? review(compacting()!) : null),
@@ -810,7 +880,6 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     answer,
     select: (delta: number) => selectAt(shown().indexOf(selected()) + delta),
     move,
-    pin,
     remove,
     undo,
     edit: () => void edit(),

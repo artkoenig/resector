@@ -5,7 +5,7 @@ Coding agent harness for local LLMs with small context windows. The user sees, m
 ## Language
 
 **Context Block**:
-Smallest addressable unit of what is sent to the model. Kinds: System, Tools, User, Thinking, Assistant, Tool Call, Tool Result, Note. Has a stable identity across Revisions and a token count (rendered, including role markers); can be edited, moved, pinned, removed (undoable), compacted.
+Smallest addressable unit of what is sent to the model. Kinds: System, Tools, User, Thinking, Assistant, Tool Call, Tool Result, Note. Has a stable identity across Revisions and a token count (rendered, including role markers); can be edited, moved, removed (undoable), compacted.
 _Avoid_: message, chunk, segment
 
 **Revision**:
@@ -25,7 +25,7 @@ The ordered list of Context Blocks sent in the next request.
 _Avoid_: prompt, history, window
 
 **Session Log**:
-Complete, append-only sequence of events of a session: blocks added (by user, model or tool) and Context operations (edit, move, pin, unpin, remove, compact). The Context is derived by replaying it; undo is a counter-event. Nothing is ever deleted.
+Complete, append-only sequence of events of a session: blocks added (by user, model or tool) and Context operations (edit, move, remove, compact). The Context is derived by replaying it; undo is a counter-event. Nothing is ever deleted.
 _Avoid_: history, transcript
 
 **Review Gate**:
@@ -41,7 +41,7 @@ Tool Call in which the model asks the user one or more questions, each with at l
 _Avoid_: prompt, ask, approval
 
 **Compaction**:
-User-controlled rewrite of selected Context Blocks by the LLM, following a user instruction, into one Note at the position of the first source. The model sees only the selected blocks and the instruction. The user reviews the proposal and accepts, discards or refines it (refine starts again from the sources). On accept the sources count as removed; undo brings them back.
+Rewrite of selected Context Blocks by the LLM, following an instruction, into one Note at the position of the first source. The model sees only the selected blocks and the instruction. Started by the user, who reviews the proposal and accepts, discards or refines it (refine starts again from the sources), or by a Context Policy, whose result is accepted without review. On accept the sources count as removed; undo brings them back.
 _Avoid_: summarization, auto-compact
 
 **Note**:
@@ -51,12 +51,13 @@ Context Block of free text without API role semantics, keeping a reference to it
 Context Block holding the model's reasoning for one answer, placed before that answer. Stays in the Context until the user removes it; the model's chat template may still drop it from the rendered request.
 _Avoid_: reasoning, chain of thought
 
-**Pin**:
-Marker that keeps a Context Block at the top (after System and Tools Block) or the very end of the Context, countering lost-in-the-middle. Pinned blocks keep their order among themselves.
-
 **Kind Filter**:
 View restriction at the Review Gate to Context Blocks of one Kind: User, Thinking, Assistant, Note, or Tool Calls with their Tool Results (never one without the other). Changes nothing about the Context and is not recorded in the Session Log.
 _Avoid_: search, hide
+
+**Context Policy**:
+Named set of rules that edits the Context automatically, using only the ordinary Context operations. Applied before every request; its operations are recorded in the Session Log like the user's, attributed to the policy and visible at the Review Gate. An undone operation is applied again before the next request as long as the policy is active. At most one is active at a time; it is switched on and off at the Review Gate, belongs to the running app rather than to a Session, and is off after every start. Context operations in the Session Log name who made them: the user or the policy; the Session does not depend on it.
+_Avoid_: mode, strategy, autopilot, auto-compact
 
 **Model Profile**:
 Per-model settings: backend, endpoint, tokenizer, window size, Tool Protocol, tool result format, sampling, thinking at session start (off, on or effort level; switched at the Gate with `t`), and optionally another Model Profile used for Compaction (default: the same). Fixed for a session; only when it is gone from the config at resume does the session fall back to the default Model Profile.

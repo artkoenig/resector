@@ -1,4 +1,4 @@
-import type { Kind, Origin, Pin, SessionEvent, Stopped, Thinking, Tool, ToolProtocol } from './events';
+import type { Kind, Origin, SessionEvent, Stopped, Thinking, Tool, ToolProtocol } from './events';
 
 export type Block = {
   id: number;
@@ -23,12 +23,10 @@ export type Block = {
   // Tool Call only: no Tool Result yet, so it awaits approval (FR-23).
   pending?: boolean;
   title: string | null;
-  pin: Pin | null;
   // Struck through until the next request, then hidden.
   removed: boolean;
   // Flags since the last request (FR-5).
   moved: boolean;
-  pinChanged: boolean;
   // Current Revision (FR-8); revised: another one than at the last request (`✎n`, FR-5).
   revision: number;
   revised: boolean;
@@ -36,7 +34,7 @@ export type Block = {
 // thinking: set at the Gate (FR-49); null = the Model Profile's.
 export type Context = { profile: string; protocol: ToolProtocol; thinking: Thinking | null; blocks: Block[]; nextId: number };
 
-type Entry = Omit<Block, 'revised'> & { hidden: boolean; sentPin: Pin | null; sentRevision: number };
+type Entry = Omit<Block, 'revised'> & { hidden: boolean; sentRevision: number };
 // unsent: indices of events logged since the last request.
 type State = { profile: string; thinking: Thinking | null; entries: Map<number, Entry>; order: number[]; events: SessionEvent[]; unsent: Set<number> };
 type Apply<T extends SessionEvent['type']> = (state: State, event: Extract<SessionEvent, { type: T }>) => void;
@@ -44,13 +42,6 @@ type Apply<T extends SessionEvent['type']> = (state: State, event: Extract<Sessi
 const entry = (state: State, id: number) => state.entries.get(id)!;
 const take = (state: State, id: number) => state.order.splice(state.order.indexOf(id), 1);
 const insert = (state: State, at: number, id: number) => state.order.splice(at, 0, id);
-// New and unpinned blocks go before the bottom pins.
-const firstBottom = (state: State) => {
-  const i = state.order.findIndex(id => entry(state, id).pin === 'bottom');
-  return i === -1 ? state.order.length : i;
-};
-const afterTop = (state: State) =>
-  state.order.findLastIndex(id => ['System', 'Tools'].includes(entry(state, id).kind) || entry(state, id).pin === 'top') + 1;
 // Where a Tool Result goes: after its Tool Call and the calls and results following it (FR-24), so
 // all calls of one answer precede their results, as the request sends them.
 export function afterCalls(blocks: Pick<Block, 'id' | 'kind'>[], call: number): number {
@@ -70,15 +61,7 @@ export function pairOf(blocks: Pick<Block, 'id' | 'kind' | 'call'>[], id: number
 // A Tool Call as the user reads it: the bash command, or the tool name and its query.
 export const callText = ({ tool, content }: Pick<Block, 'tool' | 'content'>): string => (tool && tool !== 'bash' ? `${tool} ${content}` : content);
 
-const NEW_ENTRY = { title: null, removed: false, moved: false, pinChanged: false, revision: 1, hidden: false, sentPin: null, sentRevision: 1 };
-
-function setPin(state: State, id: number, pin: Pin | null) {
-  const e = entry(state, id);
-  take(state, id);
-  e.pin = pin;
-  e.pinChanged = pin !== e.sentPin;
-  insert(state, pin === 'top' ? afterTop(state) : pin === 'bottom' ? state.order.length : firstBottom(state), id);
-}
+const NEW_ENTRY = { title: null, removed: false, moved: false, revision: 1, hidden: false, sentRevision: 1 };
 
 const pairIn = (state: State, id: number) => pairOf([...state.entries.values()], id);
 
@@ -86,14 +69,12 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   BlockAdded: (state, e) => {
     const block = { id: e.id, kind: e.kind, origin: e.origin, content: e.content, cutOff: e.cutOff === true, ...(e.tool && { tool: e.tool }),
       ...(e.call !== undefined && { call: e.call }), ...(e.stopped && { stopped: e.stopped }), ...(e.file && { file: e.file }) };
-    const pin = e.pin ?? null;
-    state.entries.set(e.id, { ...block, ...NEW_ENTRY, pin, sentPin: pin });
-    const at = e.call === undefined ? (pin === 'top' ? afterTop(state) : firstBottom(state)) : afterCalls(state.order.map(id => entry(state, id)), e.call);
-    insert(state, at, e.id);
+    state.entries.set(e.id, { ...block, ...NEW_ENTRY });
+    insert(state, e.call === undefined ? state.order.length : afterCalls(state.order.map(id => entry(state, id)), e.call), e.id);
   },
   FileReferenced: (state, e) => {
-    state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'file', file: e.file, unread: true, content: '', cutOff: false, ...NEW_ENTRY, pin: null });
-    insert(state, firstBottom(state), e.id);
+    state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'file', file: e.file, unread: true, content: '', cutOff: false, ...NEW_ENTRY });
+    state.order.push(e.id);
   },
   FileRead: (state, e) => {
     const { unread: _, ...read } = entry(state, e.id);
@@ -105,8 +86,6 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
     entry(state, e.id).moved = true;
   },
   Edit: (state, e) => void Object.assign(entry(state, e.id), { content: e.content, revision: e.revision }),
-  Pin: (state, e) => setPin(state, e.id, e.at),
-  Unpin: (state, e) => setPin(state, e.id, null),
   ProfileFallback: (state, e) => void (state.profile = e.profile),
   ThinkingSet: (state, e) => void (state.thinking = e.thinking),
   Remove: (state, e) => [e.id, ...(e.others ?? [])].flatMap(id => pairIn(state, id)).forEach(id => (entry(state, id).removed = true)),
@@ -115,21 +94,21 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   PairToNote: (state, e) => {
     const [call, result] = pairIn(state, e.call).map(id => entry(state, id));
     const content = `[Tool ${call!.tool ?? 'bash'}: ${call!.content}]\n${result!.content}`;
-    state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'tool', content, source: callText(call!), cutOff: false, ...NEW_ENTRY, pin: call!.pin });
+    state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'tool', content, source: callText(call!), cutOff: false, ...NEW_ENTRY });
     insert(state, afterCalls(state.order.map(id => entry(state, id)), e.call), e.id);
     for (const b of [call!, result!]) Object.assign(b, { removed: true, hidden: true });
   },
-  // The sources are gone at once; the Note takes the first one's place and pin.
+  // The sources are gone at once; the Note takes the first one's place.
   Compact: (state, e) => {
     const [first, ...rest] = e.sources.map(id => entry(state, id));
     const compacted = { sources: e.sources, instruction: e.instruction };
-    state.entries.set(e.noteId, { id: e.noteId, kind: 'Note', origin: 'compaction', content: e.content, compacted, cutOff: false, ...NEW_ENTRY, pin: first!.pin });
+    state.entries.set(e.noteId, { id: e.noteId, kind: 'Note', origin: 'compaction', content: e.content, compacted, cutOff: false, ...NEW_ENTRY });
     insert(state, state.order.indexOf(first!.id), e.noteId);
     for (const b of [first!, ...rest]) Object.assign(b, { removed: true, hidden: true });
   },
   Rename: (state, e) => void (entry(state, e.id).title = e.title || null),
   RequestSent: state => {
-    for (const e of state.entries.values()) Object.assign(e, { hidden: e.removed, moved: false, pinChanged: false, sentPin: e.pin, sentRevision: e.revision });
+    for (const e of state.entries.values()) Object.assign(e, { hidden: e.removed, moved: false, sentRevision: e.revision });
     state.unsent.clear();
   },
   // Undoing an operation that was already sent changes the Context since the last request (FR-5).
@@ -137,7 +116,6 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
     const target = state.events[e.eventId]!;
     if (state.unsent.has(e.eventId)) return;
     if (target.type === 'Move') entry(state, target.id).moved = true;
-    if (target.type === 'Pin' || target.type === 'Unpin') entry(state, target.id).pinChanged = true;
     // The replay skipped the sent Revision; the one restored differs from it.
     if (target.type === 'Edit') entry(state, target.id).sentRevision = target.revision;
   },
@@ -162,7 +140,7 @@ export function fold(events: SessionEvent[]): Context {
   const blocks = state.order
     .map(id => entry(state, id))
     .filter(e => !e.hidden)
-    .map(({ hidden, sentPin, sentRevision, ...block }) => ({ ...block, revised: block.revision !== sentRevision }))
+    .map(({ hidden, sentRevision, ...block }) => ({ ...block, revised: block.revision !== sentRevision }))
     .map(block => (block.kind === 'Tool Call' ? { ...block, pending: !answered.has(block.id) } : block));
   return { profile: state.profile, protocol: first.protocol, thinking: state.thinking, blocks, nextId: Math.max(0, ...state.entries.keys()) + 1 };
 }

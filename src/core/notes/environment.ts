@@ -1,4 +1,4 @@
-// The environment Note (FR-28): where the model runs, pinned top, refreshed by the harness before each request.
+// The environment Note (FR-28): where the model runs, refreshed in place by the harness before each request.
 import { nextRevision } from '../context/operations';
 import type { SessionEvent } from '../log/events';
 import type { Context } from '../log/fold';
