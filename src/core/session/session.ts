@@ -14,8 +14,8 @@ type BlockAdded = Extract<SessionEvent, { type: 'BlockAdded' }>;
 type RequestSent = Extract<SessionEvent, { type: 'RequestSent' }>;
 
 // What a new session starts with besides System prompt and Tools Block: the environment Note (FR-28) and the
-// project instructions (`AGENTS.md`, else `CLAUDE.md`), read once now (FR-29). Both
-// ordinary Notes right after the Tools Block.
+// project instructions (`AGENTS.md`, else `CLAUDE.md`), read once now (FR-29).
+// Both are ordinary Notes right after the Tools Block.
 export type Instructions = { file: string; content: string };
 export type SessionNotes = { environment?: string; instructions?: Instructions | null };
 

@@ -59,7 +59,6 @@ const ADD: Record<Block['kind'], Add> = {
   'Tool Result': (r, ids, b) => void r.messages.push({ role: 'tool', tool_call_id: ids.get(b.call!)!, content: b.content }),
 };
 
-
 // Requests for the first 1, 2, … sent blocks: a block owns the tokens its step adds (per-block split).
 // The last one is the whole request.
 export function renderPrefixes(context: Context): Request[] {

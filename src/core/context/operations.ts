@@ -66,7 +66,7 @@ export function editable(block: Block): string | null {
   return block.kind === 'Tool Call' && !block.pending ? 'executed Tool Calls are immutable' : null;
 }
 
-// Moving or pinning a Tool Pair turns it into Note `id` first (FR-9).
+// Moving a Tool Pair turns it into Note `id` first (FR-9).
 export function toNote(block: Block, id: number): Outcome {
   const blocked = guard(block);
   if (blocked) return blocked;

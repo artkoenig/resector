@@ -97,6 +97,12 @@ export type Compaction = Compactor & {
 
 // Undone operations whose event type does not read as one.
 const UNDONE: Partial<Record<SessionEvent['type'], string>> = { PairToNote: 'Tool Pair → Note' };
+// The last block: a User message, a Tool Result or a Note (e.g. an @path reference) asks for an answer,
+// not the Notes a new session starts with (environment, project instructions) right after the Tools Block.
+function asksForAnswer(blocks: Block[]): boolean {
+  if (!blocks.some(b => !ops.isFixed(b) && (b.kind !== 'Note' || b.unread))) return false;
+  return ['User', 'Tool Result', 'Note'].includes(blocks.at(-1)!.kind);
+}
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const APPROVE = 'y run once · a allow for session · n reject · e edit';
 const QUESTION_HINT = 'the model asks – answer in the dock';
@@ -477,11 +483,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
       return { text: pending.tool === 'question' ? QUESTION_HINT : `Tool Calls await approval – ${APPROVE} on the ? approve row`, tone: 'warn' };
     }
     const changed = lastAnswer() !== null && !same(lastAnswer(), request());
-    // The last block: a User message, a Tool Result or a Note (e.g. an @path reference) asks for an answer,
-    // not the Notes a new session starts with (environment, project instructions) right after the Tools Block.
-    const opened = sent().some(b => !ops.isFixed(b) && (b.kind !== 'Note' || b.unread));
-    const last = opened ? sent().at(-1)?.kind : undefined;
-    return changed || last === 'User' || last === 'Tool Result' || last === 'Note' ? null : { text: 'nothing to send – Tab to write', tone: 'info' };
+    return changed || asksForAnswer(sent()) ? null : { text: 'nothing to send – Tab to write', tone: 'info' };
   }
 
   // A Context as big as the window is not sent; the user makes room (FR-18, FR-20).

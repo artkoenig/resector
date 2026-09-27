@@ -129,7 +129,7 @@ Where earlier decisions conflicted, the later or more specific one wins:
 | Conflict | Resolution |
 |---|---|
 | Tool Calls not editable (block model) vs. `e` before execution (Tool Approval) | Editable only while awaiting approval; executed calls stay immutable. |
-| Flags `📌` `◇` (block model) vs. `⤒ ⤓`, no `◇` (Compaction flow) | `⤒ ⤓ ⇄ ✎n`; compaction visible via title. |
+| Flags `📌` `◇` (block model) vs. `⤒ ⤓`, no `◇` (Compaction flow) | `⇄ ✎n` (pins removed, ADR 0002); compaction visible via title. |
 | `Enter` opens detail (block model) vs. `Enter` sends (Gate UI) | `Enter` sends; the preview pane shows details. |
 | Protocol fixed per session (tool protocols research) vs. switchable (Model Profile) | Fixed per session; profile switch dropped (complete prototype). `text-json` deferred. |
 | Removed blocks always visible (Gate UI) vs. until sent (Compaction flow) | Struck through until sent. |
