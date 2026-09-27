@@ -103,7 +103,9 @@ test('the summary counts what the policy did, a Tool Pair and a block counted in
 });
 
 // The Session Log in memory; counting gives every block 10 tokens; compaction writes `note`.
-function ports(events: SessionEvent[], { note = async () => 'the gist' }: { note?: Ports['compact'] } = {}) {
+// abortAt: the number of aborted() checks after which Esc counts as pressed.
+function ports(events: SessionEvent[], { note = async () => 'the gist', abortAt = Infinity }: { note?: Ports['compact']; abortAt?: number } = {}) {
+  let checks = 0;
   const log = [...events];
   const seen: PolicyContext[] = [];
   const compacted: { sources: number[]; instruction: string; blocks: number }[] = [];
@@ -112,6 +114,7 @@ function ports(events: SessionEvent[], { note = async () => 'the gist' }: { note
     append: event => void log.push(event),
     count: async (context: Context) => ({ blocks: context.blocks.filter(b => !b.removed).map(() => 10), total: 999 }),
     window: 4096,
+    aborted: () => ++checks > abortAt,
     compact: async (context, sources, instruction) => {
       compacted.push({ sources, instruction, blocks: context.blocks.length });
       return note(context, sources, instruction);
@@ -142,11 +145,11 @@ test('a policy returning nothing changes nothing', async () => {
 
 test(`a policy still changing the Context after ${MAX_PASSES} passes stops; what it did stays`, async () => {
   const { port, added } = ports(session());
-  const edits = Array.from({ length: MAX_PASSES }, (_, i): PolicyOperation[] => [{ op: 'edit', id: 7, content: `v${i}` }]);
+  const edits = Array.from({ length: MAX_PASSES + 1 }, (_, i): PolicyOperation[] => [{ op: 'edit', id: 7, content: `v${i}` }]);
   const result = await applyPolicy(policy(edits), port);
   expect(result.error).toBe(`still changing the Context after ${MAX_PASSES} passes`);
-  expect(result.changes).toHaveLength(MAX_PASSES - 1);
-  expect(added().map(e => e.type === 'Edit' && e.content)).toEqual(['v0', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6']);
+  expect(result.changes).toHaveLength(MAX_PASSES);
+  expect(added().map(e => e.type === 'Edit' && e.content)).toEqual(['v0', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7']);
   const { port: last } = ports(session());
   expect((await applyPolicy(policy(edits.slice(1)), last)).error).toBeNull();
 });
@@ -194,4 +197,15 @@ test('a Compaction that fails or writes nothing stops the policy', async () => {
   const empty = ports(session(), { note: async () => ' \n' });
   expect(await applyPolicy(policy(op), empty.port)).toEqual({ changes: [], error: 'compact 3: compaction failed: empty Note' });
   expect([...failing.added(), ...empty.added()]).toEqual([]);
+});
+
+test('Esc stops the policy before the next pass or operation; what it did stays', async () => {
+  const passes: PolicyOperation[][] = [[{ op: 'remove', id: 3 }, { op: 'remove', id: 4 }], [{ op: 'remove', id: 7 }]];
+  const first = ports(session(), { abortAt: 0 });
+  expect(await applyPolicy(policy(passes), first.port)).toEqual({ changes: [], error: 'aborted' });
+  const between = ports(session(), { abortAt: 2 });
+  expect(await applyPolicy(policy(passes), between.port)).toEqual({ changes: [{ noun: 'Thinking', verb: 'removed' }], error: 'aborted' });
+  expect(between.added()).toEqual([{ type: 'Remove', id: 3, by: 'trail' }]);
+  const nextPass = ports(session(), { abortAt: 3 });
+  expect(await applyPolicy(policy(passes), nextPass.port)).toEqual({ changes: [{ noun: 'Thinking', verb: 'removed' }, { noun: 'Assistant', verb: 'removed' }], error: 'aborted' });
 });

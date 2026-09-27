@@ -14,9 +14,9 @@ import type { OpenSession, SessionStore } from '../adapters/store/sessions';
 import type { Split } from '../core/approval/approval';
 import type { Editor } from '../core/context/operations';
 import type { SessionEvent } from '../core/log/events';
-import type { Policy } from '../core/policy/policy';
 import { fold } from '../core/log/fold';
 import { environmentText } from '../core/notes/environment';
+import type { Policy } from '../core/policy/policy';
 import { newSession, summarize, type SessionRef } from '../core/session/session';
 import { App } from './app';
 import { errorText } from './format';
@@ -55,7 +55,7 @@ export function Launch(props: LaunchOptions) {
   // tree-sitter-bash, loaded once (FR-22).
   let split: Split | undefined;
   const [current, setCurrent] = createSignal('');
-  // Context Policies (ADR 0001), loaded at start: the active one belongs to the app, it stays when switching sessions.
+  // Context Policies (ADR 0001, FR-53), loaded at start: the active one belongs to the app, it stays when switching sessions.
   const [active, setActive] = createSignal<Policy | null>(null);
   const policies: Policies = { all: [], active, set: setActive };
   // Policies that failed to load, reported once in the first status line.

@@ -503,14 +503,19 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
 
   // Whether the Context may go: nothing blocks it, it fits, and its references are read. The window is checked
   // first on the Gate's count, so a Context known to be too big reads no references (FR-27); the count right
-  // before sending checks again (halted). An active policy edits the Context read first, then the count checks it.
-  async function ready(): Promise<boolean> {
-    const blocked = unsendable();
-    if (blocked) setStatus(blocked);
-    if (blocked) return false;
-    const policy = policies.active();
-    if (policy) return prepare() && (await runPolicy(policy));
-    return !(split() && overBudget(split()!.total)) && prepare();
+  // before sending checks again (halted).
+  function ready(): boolean {
+    return !blocked() && !(split() && overBudget(split()!.total)) && prepare();
+  }
+  // With an active policy the references are read first, then the policy edits the Context; the count right before
+  // sending checks it (FR-54).
+  async function readyWith(policy: Policy): Promise<boolean> {
+    return !blocked() && prepare() && (await runPolicy(policy));
+  }
+  function blocked(): boolean {
+    const why = unsendable();
+    if (why) setStatus(why);
+    return why !== null;
   }
   // After the count right before sending: Esc cancelled it, or the Context does not fit.
   function halted(aborted: boolean, total: number): boolean {
@@ -520,9 +525,12 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     return halt;
   }
 
+  // The check stays synchronous without a policy: a second send in the same tick finds the first streaming.
   async function send() {
-    if (streaming() || running() || policing() || !(await ready())) return;
-    const policy = ran;
+    if (streaming() || running() || policing()) return;
+    const policy = policies.active();
+    if (!(policy ? await readyWith(policy) : ready())) return;
+    const did = ran;
     ran = null;
     const requested = prefixes();
     const payload = requested.at(-1)!;
@@ -531,7 +539,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     setStatus(null);
     try {
       const { total } = await backend().count(requested);
-      if (halted(abort.signal.aborted, total)) return;
+      if (halted(abort.signal.aborted, total)) return withDid(did);
       append({ type: 'RequestSent', hash: Bun.hash(JSON.stringify(payload)).toString(16), tokens: total });
       setMarked(new Set<number>());
       setSelected(nextId());
@@ -544,17 +552,20 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
       };
       const result = await backend().chat(payload, { signal: abort.signal, onDelta, onThinking, maxTokens: budgetOf(total).maxTokens });
       setStreaming(null);
-      finish(result, policy);
+      finish(result, did);
     } catch (e) {
       setStreaming(null);
       setStatus({ text: `backend error: ${errorText(e)}`, tone: 'error' });
+      withDid(did);
     }
     keepSelection();
   }
 
-  // Context Policy (ADR 0001) ----------------------------------------------------------------------------
+  // Context Policy (ADR 0001, FR-52–FR-54) ---------------------------------------------------------------
   // What the policy did before the request being sent, for its status line.
   let ran: string | null = null;
+  // A request not sent after the policy ran still says what the policy did.
+  const withDid = (did: string | null) => void (did && setStatus({ ...status()!, text: `${status()!.text} · ${did}` }));
   // The active policy edits the Context; an error, its Compaction's too, stops the Gate: nothing is sent.
   async function runPolicy(policy: Policy): Promise<boolean> {
     const abort = new AbortController();
@@ -575,7 +586,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     }
   }
   const policyPorts = (signal: AbortSignal): Ports => ({
-    events, append, window: backend().window,
+    events, append, window: backend().window, aborted: () => signal.aborted,
     count: context => backend().count(renderPrefixes(context)),
     compact: (context, sources, instruction) => policyCompaction(compaction.compactionRequest(context, sources, instruction), signal),
   });
@@ -590,11 +601,12 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
       if (result.finish === 'aborted' || result.finish === 'length') throw new Error(result.finish === 'length' ? 'cut off at max_tokens' : 'aborted');
       return result.content;
     } finally {
+      // The session's server cache now holds the compaction request (FR-17).
       if (!own) setRecount(recount() + 1);
     }
   }
 
-  // /policy <name> switches a policy on, /policy off off; alone it shows the active one and the names.
+  // /policy <name> switches a policy on (FR-53), /policy off off; alone it shows the active one and the names.
   function switchPolicy(name: string) {
     const values = ['off', ...policies.all.map(p => p.name)].join(' ');
     if (!name) return setStatus({ text: `policy ${policies.active()?.name ?? 'off'} · /policy ${values}`, tone: 'info' });

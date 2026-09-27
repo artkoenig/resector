@@ -105,8 +105,8 @@ Per-block split via offset mapping / prefix differences; remainder = `Template` 
 ## 6. Configuration
 
 - JSONC + `$schema`; global `~/.config/resector/config.jsonc`, project `.resector/config.jsonc`, deep merge; `RESECTOR_CONFIG` overrides the path. `system.md`, `compaction.md` next to config; per-profile `systemPrompt` path.
-- Read when a session opens (start, switching in `/sessions`); a change takes a restart (ADR 0001).
-- Context Policies: `policies/<name>.ts` next to the global config, plus built-ins, imported once at start (a file named like a built-in replaces it); the default export is the policy function `(PolicyContext) => PolicyOperation[]` (`core/policy/policy.ts`). None from the project. The active one is app state: off at start, kept across `/sessions`, never logged. Never written by runtime changes, except the first-start port scan writing the chosen profile.
+- Read when a session opens (start, switching in `/sessions`); a change takes a restart (ADR 0001). Never written by runtime changes, except the first-start port scan writing the chosen profile.
+- Context Policies: `policies/<name>.ts` next to the global config, plus built-ins, imported once at start (a file named like a built-in replaces it); the default export is the policy function `(PolicyContext) => PolicyOperation[]` (`core/policy/policy.ts`). None from the project. The active one is app state: off at start, kept across `/sessions`, never logged (FR-52–FR-54).
 - Session log stores only the profile name; values come from current config, session overrides from the log on top.
 
 ## 7. Testing

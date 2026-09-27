@@ -87,23 +87,25 @@ export function App(props: GateOptions & { onQuit: () => void }) {
         label: name, description: gate.toolsOn().includes(name) ? 'on → off' : 'off → on', draft: `/tools ${name}`, run: `/tools ${name}`,
       }));
     }
-    const kind = /^\/filter (\S*)$/.exec(draft());
-    if (kind) {
-      const off = gate.filter() ? [{ name: 'off', description: 'show all blocks' }] : [];
-      return [...off, ...FILTERS.map(f => ({ name: f.name, description: f.kinds.join(' + ') }))]
-        .filter(f => f.name.startsWith(kind[1]!.toLowerCase()))
-        .map(f => ({ label: f.name, description: f.description, draft: `/filter ${f.name}`, run: `/filter ${f.name}` }));
-    }
-    const policy = /^\/policy (\S*)$/.exec(draft());
-    if (policy) {
-      const off = gate.policy() ? [{ name: 'off', description: 'no policy' }] : [];
-      return [...off, ...gate.policyNames().map(name => ({ name, description: name === gate.policy() ? 'active' : 'switch on' }))]
-        .filter(p => p.name.startsWith(policy[1]!))
-        .map(p => ({ label: p.name, description: p.description, draft: `/policy ${p.name}`, run: `/policy ${p.name}` }));
-    }
+    const value = valueSuggestions(draft());
+    if (value) return value;
     const found = fileCompletions(draft(), files());
     return found ? found.paths.map(path => ({ label: path, description: '', draft: `${draft().slice(0, found.at)}${path} `, run: null })) : [];
   });
+  // The values after `/filter ` (FR-51) and `/policy `, `off` first while one is on; null for any other draft.
+  function valueSuggestions(text: string): Suggestion[] | null {
+    const [, command, typed] = /^\/(filter|policy) (\S*)$/.exec(text) ?? [];
+    if (!command) return null;
+    const values = command === 'filter' ? filterValues() : policyValues();
+    return values
+      .filter(v => v.name.toLowerCase().startsWith(typed!.toLowerCase()))
+      .map(v => ({ label: v.name, description: v.description, draft: `/${command} ${v.name}`, run: `/${command} ${v.name}` }));
+  }
+  const filterValues = () => [...(gate.filter() ? [{ name: 'off', description: 'show all blocks' }] : []), ...FILTERS.map(f => ({ name: f.name, description: f.kinds.join(' + ') }))];
+  const policyValues = () => [
+    ...(gate.policy() ? [{ name: 'off', description: 'no policy' }] : []),
+    ...gate.policyNames().map(name => ({ name, description: name === gate.policy() ? 'active' : 'switch on' })),
+  ];
   const chosen = () => Math.min(suggested(), suggestions().length - 1);
   const suggestion = () => suggestions()[chosen()];
   const editDraft = (text: string) => {

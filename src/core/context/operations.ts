@@ -42,13 +42,17 @@ export function moveAfter({ blocks }: Context, block: Block, after: number): Out
   const blocked = untouchable(block) ?? (inPair(block) ? { error: 'a Tool Pair moves as a Note' } : null);
   if (blocked) return blocked;
   const live = blocks.filter(b => !b.removed);
-  const others = live.filter(b => b !== block);
-  const at = others.findIndex(b => b.id === after);
-  if (at < 0) return { error: `no block ${after} to move after` };
-  if (others[at + 1]?.kind === 'Tools') return { error: 'System and Tools Block stay first' };
-  if (isTool(others[at]) && isTool(others[at + 1])) return { error: 'not between the Tool Calls and Tool Results of an answer' };
+  const error = misplaced(live.filter(b => b !== block), after);
+  if (error) return { error };
   if (live[live.indexOf(block) - 1]!.id === after) return { error: 'unchanged – already there' };
   return { event: { type: 'Move', id: block.id, after } };
+}
+// Why a block may not go right after `after` among the other blocks sent, if not.
+function misplaced(others: Block[], after: number): string | null {
+  const at = others.findIndex(b => b.id === after);
+  if (at < 0) return `no block ${after} to move after`;
+  if (others[at + 1]?.kind === 'Tools') return 'System and Tools Block stay first';
+  return isTool(others[at]) && isTool(others[at + 1]) ? 'not between the Tool Calls and Tool Results of an answer' : null;
 }
 
 export function remove(block: Block): Outcome {

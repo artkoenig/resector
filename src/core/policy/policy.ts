@@ -24,7 +24,7 @@ export type PolicyFunction = (context: PolicyContext) => PolicyOperation[] | Pro
 // name: the module's file name.
 export type Policy = { name: string; run: PolicyFunction };
 
-// Calls per request: one more still returning operations stops the Gate.
+// Passes applying operations per request: a call after them still returning operations stops the Gate.
 export const MAX_PASSES = 8;
 
 export function viewOf(context: Context, counted: { blocks: number[]; total: number }, window: number): PolicyContext {
@@ -83,15 +83,16 @@ function moveAsNote(events: SessionEvent[], context: Context, block: Block, afte
   return 'error' in moved ? moved : { events: [note.event, moved.event], change: MOVED };
 }
 
+// Why a source may not be compacted, if not.
+function unfit(context: Context, id: number): string | undefined {
+  const block = sent(context, id);
+  return block ? ops.untouchable(block)?.error : `no block ${id} in the Context`;
+}
+
 function compactPlan(context: Context, { sources, instruction }: Of<'compact'>): Plan {
-  const blocks: Block[] = [];
-  for (const id of sources) {
-    const block = sent(context, id);
-    const error = block ? ops.untouchable(block)?.error : `no block ${id} in the Context`;
-    if (error) return { error };
-    blocks.push(block!);
-  }
-  if (!blocks.length) return { error: 'nothing to compact' };
+  const error = sources.map(id => unfit(context, id)).find(Boolean);
+  if (error) return { error };
+  if (!sources.length) return { error: 'nothing to compact' };
   if (!instruction.trim()) return { error: 'no instruction' };
   const wanted = new Set(sources.flatMap(id => pairOf(context.blocks, id)));
   const ordered = sentBlocks(context).filter(b => wanted.has(b.id));
@@ -130,10 +131,13 @@ export type Ports = {
   count: (context: Context) => Promise<{ blocks: number[]; total: number }>;
   window: number;
   compact: (context: Context, sources: number[], instruction: string) => Promise<string>;
+  // Esc at the Gate: no further pass or operation.
+  aborted: () => boolean;
 };
 // What the policy did, and why it stopped the Gate (null: the Context may be sent).
 export type Ran = { changes: Change[]; error: string | null };
 
+const ABORTED = 'aborted';
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 // The hook before every request: call the policy, apply its operations as attributed Session Log events, call it
@@ -141,21 +145,33 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export async function applyPolicy(policy: Policy, ports: Ports): Promise<Ran> {
   const changes: Change[] = [];
   for (let pass = 1; ; pass++) {
+    if (ports.aborted()) return { changes, error: ABORTED };
     const context = fold(ports.events());
-    const view = viewOf(context, await ports.count(context), ports.window);
-    let operations: unknown;
-    try {
-      operations = await policy.run(view);
-    } catch (e) {
-      return { changes, error: `failed: ${message(e)}` };
-    }
-    if (!Array.isArray(operations)) return { changes, error: 'returned no list of operations' };
+    const operations = await called(policy, viewOf(context, await ports.count(context), ports.window));
+    if ('error' in operations) return { changes, error: operations.error };
     if (!operations.length) return { changes, error: null };
-    if (pass === MAX_PASSES) return { changes, error: `still changing the Context after ${MAX_PASSES} passes` };
-    for (const op of operations) {
-      const error = await applyOne(policy.name, op, ports, changes);
-      if (error) return { changes, error };
-    }
+    if (pass > MAX_PASSES) return { changes, error: `still changing the Context after ${MAX_PASSES} passes` };
+    const error = await applyAll(policy.name, operations, ports, changes);
+    if (error) return { changes, error };
+  }
+}
+
+// One pass: the operations in turn, until one is refused or Esc is pressed.
+async function applyAll(by: string, operations: unknown[], ports: Ports, changes: Change[]): Promise<string | null> {
+  for (const op of operations) {
+    const error = ports.aborted() ? ABORTED : await applyOne(by, op, ports, changes);
+    if (error) return error;
+  }
+  return null;
+}
+
+// The policy's operations for the view, or why none: it threw, or returned no list.
+async function called(policy: Policy, view: PolicyContext): Promise<unknown[] | { error: string }> {
+  try {
+    const operations: unknown = await policy.run(view);
+    return Array.isArray(operations) ? operations : { error: 'returned no list of operations' };
+  } catch (e) {
+    return { error: `failed: ${message(e)}` };
   }
 }
 

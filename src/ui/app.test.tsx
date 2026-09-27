@@ -1837,10 +1837,10 @@ test('a policy that throws, or still changes the Context after 8 passes, stops t
   await frameMatching(ui, f => f.includes('✗ policy boom') && f.includes('failed: bad rule – not sent'));
   await policyOn('endless');
   ui.mockInput.pressEnter();
-  await frameMatching(ui, f => f.includes('✗ policy endless') && f.includes('still changing the Context after 8 passes – not sent · endless: 7 blocks'));
+  await frameMatching(ui, f => f.includes('✗ policy endless') && f.includes('still changing the Context after 8 passes – not sent · endless: 8 blocks'));
   expect(fake.chatRequests).toHaveLength(0);
   expect(events().filter(e => e.type === 'RequestSent')).toEqual([]);
-  expect(events().filter(e => e.type === 'Edit').at(-1)).toMatchObject({ content: 'hi!!!!!!!', by: 'endless' });
+  expect(events().filter(e => e.type === 'Edit').at(-1)).toMatchObject({ content: 'hi!!!!!!!!', by: 'endless' });
 });
 
 test('an operation the rules refuse stops the Gate and names it', async () => {
@@ -1904,4 +1904,12 @@ test('a policy Compaction runs on compactionProfile; too big for its window, cut
   } finally {
     small.stop();
   }
+});
+
+test('a request failing after the policy ran still says what the policy did', async () => {
+  await start({ users: ['old', 'new'], policies: [scripted('trim', [[{ op: 'remove', id: 3 }]])] });
+  await policyOn('trim');
+  fake.reply({ chunks: [], error: 'server overloaded' });
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('backend error') && f.includes('trim: 1 User removed'));
 });
