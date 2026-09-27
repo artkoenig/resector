@@ -20,8 +20,7 @@ import { answerText, questionsOf, type Answer, type Question } from '../core/too
 import { count, errorText, formatTokens, thinkingLabel, titleOf } from './format';
 
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
-// events: the Session Log so far (new or resumed); reconnect: re-reads the config and opens the session's
-// Model Profile again (/reload, FR-44); openSessions: shows /sessions; notice: initial status line.
+// events: the Session Log so far (new or resumed); openSessions: shows /sessions; notice: initial status line.
 // runner: runs approved bash calls, searcher: search calls (FR-21); approval: decides which may run (FR-22); editor: $EDITOR for `e` (FR-8);
 // clipboard: copy on select.
 export type GateOptions = {
@@ -34,7 +33,6 @@ export type GateOptions = {
   log: SessionLog;
   events: SessionEvent[];
   project: Project;
-  reconnect: () => Promise<Backend>;
   openSessions: () => void;
   notice?: Status;
   // Default Compaction instruction (FR-13); the Model Profile Compaction runs on, null = the session's own (FR-17).
@@ -46,14 +44,13 @@ export type Compactor = { profile: string; backend: Backend };
 // (FR-28), and $EDITOR on a file of the project (`e` on a reference).
 export type Project = { read: ReadFile; list: () => string[]; environment: () => string; open: (path: string) => Promise<void> };
 // Tool Approval (FR-22, FR-25): the splitter, the project root arguments must stay in, and the config's rules as read
-// at open and on /reload (ignored: project allow patterns).
+// at start (ignored: project allow patterns).
 export type Approval = { split: Split; root: string; permissions: () => { rules: Rule[]; ignored: string[] } };
 
 // Slash commands (FR-6), in suggestion order.
 export const COMMANDS = [
   { name: '/sessions', arg: '', description: 'list, resume, rename, delete sessions' },
   { name: '/rename', arg: '<title>', description: 'rename session' },
-  { name: '/reload', arg: '', description: 're-read config' },
   { name: '/tools', arg: '<tool>', description: 'switch a tool on or off' },
   { name: '/filter', arg: '<kind>', description: 'show only blocks of one Kind' },
 ] as const;
@@ -111,7 +108,7 @@ const QUESTION_HINT = 'the model asks – answer in the dock';
 const cacheMiss = ({ predicted, cached }: ChatResult) =>
   predicted !== null && cached !== null && cached < predicted ? `cache: predicted ${predicted} · server reused ${cached}` : null;
 
-export function createGate({ log, reconnect, openSessions, runner, searcher, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, ...options }: GateOptions) {
+export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, ...options }: GateOptions) {
   const [events, setEvents] = createSignal(options.events);
   const [counted, setCounted] = createSignal<{ prefixes: Request[]; split: Counted } | null>(null);
   const [streaming, setStreaming] = createSignal<Streaming | null>(null);
@@ -122,7 +119,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   const [marked, setMarked] = createSignal<ReadonlySet<number>>(new Set());
   // Kind Filter (FR-51): what the block table shows; UI state, not logged.
   const [filter, setFilter] = createSignal<Filter | null>(null);
-  const [backend, setBackend] = createSignal(options.backend);
+  const backend = () => options.backend;
   // Moving a Tool Pair asks first: the operation and block awaiting the same key again (FR-9).
   const [confirming, setConfirming] = createSignal<string | null>(null);
   const [compacting, setCompacting] = createSignal<Compaction | null>(null);
@@ -445,7 +442,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     return error ? null : block!;
   }
 
-  // y: run the call once – unless a rule denies it by now (/reload).
+  // y: run the call once – unless a rule denies it.
   function approve() {
     const call = decidable();
     if (call) void (verdictOf(call).action === 'deny' ? advance() : run(call, []));
@@ -674,19 +671,9 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     }
   }
 
-  async function reload() {
-    try {
-      setBackend(await reconnect());
-      dropDenied();
-      setStatus(withHint({ text: 'config reloaded', tone: 'ok' }, ignoredHint(approval)));
-    } catch (e) {
-      setStatus({ text: `reload failed: ${errorText(e)}`, tone: 'error' });
-    }
-  }
-
   // Thinking for the following requests (FR-49): the one set at the Gate, else the Model Profile's.
   const thinking = (): Thinking => context().thinking ?? backend().thinking ?? 'off';
-  // The modes of the model's chat template, as the backend read them when it connected (setup, /reload).
+  // The modes of the model's chat template, as the backend read them when it connected (start, setup).
   const thinkingModes = () => backend().thinkingModes ?? DEFAULT_MODES;
   function cycleThinking() {
     const modes = thinkingModes();
@@ -721,7 +708,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
   }
 
   const commands: Record<CommandName, (arg: string) => void> = {
-    '/sessions': openSessions, '/rename': renameSession, '/reload': () => void reload(), '/tools': toggleTool, '/filter': filterBy,
+    '/sessions': openSessions, '/rename': renameSession, '/tools': toggleTool, '/filter': filterBy,
   };
   // Input text: a known command runs with the rest as argument; an unknown `/word` is an error; anything else becomes
   // a User block and is sent right away – if sending is blocked, the block stays and the status says why (FR-6).
@@ -745,7 +732,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
     } else setStatus({ text: `${count(files.length, 'file reference')} added – read at send · e opens the file · Enter sends`, tone: 'info' });
   }
 
-  // Tools denied by rule leave the Tools Block (FR-21), at open and on /reload.
+  // Tools denied by rule leave the Tools Block (FR-21), at open.
   function dropDenied() {
     const edit = ops.withoutDenied(events(), context(), deniedTools(rules()));
     if (edit) append(edit);

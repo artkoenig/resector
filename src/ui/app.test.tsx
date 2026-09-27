@@ -70,7 +70,7 @@ async function start({ tools = BASH_TOOLS, template, window = 4096, exact = true
   const approval = { split, root: project, permissions: () => permissionRules(global, own) };
   const files = { read: projectFiles(project), list: () => listProjectFiles(project), environment: () => environment, open: async (path: string) => void openedFiles.push(path) };
   ui = await testRender(
-    () => <App backend={backend} runner={runner} searcher={searcher} approval={approval} editor={text => editor(text)} project={files} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} reconnect={async () => backend} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
+    () => <App backend={backend} runner={runner} searcher={searcher} approval={approval} editor={text => editor(text)} project={files} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
     { width: 80, height: 20 },
   );
   const size = ` / ${formatTokens(window)}`;
@@ -579,26 +579,36 @@ test('typing / suggests the commands, filtered while typing; ↑↓ choose, Ente
   ui.mockInput.pressTab();
   await ui.flush();
   await ui.mockInput.typeText('/');
-  let frame = await frameMatching(ui, f => f.includes('/reload'));
+  let frame = await frameMatching(ui, f => f.includes('/filter'));
   expect(frame).toContain('↑↓ choose  tab complete  enter run  esc back');
+  expect(frame).not.toContain('/reload');
   expect(line(frame, /\/sessions/)).toMatch(/\/sessions\s+list, resume, rename, delete sessions/);
   expect(line(frame, /\/rename/)).toMatch(/\/rename <title>\s+rename session/);
   await ui.mockInput.typeText('re');
   frame = await frameMatching(ui, f => !f.includes('/sessions'));
   expect(frame).toContain('/rename');
+  ui.mockInput.pressBackspace();
+  ui.mockInput.pressBackspace();
+  await frameMatching(ui, f => f.includes('/sessions'));
   await press('down');
+  // A command with an argument is completed first, then run.
   ui.mockInput.pressEnter();
-  await frameMatching(ui, f => f.includes('config reloaded'));
+  await frameMatching(ui, f => f.includes('┃ /rename') && !f.includes('rename session'));
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('session title reset'));
   await write('/sessions');
   await until(() => opened.length > 0);
   await write('/nope');
-  await frameMatching(ui, f => f.includes('✗ unknown command /nope') && f.includes('/sessions /rename /reload /tools /filter'));
+  await frameMatching(ui, f => f.includes('✗ unknown command /nope') && f.includes('/sessions /rename /tools /filter'));
+  // Config is read at start only: a change needs a restart (ADR 0001).
+  await write('/reload');
+  await frameMatching(ui, f => f.includes('✗ unknown command /reload'));
 });
 
 test('/ in the Context starts a command in the input line', async () => {
   await start();
   await ui.mockInput.typeText('/');
-  const frame = await frameMatching(ui, f => f.includes('/reload'));
+  const frame = await frameMatching(ui, f => f.includes('/filter'));
   expect(frame).toContain('┃ /');
   await ui.mockInput.typeText('ren');
   await frameMatching(ui, f => f.includes('rename session') && !f.includes('/sessions'));
@@ -1741,11 +1751,3 @@ test('ask never pauses a Question; a Question still open at a resume is denied o
   expect(events().at(-1)).toEqual({ type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'denied by rule', call: 4 });
 });
 
-test('/reload with a new deny rule takes question out of the Tools Block (#36)', async () => {
-  const global: Permissions = {};
-  const { events } = await start({ tools: TOOLS, global });
-  global.question = 'deny';
-  await write('/reload');
-  await frameMatching(ui, f => f.includes('config reloaded') && /Tools\s+bash\s/.test(f));
-  expect(events().at(-1)).toEqual({ type: 'Edit', id: 2, revision: 2, content: BASH_TOOLS, harness: true });
-});

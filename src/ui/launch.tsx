@@ -62,15 +62,8 @@ export function Launch(props: LaunchOptions) {
     if (!loaded) throw new Error(`no config at ${props.paths.global}`);
     return loaded;
   };
-  // The config as read at open and on /reload (FR-44).
+  // The config as read when the session was opened (FR-44).
   let config: Loaded;
-  // The session keeps its Model Profile; /reload re-reads its values (FR-39, FR-44).
-  const reconnect = (name: string, session: string) => async () => {
-    const loaded = load();
-    const backend = await connect(loaded.profile(name), session);
-    config = loaded;
-    return backend;
-  };
   // Compaction runs on the profile's compactionProfile, else on the session's own backend (null, FR-17). Its own slot
   // where the server has several, so the session cache stays.
   const compactor = (name: string, session: string) => async () => {
@@ -121,7 +114,7 @@ export function Launch(props: LaunchOptions) {
     const searcher = createSearcher({ cwd: root, timeout: SEARCH_TIMEOUT });
     const approval = { split, root, permissions: () => config.permissions };
     const instruction = () => config.compactionInstruction();
-    setGate({ backend, runner, searcher, approval, editor: props.editor, clipboard: props.clipboard, log: opened.log, events, project, notice, reconnect: reconnect(profile, opened.id), openSessions: () => setView('sessions'), instruction, compactor: compactor(profile, opened.id) });
+    setGate({ backend, runner, searcher, approval, editor: props.editor, clipboard: props.clipboard, log: opened.log, events, project, notice, openSessions: () => setView('sessions'), instruction, compactor: compactor(profile, opened.id) });
   }
 
   // /sessions (FR-33): switching sessions reconnects; the Gate comes back with the session's logged events.
