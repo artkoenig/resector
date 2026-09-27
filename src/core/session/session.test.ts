@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { TOOLS } from '../toolcall/bash';
-import { newSession, summarize } from './session';
+import { newSession, openingBlocks, summarize } from './session';
 
 const start = newSession('qwen', 'You are an agent.');
 const user = (id: number, content: string): SessionEvent => ({ type: 'BlockAdded', id, kind: 'User', origin: 'user', content });
@@ -50,4 +50,15 @@ test('a new session starts with the environment Note and the project instruction
   ]);
   expect(summarize(events).blocks).toBe(4);
   expect(newSession('qwen', 'sys', { environment: 'cwd: /p', instructions: null })).toHaveLength(4);
+});
+
+test('the blocks a session starts with are those newSession added, not file references added later', () => {
+  const events: SessionEvent[] = [
+    ...newSession('qwen', 'sys', { environment: 'cwd: /p', instructions: { file: 'AGENTS.md', content: '# Rules\n' } }),
+    { type: 'FileReferenced', id: 5, file: 'a.txt' },
+    user(6, 'hi'),
+  ];
+  expect([...openingBlocks(events)]).toEqual([1, 2, 3, 4]);
+  expect([...openingBlocks([...newSession('qwen', 'sys'), user(3, 'hi'), user(4, 'again')])]).toEqual([1, 2]);
+  expect([...openingBlocks(newSession('qwen', 'sys'))]).toEqual([1, 2]);
 });

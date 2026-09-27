@@ -11,6 +11,7 @@ import { afterCalls, fold, pairOf, type Block } from '../core/log/fold';
 import { refreshEnvironment } from '../core/notes/environment';
 import { parseReference, peekReferences, readReferences, references, type ReadFile } from '../core/notes/files';
 import { renderNative, renderPrefixes, sentBlocks, type Request } from '../core/render/native';
+import { openingBlocks } from '../core/session/session';
 import { DEFAULT_MODES } from '../core/render/template';
 import { budget, lastDrift, type Budget } from '../core/tokens/budget';
 import { answerBlocks } from '../core/toolcall/answer';
@@ -98,10 +99,10 @@ export type Compaction = Compactor & {
 // Undone operations whose event type does not read as one.
 const UNDONE: Partial<Record<SessionEvent['type'], string>> = { PairToNote: 'Tool Pair → Note' };
 // The last block: a User message, a Tool Result or a Note (e.g. an @path reference) asks for an answer,
-// not the Notes a new session starts with (environment, project instructions) right after the Tools Block.
-function asksForAnswer(blocks: Block[]): boolean {
-  if (!blocks.some(b => !ops.isFixed(b) && (b.kind !== 'Note' || b.unread))) return false;
-  return ['User', 'Tool Result', 'Note'].includes(blocks.at(-1)!.kind);
+// not the Notes a new session starts with (environment, project instructions).
+function asksForAnswer(blocks: Block[], opening: Set<number>): boolean {
+  const last = blocks.findLast(b => !opening.has(b.id))?.kind;
+  return last === 'User' || last === 'Tool Result' || last === 'Note';
 }
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const APPROVE = 'y run once · a allow for session · n reject · e edit';
@@ -483,7 +484,7 @@ export function createGate({ log, reconnect, openSessions, runner, searcher, app
       return { text: pending.tool === 'question' ? QUESTION_HINT : `Tool Calls await approval – ${APPROVE} on the ? approve row`, tone: 'warn' };
     }
     const changed = lastAnswer() !== null && !same(lastAnswer(), request());
-    return changed || asksForAnswer(sent()) ? null : { text: 'nothing to send – Tab to write', tone: 'info' };
+    return changed || asksForAnswer(sent(), openingBlocks(events())) ? null : { text: 'nothing to send – Tab to write', tone: 'info' };
   }
 
   // A Context as big as the window is not sent; the user makes room (FR-18, FR-20).

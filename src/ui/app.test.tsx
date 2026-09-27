@@ -1289,6 +1289,19 @@ test('the Notes a new session starts with ask for no answer', async () => {
   expect(fake.chatRequests).toEqual([]);
 });
 
+test('a file reference alone whose send failed can be sent again (FR-27)', async () => {
+  writeFileSync(join(project, 'again.txt'), 'content');
+  await start({ notes: { environment: 'cwd: /p' } });
+  await write('@again.txt');
+  await frameMatching(ui, f => f.includes('1 file reference added'));
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('no scripted reply'));
+  fake.reply({ chunks: ['ok'] });
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(messages(0).at(-1)).toEqual({ role: 'user', content: '[again.txt]\ncontent' });
+});
+
 test('a file reference alone is sent with Enter, the file as the last user message (FR-27)', async () => {
   writeFileSync(join(project, 'alone.txt'), 'content');
   await start();
