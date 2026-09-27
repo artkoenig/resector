@@ -16,6 +16,7 @@ import type { Editor } from '../core/context/operations';
 import type { SessionEvent } from '../core/log/events';
 import { fold } from '../core/log/fold';
 import { environmentText } from '../core/notes/environment';
+import { BUILT_IN } from '../core/policy/built-in';
 import type { Policy } from '../core/policy/policy';
 import { newSession, summarize, type SessionRef } from '../core/session/session';
 import { App } from './app';
@@ -175,7 +176,7 @@ export function Launch(props: LaunchOptions) {
 
   onMount(() => {
     const start = async () => {
-      ({ policies: policies.all, failed } = await loadPolicies(policiesDir(props.paths)));
+      ({ policies: policies.all, failed } = await loadPolicies(policiesDir(props.paths), BUILT_IN));
       const loaded = loadConfig(props.paths);
       return loaded ? open(loaded, props.resume) : firstStart();
     };

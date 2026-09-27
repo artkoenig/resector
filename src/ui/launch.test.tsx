@@ -420,6 +420,19 @@ test('a Context Policy from the config directory is loaded, switched on, and edi
   expect(JSON.stringify(fake.chatRequests[0])).toContain('HI THERE');
 });
 
+test('the built-in thinking-trail is offered and switched on without any policy file', async () => {
+  await launch({ config: url => profileConfig(url) });
+  await frameMatching(ui, f => f.includes('/ 2k'));
+  ui.mockInput.pressTab();
+  await ui.flush();
+  await ui.mockInput.typeText('/policy ');
+  expect(await frameMatching(ui, f => f.includes('switch on'))).toMatch(/thinking-trail\s+switch on/);
+  await ui.mockInput.typeText('t');
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('policy thinking-trail on'));
+  expect(ui.captureCharFrame()).toMatch(/local · thinking off · policy thinking-trail/);
+});
+
 test('the active policy belongs to the app: it stays when switching sessions and is not logged', async () => {
   const { log } = await launch({ config: url => profileConfig(url), policies: { shout: SHOUT }, sessions: { ses_a: titled('local', 'fix the build') } });
   await frameMatching(ui, f => f.includes('/ 2k'));

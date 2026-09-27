@@ -21,7 +21,7 @@ src/
     tokens/                Tokenizer interface, per-block split, drift, budget (max_tokens, blocking)
     cache/                 prefix diff → invalidation point → rows ●/○
     compaction/            compaction request + proposal state machine
-    policy/                Context Policy interface: view of the Context, operations checked by context/ rules, the hook's passes
+    policy/                Context Policy interface: view of the Context, operations checked by context/ rules, the hook's passes; built-in thinking-trail (FR-55)
     notes/                 @path references and snapshots, environment Note text and refresh
     approval/              permission rules, evaluation of split commands, session rules
     toolcall/              parse tool calls (native + text-xml), malformed detection, split thinking
@@ -106,7 +106,7 @@ Per-block split via offset mapping / prefix differences; remainder = `Template` 
 
 - JSONC + `$schema`; global `~/.config/resector/config.jsonc`, project `.resector/config.jsonc`, deep merge; `RESECTOR_CONFIG` overrides the path. `system.md`, `compaction.md` next to config; per-profile `systemPrompt` path.
 - Read when a session opens (start, switching in `/sessions`); a change takes a restart (ADR 0001). Never written by runtime changes, except the first-start port scan writing the chosen profile.
-- Context Policies: `policies/<name>.ts` next to the global config, plus built-ins, imported once at start (a file named like a built-in replaces it); the default export is the policy function `(PolicyContext) => PolicyOperation[]` (`core/policy/policy.ts`). None from the project. The active one is app state: off at start, kept across `/sessions`, never logged (FR-52–FR-54).
+- Context Policies: `policies/<name>.ts` next to the global config, plus built-ins, imported once at start (a file named like a built-in replaces it); the default export is the policy function `(PolicyContext) => PolicyOperation[]` (`core/policy/policy.ts`). None from the project. The active one is app state: off at start, kept across `/sessions`, never logged (FR-52–FR-54). The built-in `thinking-trail` (`core/policy/thinking-trail.ts`, FR-55) imports only the interface's types, as a file there would.
 - Session log stores only the profile name; values come from current config, session overrides from the log on top.
 
 ## 7. Testing
