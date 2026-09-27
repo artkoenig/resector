@@ -10,6 +10,7 @@ import type { Kind, SessionEvent, SessionLog, Thinking } from '../core/log/event
 import { afterCalls, fold, pairOf, type Block } from '../core/log/fold';
 import { refreshEnvironment } from '../core/notes/environment';
 import { parseReference, peekReferences, readReferences, references, type ReadFile } from '../core/notes/files';
+import { applyPolicy, summary, type Policy, type Ports } from '../core/policy/policy';
 import { renderNative, renderPrefixes, sentBlocks, type Request } from '../core/render/native';
 import { openingBlocks } from '../core/session/session';
 import { DEFAULT_MODES } from '../core/render/template';
@@ -38,7 +39,11 @@ export type GateOptions = {
   // Default Compaction instruction (FR-13); the Model Profile Compaction runs on, null = the session's own (FR-17).
   instruction?: () => string;
   compactor?: () => Promise<Compactor | null>;
+  policies?: Policies;
 };
+// Context Policies (ADR 0001): the ones loaded at start, and the active one, which belongs to the app, not the session.
+export type Policies = { all: Policy[]; active: () => Policy | null; set: (policy: Policy | null) => void };
+const NO_POLICIES: Policies = { all: [], active: () => null, set: () => {} };
 export type Compactor = { profile: string; backend: Backend };
 // The project on disk: files for @path references and their completion (FR-27), the environment Note's text now
 // (FR-28), and $EDITOR on a file of the project (`e` on a reference).
@@ -53,6 +58,7 @@ export const COMMANDS = [
   { name: '/rename', arg: '<title>', description: 'rename session' },
   { name: '/tools', arg: '<tool>', description: 'switch a tool on or off' },
   { name: '/filter', arg: '<kind>', description: 'show only blocks of one Kind' },
+  { name: '/policy', arg: '<name>', description: 'switch a Context Policy on or off' },
 ] as const;
 // What a Kind Filter takes (FR-51), in glossary order: the Kinds each shows; a Tool Call never without its Tool Result.
 export type Filter = { name: string; kinds: readonly Kind[] };
@@ -108,7 +114,7 @@ const QUESTION_HINT = 'the model asks – answer in the dock';
 const cacheMiss = ({ predicted, cached }: ChatResult) =>
   predicted !== null && cached !== null && cached < predicted ? `cache: predicted ${predicted} · server reused ${cached}` : null;
 
-export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, ...options }: GateOptions) {
+export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, policies = NO_POLICIES, ...options }: GateOptions) {
   const [events, setEvents] = createSignal(options.events);
   const [counted, setCounted] = createSignal<{ prefixes: Request[]; split: Counted } | null>(null);
   const [streaming, setStreaming] = createSignal<Streaming | null>(null);
@@ -127,6 +133,8 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   const [recount, setRecount] = createSignal(0);
   // Bumped when a referenced file may have changed (edited via `e`): the Gate shows it as it is now.
   const [reread, setReread] = createSignal(0);
+  // The active policy editing the Context before a request; Esc aborts its Compaction.
+  const [policing, setPolicing] = createSignal<AbortController | null>(null);
 
   const append = (event: SessionEvent) => {
     log.append(event);
@@ -238,7 +246,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   // Appends the operation's event, or shows why not (NFR-3). Returns whether it was applied.
   function apply(result: ops.Outcome): boolean {
     if ('error' in result) setStatus({ text: result.error, tone: 'info' });
-    else append(result.event);
+    else append(ops.attributed(result.event, 'user'));
     return !('error' in result);
   }
   // A Context operation on the selected block; `describe` gives the status line text afterwards.
@@ -347,7 +355,8 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   }
 
   // The answer's text and Tool Calls become blocks; its calls are decided by the rules.
-  function finish(result: ChatResult) {
+  // `policy`: what the active policy did before the request.
+  function finish(result: ChatResult, policy: string | null) {
     // Calls to a tool denied by rule are parsed too: they are answered "denied by rule" (FR-21).
     const { events, notRun } = answerBlocks(result, nextId(), [...toolsOn(), ...deniedTools(rules())]);
     events.forEach(append);
@@ -355,9 +364,10 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     append({ type: 'ResponseReceived', usage: result.usage, cached: result.cached });
     const miss = cacheMiss(result);
     // Calls to decide, or only a rejected Question already answered: the loop goes on.
-    if (events.some(e => e.kind === 'Tool Call')) return advance([notRun && notRunText(notRun), miss && `⚠ ${miss}`].filter((n): n is string => !!n));
+    if (events.some(e => e.kind === 'Tool Call')) return advance([policy, notRun && notRunText(notRun), miss && `⚠ ${miss}`].filter((n): n is string => !!n));
     const status = answerStatus(result, notRun);
-    setStatus(miss ? { text: `${status.text} · ⚠ ${miss}`, tone: 'warn' } : status);
+    const text = [policy, status.text, miss && `⚠ ${miss}`].filter(Boolean).join(' · ');
+    setStatus({ text, tone: miss ? 'warn' : status.tone });
   }
 
   // Tool Approval (FR-22–FR-25) ----------------------------------------------------------------------------
@@ -493,11 +503,14 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
 
   // Whether the Context may go: nothing blocks it, it fits, and its references are read. The window is checked
   // first on the Gate's count, so a Context known to be too big reads no references (FR-27); the count right
-  // before sending checks again (halted).
-  function ready(): boolean {
+  // before sending checks again (halted). An active policy edits the Context read first, then the count checks it.
+  async function ready(): Promise<boolean> {
     const blocked = unsendable();
     if (blocked) setStatus(blocked);
-    return !blocked && !(split() && overBudget(split()!.total)) && prepare();
+    if (blocked) return false;
+    const policy = policies.active();
+    if (policy) return prepare() && (await runPolicy(policy));
+    return !(split() && overBudget(split()!.total)) && prepare();
   }
   // After the count right before sending: Esc cancelled it, or the Context does not fit.
   function halted(aborted: boolean, total: number): boolean {
@@ -508,7 +521,9 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   }
 
   async function send() {
-    if (streaming() || running() || !ready()) return;
+    if (streaming() || running() || policing() || !(await ready())) return;
+    const policy = ran;
+    ran = null;
     const requested = prefixes();
     const payload = requested.at(-1)!;
     const abort = new AbortController();
@@ -529,12 +544,64 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
       };
       const result = await backend().chat(payload, { signal: abort.signal, onDelta, onThinking, maxTokens: budgetOf(total).maxTokens });
       setStreaming(null);
-      finish(result);
+      finish(result, policy);
     } catch (e) {
       setStreaming(null);
       setStatus({ text: `backend error: ${errorText(e)}`, tone: 'error' });
     }
     keepSelection();
+  }
+
+  // Context Policy (ADR 0001) ----------------------------------------------------------------------------
+  // What the policy did before the request being sent, for its status line.
+  let ran: string | null = null;
+  // The active policy edits the Context; an error, its Compaction's too, stops the Gate: nothing is sent.
+  async function runPolicy(policy: Policy): Promise<boolean> {
+    const abort = new AbortController();
+    setPolicing(abort);
+    setStatus({ text: `policy ${policy.name} running`, tone: 'warn' });
+    try {
+      const { changes, error } = await applyPolicy(policy, policyPorts(abort.signal));
+      const did = changes.length ? summary(policy.name, changes) : null;
+      if (error) setStatus({ text: [`policy ${policy.name}: ${error} – not sent`, did].filter(Boolean).join(' · '), tone: 'error' });
+      else ran = did;
+      return !error;
+    } catch (e) {
+      setStatus({ text: `policy ${policy.name}: ${errorText(e)} – not sent`, tone: 'error' });
+      return false;
+    } finally {
+      setPolicing(null);
+      keepSelection();
+    }
+  }
+  const policyPorts = (signal: AbortSignal): Ports => ({
+    events, append, window: backend().window,
+    count: context => backend().count(renderPrefixes(context)),
+    compact: (context, sources, instruction) => policyCompaction(compaction.compactionRequest(context, sources, instruction), signal),
+  });
+  // A policy's Compaction runs like the user's (FR-14, FR-17), without review; its Note is the answer.
+  async function policyCompaction(request: Request, signal: AbortSignal): Promise<string> {
+    const own = await compactor();
+    const on = own?.backend ?? backend();
+    try {
+      const { total } = await on.count([request]);
+      if (total >= on.window) throw new Error(`request ${formatTokens(total)} ≥ window ${formatTokens(on.window)}`);
+      const result = await on.chat(request, { signal, onDelta: () => {}, maxTokens: on.window - total });
+      if (result.finish === 'aborted' || result.finish === 'length') throw new Error(result.finish === 'length' ? 'cut off at max_tokens' : 'aborted');
+      return result.content;
+    } finally {
+      if (!own) setRecount(recount() + 1);
+    }
+  }
+
+  // /policy <name> switches a policy on, /policy off off; alone it shows the active one and the names.
+  function switchPolicy(name: string) {
+    const values = ['off', ...policies.all.map(p => p.name)].join(' ');
+    if (!name) return setStatus({ text: `policy ${policies.active()?.name ?? 'off'} · /policy ${values}`, tone: 'info' });
+    const chosen = name === 'off' ? null : policies.all.find(p => p.name === name);
+    if (chosen === undefined) return setStatus({ text: `unknown policy ${name}: ${values}`, tone: 'error' });
+    policies.set(chosen);
+    setStatus({ text: chosen ? `policy ${chosen.name} on – edits the Context before every request` : 'policy off', tone: 'info' });
   }
 
   // Compaction (FR-13–FR-17) ------------------------------------------------------------------------------
@@ -708,7 +775,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   }
 
   const commands: Record<CommandName, (arg: string) => void> = {
-    '/sessions': openSessions, '/rename': renameSession, '/tools': toggleTool, '/filter': filterBy,
+    '/sessions': openSessions, '/rename': renameSession, '/tools': toggleTool, '/filter': filterBy, '/policy': switchPolicy,
   };
   // Input text: a known command runs with the rest as argument; an unknown `/word` is an error; anything else becomes
   // a User block and is sent right away – if sending is blocked, the block stays and the status says why (FR-6).
@@ -751,7 +818,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     live,
     // Streaming or running: only Esc (abort, kill) acts.
     nextCall: () => ops.nextCall(context()),
-    busy: () => streaming() !== null || running() !== null || compacting()?.phase === 'running',
+    busy: () => streaming() !== null || running() !== null || policing() !== null || compacting()?.phase === 'running',
     status,
     rows,
     selected,
@@ -771,11 +838,14 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     // Whether a sent block is still cached; null while counting.
     warm: (id: number) => warm()?.[sent().findIndex(b => b.id === id)] ?? null,
     profile: () => context().profile,
+    // The active Context Policy and the ones to switch on (ADR 0001).
+    policy: () => policies.active()?.name ?? null,
+    policyNames: () => policies.all.map(p => p.name),
     thinking,
     cycleThinking,
     submit,
     send,
-    abort: () => (streaming() ?? running() ?? compacting())?.abort?.abort(),
+    abort: () => (policing() ?? (streaming() ?? running() ?? compacting())?.abort)?.abort(),
     compacting,
     sourceTokens: () => (compacting() ? tokensOf(compacting()!.sources) : null),
     review: () => (compacting()?.phase === 'review' ? review(compacting()!) : null),

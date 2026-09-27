@@ -8,17 +8,19 @@ import { createSearcher } from '../adapters/search/ddgr';
 import { createSplit } from '../adapters/bash/split';
 import type { Clipboard } from '../adapters/clipboard/clipboard';
 import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
+import { loadPolicies, policiesDir } from '../adapters/fs/policies';
 import { listProjectFiles, probeEnvironment, projectFiles, projectInstructions } from '../adapters/fs/project';
 import type { OpenSession, SessionStore } from '../adapters/store/sessions';
 import type { Split } from '../core/approval/approval';
 import type { Editor } from '../core/context/operations';
 import type { SessionEvent } from '../core/log/events';
+import type { Policy } from '../core/policy/policy';
 import { fold } from '../core/log/fold';
 import { environmentText } from '../core/notes/environment';
 import { newSession, summarize, type SessionRef } from '../core/session/session';
 import { App } from './app';
 import { errorText } from './format';
-import type { GateOptions } from './gate';
+import type { GateOptions, Policies, Status } from './gate';
 import { Sessions } from './sessions';
 import { Setup } from './setup';
 
@@ -53,6 +55,11 @@ export function Launch(props: LaunchOptions) {
   // tree-sitter-bash, loaded once (FR-22).
   let split: Split | undefined;
   const [current, setCurrent] = createSignal('');
+  // Context Policies (ADR 0001), loaded at start: the active one belongs to the app, it stays when switching sessions.
+  const [active, setActive] = createSignal<Policy | null>(null);
+  const policies: Policies = { all: [], active, set: setActive };
+  // Policies that failed to load, reported once in the first status line.
+  let failed: string[] = [];
   const root = props.cwd ?? process.cwd();
   const environment = () => environmentText(probeEnvironment(root));
   const project = { read: projectFiles(root), list: () => listProjectFiles(root), environment, open: (path: string) => props.openFile(resolve(root, path)) };
@@ -114,7 +121,12 @@ export function Launch(props: LaunchOptions) {
     const searcher = createSearcher({ cwd: root, timeout: SEARCH_TIMEOUT });
     const approval = { split, root, permissions: () => config.permissions };
     const instruction = () => config.compactionInstruction();
-    setGate({ backend, runner, searcher, approval, editor: props.editor, clipboard: props.clipboard, log: opened.log, events, project, notice, openSessions: () => setView('sessions'), instruction, compactor: compactor(profile, opened.id) });
+    setGate({ backend, runner, searcher, approval, editor: props.editor, clipboard: props.clipboard, log: opened.log, events, project, notice: withFailed(notice), openSessions: () => setView('sessions'), instruction, compactor: compactor(profile, opened.id), policies });
+  }
+  function withFailed(notice: Status): Status {
+    const text = failed.map(f => `policy ${f} – not loaded`);
+    failed = [];
+    return text.length ? { text: [notice.text, ...text].join(' · '), tone: 'warn' } : notice;
   }
 
   // /sessions (FR-33): switching sessions reconnects; the Gate comes back with the session's logged events.
@@ -163,6 +175,7 @@ export function Launch(props: LaunchOptions) {
 
   onMount(() => {
     const start = async () => {
+      ({ policies: policies.all, failed } = await loadPolicies(policiesDir(props.paths)));
       const loaded = loadConfig(props.paths);
       return loaded ? open(loaded, props.resume) : firstStart();
     };

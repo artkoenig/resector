@@ -72,7 +72,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   // The project's files, listed when the input opens: @path completion (FR-27).
   const [files, setFiles] = createSignal<string[]>([]);
   createEffect(on(mode, m => m === 'input' && setFiles(props.project.list())));
-  // Suggestions above the input: commands while it is a single `/word` (FR-6), the tools after `/tools `, the filter values after `/filter ` (FR-51), project files while an @path
+  // Suggestions above the input: commands while it is a single `/word` (FR-6), the tools after `/tools `, the filter values after `/filter ` (FR-51), the policies after `/policy `, project files while an @path
   // is typed at its end (FR-27). Tab completes; Enter runs a command taking no argument, else completes too.
   const suggestions = createMemo((): Suggestion[] => {
     if (mode() !== 'input') return [];
@@ -93,6 +93,13 @@ export function App(props: GateOptions & { onQuit: () => void }) {
       return [...off, ...FILTERS.map(f => ({ name: f.name, description: f.kinds.join(' + ') }))]
         .filter(f => f.name.startsWith(kind[1]!.toLowerCase()))
         .map(f => ({ label: f.name, description: f.description, draft: `/filter ${f.name}`, run: `/filter ${f.name}` }));
+    }
+    const policy = /^\/policy (\S*)$/.exec(draft());
+    if (policy) {
+      const off = gate.policy() ? [{ name: 'off', description: 'no policy' }] : [];
+      return [...off, ...gate.policyNames().map(name => ({ name, description: name === gate.policy() ? 'active' : 'switch on' }))]
+        .filter(p => p.name.startsWith(policy[1]!))
+        .map(p => ({ label: p.name, description: p.description, draft: `/policy ${p.name}`, run: `/policy ${p.name}` }));
     }
     const found = fileCompletions(draft(), files());
     return found ? found.paths.map(path => ({ label: path, description: '', draft: `${draft().slice(0, found.at)}${path} `, run: null })) : [];
@@ -617,7 +624,8 @@ function Header(props: { gate: Gate; width: number }) {
   };
   const tone = () => ({ ok: undefined, warn: TONE.warn, over: TONE.error })[budget()?.tone ?? 'ok'];
   const profile = () => props.gate.profile();
-  const thinking = () => ` · thinking ${thinkingLabel(props.gate.thinking())}`;
+  // The active Context Policy follows the thinking mode (ADR 0001).
+  const thinking = () => ` · thinking ${thinkingLabel(props.gate.thinking())}${props.gate.policy() ? ` · policy ${props.gate.policy()}` : ''}`;
   return (
     <HeaderBand
       width={props.width}

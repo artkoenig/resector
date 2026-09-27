@@ -16,6 +16,8 @@ import { permissionRules, type Permissions, type Split } from '../core/approval/
 import { listProjectFiles, projectFiles } from '../adapters/fs/project';
 import { newSession, type SessionNotes } from '../core/session/session';
 import type { Tool } from '../core/log/events';
+import type { Policy, PolicyOperation } from '../core/policy/policy';
+import { createSignal } from 'solid-js';
 import { App } from './app';
 import { formatTokens } from './format';
 import { TONE } from './theme';
@@ -47,8 +49,8 @@ let openedFiles: string[];
 // `tools`: the Tools Block (default bash only, so token counts stay put). `users`: User blocks already in the Session Log, not yet sent; `global`, `project`: permission rules of the config.
 // `calls`: pending Tool Calls after them, as at a resume (a string: a bash command). `template`: the chat template the server reports.
 // `window`: the server's context size; `exact`: false counts like an inexact tokenizer (Ollama, LM Studio).
-type Start = { tools?: string; template?: string; window?: number; exact?: boolean; notes?: SessionNotes; timeout?: number; compactor?: GateOptions['compactor']; users?: string[]; calls?: (string | { tool: Tool; content: string })[]; global?: Permissions; project?: Permissions };
-async function start({ tools = BASH_TOOLS, template, window = 4096, exact = true, notes, timeout = 120, compactor, users = [], calls = [], global, project: own }: Start = {}) {
+type Start = { tools?: string; template?: string; window?: number; exact?: boolean; notes?: SessionNotes; timeout?: number; compactor?: GateOptions['compactor']; policies?: Policy[]; users?: string[]; calls?: (string | { tool: Tool; content: string })[]; global?: Permissions; project?: Permissions };
+async function start({ tools = BASH_TOOLS, template, window = 4096, exact = true, notes, timeout = 120, compactor, policies = [], users = [], calls = [], global, project: own }: Start = {}) {
   editor = async text => text;
   copied = [];
   environment = notes?.environment ?? '';
@@ -69,8 +71,9 @@ async function start({ tools = BASH_TOOLS, template, window = 4096, exact = true
   const opened: string[] = [];
   const approval = { split, root: project, permissions: () => permissionRules(global, own) };
   const files = { read: projectFiles(project), list: () => listProjectFiles(project), environment: () => environment, open: async (path: string) => void openedFiles.push(path) };
+  const [active, setActive] = createSignal<Policy | null>(null);
   ui = await testRender(
-    () => <App backend={backend} runner={runner} searcher={searcher} approval={approval} editor={text => editor(text)} project={files} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
+    () => <App backend={backend} runner={runner} searcher={searcher} approval={approval} editor={text => editor(text)} project={files} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} policies={{ all: policies, active, set: setActive }} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
     { width: 80, height: 20 },
   );
   const size = ` / ${formatTokens(window)}`;
@@ -361,7 +364,7 @@ test('⌥↑⌥↓ move the selected block and flag it ⇄ until sent', async ()
   expect(order(frame)).toEqual(['1 System', '2 bash', '3 second', '4 first']);
   expect(line(frame, /second/)).toMatch(/⇄/);
   expect(line(frame, /first/)).not.toMatch(/⇄/);
-  expect(events().at(-1)).toEqual({ type: 'Move', id: 4, after: 2 });
+  expect(events().at(-1)).toEqual({ type: 'Move', id: 4, after: 2, by: 'user' });
   await press('up', { meta: true });
   frame = await frameMatching(ui, f => f.includes('boundary reached'));
   expect(order(frame)).toEqual(['1 System', '2 bash', '3 second', '4 first']);
@@ -432,7 +435,7 @@ test('with marks only d and c are offered; d removes every marked block, u bring
   expect(line(frame, /two/)).not.toMatch(/removed/);
   expect(line(frame, /three/)).toMatch(/User\s+three\s+removed/);
   expect(frame).not.toMatch(/^[ ┃] ●/m);
-  expect(events().at(-1)).toEqual({ type: 'Remove', id: 3, others: [5] });
+  expect(events().at(-1)).toEqual({ type: 'Remove', id: 3, others: [5], by: 'user' });
   await press('u');
   frame = await frameMatching(ui, f => f.includes('undone: remove'));
   expect(frame).not.toMatch(/removed\s*$/m);
@@ -450,7 +453,7 @@ test('d strikes the block through until sent; u brings it back as a counter-even
   await press('u');
   frame = await frameMatching(ui, f => f.includes('undone: remove'));
   expect(order(frame)).toEqual(['1 System', '2 bash', '3 keep', '4 drop']);
-  expect(events().slice(-2)).toEqual([{ type: 'Remove', id: 4 }, { type: 'Undo', eventId: 5 }]);
+  expect(events().slice(-2)).toEqual([{ type: 'Remove', id: 4, by: 'user' }, { type: 'Undo', eventId: 5 }]);
   await press('down');
   await press('d');
   fake.reply({ chunks: ['fine'] });
@@ -601,7 +604,7 @@ test('typing / suggests the commands, filtered while typing; ↑↓ choose, Ente
   await write('/sessions');
   await until(() => opened.length > 0);
   await write('/nope');
-  await frameMatching(ui, f => f.includes('✗ unknown command /nope') && f.includes('/sessions /rename /tools /filter'));
+  await frameMatching(ui, f => f.includes('✗ unknown command /nope') && f.includes('/sessions /rename /tools /filter /policy'));
   // Config is read when a session opens: a change needs a restart (ADR 0001).
   await write('/reload');
   await frameMatching(ui, f => f.includes('✗ unknown command /reload'));
@@ -642,7 +645,7 @@ test('/tools completes the tool names and switches one off and on; off, it is no
   ui.mockInput.pressEnter();
   frame = await frameMatching(ui, f => f.includes('bash off · u = undo'));
   expect(line(frame, /Tools/)).toMatch(/2\s+Tools\s+no tools/);
-  expect(events().at(-1)).toMatchObject({ type: 'Edit', id: 2, content: '[]' });
+  expect(events().at(-1)).toMatchObject({ type: 'Edit', id: 2, content: '[]', by: 'user' });
   fake.reply({ chunks: ['ok'] });
   await write('hi');
   await frameMatching(ui, f => f.includes('answer complete'));
@@ -888,7 +891,7 @@ test('e edits the block in $EDITOR: a new Revision flagged ✎2 until sent, the 
   expect(opened).toEqual(['helo']);
   expect(line(frame, /User/)).toMatch(/3\s+User\s+hello\s+\d+\s+[●○]?\s+✎2/);
   expect(frame).toContain('edited → revision 2 · u = undo');
-  expect(events().at(-1)).toEqual({ type: 'Edit', id: 3, revision: 2, content: 'hello' });
+  expect(events().at(-1)).toEqual({ type: 'Edit', id: 3, revision: 2, content: 'hello', by: 'user' });
   fake.reply({ chunks: ['hi'] });
   ui.mockInput.pressEnter();
   frame = await frameMatching(ui, f => f.includes('answer complete'));
@@ -999,7 +1002,7 @@ test('e on a pending call: the new Revision is decided again by the rules (FR-23
   await press('e');
   await frameMatching(ui, f => f.includes('answer complete'));
   expect(events().slice(-5, -3)).toEqual([
-    { type: 'Edit', id: 4, revision: 2, content: 'ls -d .' },
+    { type: 'Edit', id: 4, revision: 2, content: 'ls -d .', by: 'user' },
     { type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: '.\n[exit 0]', call: 4 },
   ]);
 });
@@ -1057,7 +1060,7 @@ test('d removes a Tool Pair as a whole; Space marks it as a whole (FR-9)', async
   frame = await frameMatching(ui, f => f.includes('(whole Tool Pair)'));
   expect(line(frame, /Tool Call/)).toMatch(/^ {8}Tool Call\s+echo hi\s+removed/);
   expect(line(frame, /Tool Result/)).toMatch(/^ {8}Tool Result\s+→ echo hi\s+removed/);
-  expect(events().at(-1)).toEqual({ type: 'Remove', id: 5 });
+  expect(events().at(-1)).toEqual({ type: 'Remove', id: 5, by: 'user' });
 });
 
 test('⌥↑ on a Tool Pair asks; any other key cancels; the same key again turns it into a Note and moves it (FR-9)', async () => {
@@ -1073,7 +1076,7 @@ test('⌥↑ on a Tool Pair asks; any other key cancels; the same key again turn
   let frame = await frameMatching(ui, f => /4\s+Note\s+⇄ echo hi.*⇄/.test(f));
   expect(order(frame)).toEqual(['1 System', '2 bash', '3 go', '4 ⇄', '5 Look.', '6 ok']);
   expect(frame).not.toContain('Tool Result');
-  expect(events().slice(-2)).toEqual([{ type: 'PairToNote', id: 8, call: 5 }, { type: 'Move', id: 8, after: 3 }]);
+  expect(events().slice(-2)).toEqual([{ type: 'PairToNote', id: 8, call: 5, by: 'user' }, { type: 'Move', id: 8, after: 3, by: 'user' }]);
   fake.reply({ chunks: ['fine'] });
   ui.mockInput.pressEnter();
   frame = await frameMatching(ui, f => f.includes('fine'));
@@ -1140,7 +1143,7 @@ test('the proposal streams at the first source; Enter accepts it as one Note, u 
   expect(order(frame)).toEqual(['1 System', '2 bash', '3 ◇', '4 three']);
   frame = await frameMatching(ui, f => /3\s+Note\s+◇ 2 blocks compacted\s+6\b/.test(f));
   expect(frame).not.toContain('●');
-  expect(events().at(-1)).toEqual({ type: 'Compact', sources: [3, 4], instruction: 'keep the gist', noteId: 6, content: 'both' });
+  expect(events().at(-1)).toEqual({ type: 'Compact', sources: [3, 4], instruction: 'keep the gist', noteId: 6, content: 'both', by: 'user' });
   await press('u');
   frame = await frameMatching(ui, f => f.includes('undone: compact'));
   expect(order(frame)).toEqual(['1 System', '2 bash', '3 one', '4 two', '5 three']);
@@ -1179,7 +1182,7 @@ test('x discards the proposal; i runs again from the sources with a changed inst
   frame = await frameMatching(ui, f => f.includes('proposal edited by hand') && f.includes('cold from #4'));
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('◇ accepted'));
-  expect(events().at(-1)).toEqual({ type: 'Compact', sources: [4], instruction: 'shorter!', noteId: 5, content: '2nd edited' });
+  expect(events().at(-1)).toEqual({ type: 'Compact', sources: [4], instruction: 'shorter!', noteId: 5, content: '2nd edited', by: 'user' });
 });
 
 test('a request too big for the compaction window is blocked; Compaction runs on compactionProfile, leaving the session cache (FR-14, FR-17)', async () => {
@@ -1532,11 +1535,11 @@ test('the answer is a normal Context Block: e makes a new Revision; d removes th
   editor = async () => 'Which runtime should we use?: Deno\n';
   await press('e');
   let frame = await frameMatching(ui, f => f.includes('┃ Which runtime should we use?: Deno'));
-  expect(events().at(-1)).toEqual({ type: 'Edit', id: 5, revision: 2, content: 'Which runtime should we use?: Deno' });
+  expect(events().at(-1)).toEqual({ type: 'Edit', id: 5, revision: 2, content: 'Which runtime should we use?: Deno', by: 'user' });
   await press('d');
   frame = await frameMatching(ui, f => f.includes('(whole Tool Pair)'));
   expect(line(frame, /Tool Call/)).toMatch(/Tool Call\s+question .*removed/);
-  expect(events().at(-1)).toEqual({ type: 'Remove', id: 5 });
+  expect(events().at(-1)).toEqual({ type: 'Remove', id: 5, by: 'user' });
 });
 
 // Kind Filter: a view restriction at the Gate, never logged.
@@ -1753,3 +1756,152 @@ test('ask never pauses a Question; a Question still open at a resume is denied o
   expect(events().at(-1)).toEqual({ type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'denied by rule', call: 4 });
 });
 
+
+// Context Policies (ADR 0001) ---------------------------------------------------------------------------
+// A policy returning `passes` in turn, then nothing; `seen`: the block ids of each Context it was called with.
+function scripted(name: string, passes: PolicyOperation[][], seen: number[][] = []): Policy {
+  let pass = 0;
+  return { name, run: context => (seen.push(context.blocks.map(b => b.id)), passes[pass++] ?? []) };
+}
+async function policyOn(name: string) {
+  await write(`/policy ${name}`);
+  await frameMatching(ui, f => f.includes(`policy ${name} on`));
+}
+
+test('/policy suggests the policies, switches one on and off; the header shows the active one (ADR 0001)', async () => {
+  await start({ policies: [scripted('trail', []), scripted('tidy', [])] });
+  ui.mockInput.pressTab();
+  await ui.flush();
+  await ui.mockInput.typeText('/policy ');
+  let frame = await frameMatching(ui, f => f.includes('switch on'));
+  expect(line(frame, /trail/)).toMatch(/trail +switch on/);
+  expect(line(frame, /tidy/)).toMatch(/tidy +switch on/);
+  expect(frame).not.toMatch(/off +no policy/);
+  ui.mockInput.pressEnter();
+  frame = await frameMatching(ui, f => f.includes('policy trail on – edits the Context before every request'));
+  expect(line(frame, /default/)).toMatch(/default · thinking off · policy trail +52/);
+  ui.mockInput.pressTab();
+  await ui.flush();
+  await ui.mockInput.typeText('/policy ');
+  frame = await frameMatching(ui, f => f.includes('no policy'));
+  expect(frame).toMatch(/trail +active/);
+  await escape();
+  await escape();
+  await write('/policy');
+  await frameMatching(ui, f => f.includes('policy trail · /policy off trail tidy'));
+  await write('/policy nope');
+  await frameMatching(ui, f => f.includes('unknown policy nope') && f.includes('off trail tidy'));
+  await write('/policy off');
+  frame = await frameMatching(ui, f => f.includes('policy off'));
+  expect(line(frame, /default/)).toMatch(/default · thinking off +52/);
+});
+
+test('the active policy edits the Context before the request, attributed to it, until it returns nothing', async () => {
+  const seen: number[][] = [];
+  const { events } = await start({ users: ['old', 'older'], policies: [scripted('trim', [[{ op: 'remove', id: 3 }], [{ op: 'edit', id: 4, content: 'newer' }]], seen)] });
+  await policyOn('trim');
+  fake.reply({ chunks: ['ok'] });
+  ui.mockInput.pressEnter();
+  const frame = await frameMatching(ui, f => f.includes('answer complete'));
+  expect(frame).toContain('trim: 1 User removed, 1 block edited · answer complete');
+  expect(seen).toEqual([[1, 2, 3, 4], [1, 2, 4], [1, 2, 4]]);
+  expect(events().slice(5, 7)).toEqual([{ type: 'Remove', id: 3, by: 'trim' }, { type: 'Edit', id: 4, revision: 2, content: 'newer', by: 'trim' }]);
+  expect(JSON.stringify(fake.chatRequests[0])).not.toContain('old');
+});
+
+test('the policy runs before every request, the follow-ups of the tool loop too; an undone operation comes back', async () => {
+  const seen: number[][] = [];
+  const again: Policy = { name: 'drop', run: context => (seen.push([]), context.blocks.filter(b => b.kind === 'User' && b.content === 'drop me').map(b => ({ op: 'remove', id: b.id }))) };
+  const { events } = await start({ users: ['drop me'], policies: [again] });
+  await policyOn('drop');
+  fake.reply({ chunks: [], calls: [bash('ls -d .')] });
+  fake.reply({ chunks: ['ok'] });
+  await write('go');
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(fake.chatRequests).toHaveLength(2);
+  expect(seen).toHaveLength(3);
+  await press('u');
+  await frameMatching(ui, f => f.includes('undone: remove'));
+  fake.reply({ chunks: ['again'] });
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('drop: 1 User removed · answer complete'));
+  expect(events().filter(e => e.type === 'Remove')).toEqual([{ type: 'Remove', id: 3, by: 'drop' }, { type: 'Remove', id: 3, by: 'drop' }]);
+});
+
+test('a policy that throws, or still changes the Context after 8 passes, stops the Gate: nothing is sent', async () => {
+  const boom: Policy = { name: 'boom', run: () => { throw new Error('bad rule'); } };
+  const endless: Policy = { name: 'endless', run: context => [{ op: 'edit', id: 3, content: `${context.blocks.find(b => b.id === 3)!.content}!` }] };
+  const { events } = await start({ users: ['hi'], policies: [boom, endless] });
+  await policyOn('boom');
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('✗ policy boom') && f.includes('failed: bad rule – not sent'));
+  await policyOn('endless');
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('✗ policy endless') && f.includes('still changing the Context after 8 passes – not sent · endless: 7 blocks'));
+  expect(fake.chatRequests).toHaveLength(0);
+  expect(events().filter(e => e.type === 'RequestSent')).toEqual([]);
+  expect(events().filter(e => e.type === 'Edit').at(-1)).toMatchObject({ content: 'hi!!!!!!!', by: 'endless' });
+});
+
+test('an operation the rules refuse stops the Gate and names it', async () => {
+  await start({ users: ['hi'], policies: [scripted('bad', [[{ op: 'remove', id: 1 }]])] });
+  await policyOn('bad');
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('✗ policy bad') && f.includes('remove 1: System prompt cannot be removed – not sent'));
+  expect(fake.chatRequests).toHaveLength(0);
+});
+
+test('a policy compacts: the Compaction runs without review, its Note is attributed; the request follows', async () => {
+  const { events } = await start({ users: ['a', 'b', 'c'], policies: [scripted('squash', [[{ op: 'compact', sources: [3, 4], instruction: 'merge' }]])] });
+  await policyOn('squash');
+  fake.reply({ chunks: ['a and b'] });
+  fake.reply({ chunks: ['ok'] });
+  ui.mockInput.pressEnter();
+  const frame = await frameMatching(ui, f => f.includes('answer complete'));
+  expect(frame).toContain('squash: 2 User → 1 Note · answer complete');
+  expect(events().find(e => e.type === 'Compact')).toEqual({ type: 'Compact', sources: [3, 4], instruction: 'merge', noteId: 6, content: 'a and b', by: 'squash' });
+  expect(fake.chatRequests).toHaveLength(2);
+  expect(JSON.stringify(fake.chatRequests[0])).toContain('Instruction: merge');
+  expect(JSON.stringify(fake.chatRequests[1])).toContain('a and b');
+});
+
+test('a policy Compaction that writes nothing stops the Gate: nothing is sent', async () => {
+  const { events } = await start({ users: ['a', 'b'], policies: [scripted('squash', [[{ op: 'compact', sources: [3], instruction: 'merge' }]])] });
+  await policyOn('squash');
+  fake.reply({ chunks: [' '] });
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('✗ policy squash') && f.includes('compact 3: compaction failed: empty Note – not sent'));
+  expect(fake.chatRequests).toHaveLength(1);
+  expect(events().some(e => e.type === 'Compact' || e.type === 'RequestSent')).toBe(false);
+});
+
+test('a policy Compaction runs on compactionProfile; too big for its window, cut off or aborted, it stops the Gate (FR-14, FR-17)', async () => {
+  const small = startFakeLlamaCpp({ nCtx: 80 });
+  try {
+    const backend = await connectLlamaCpp(small.url);
+    const long = 'a b c d e f g h i j k l m n o p q r s t u v w x y z '.repeat(2);
+    const squash = (id: number): Policy => ({ name: `squash${id}`, run: c => (c.blocks.some(b => b.id === id) ? [{ op: 'compact', sources: [id], instruction: 'merge' }] : []) });
+    const { events } = await start({ compactor: async () => ({ profile: 'small', backend }), users: [long, 'short'], policies: [squash(3), squash(4)] });
+    await policyOn('squash3');
+    ui.mockInput.pressEnter();
+    await frameMatching(ui, f => /compact 3: compaction failed: request \d+ ≥ window 80/.test(f));
+    await policyOn('squash4');
+    small.reply({ chunks: ['cut'], finish: 'length' });
+    ui.mockInput.pressEnter();
+    await frameMatching(ui, f => f.includes('compaction failed: cut off at max_tokens – not sent'));
+    small.reply({ chunks: ['wait'], hang: true });
+    ui.mockInput.pressEnter();
+    await frameMatching(ui, f => f.includes('policy squash4 running'));
+    await escape();
+    await frameMatching(ui, f => f.includes('compaction failed: aborted – not sent'));
+    small.reply({ chunks: ['brief'] });
+    fake.reply({ chunks: ['ok'] });
+    ui.mockInput.pressEnter();
+    await frameMatching(ui, f => f.includes('squash4: 1 User → 1 Note · answer complete'));
+    expect(small.chatRequests).toHaveLength(3);
+    expect(fake.chatRequests).toHaveLength(1);
+    expect(events().find(e => e.type === 'Compact')).toMatchObject({ sources: [4], content: 'brief', by: 'squash4' });
+  } finally {
+    small.stop();
+  }
+});

@@ -11,6 +11,10 @@ export type Tool = 'bash' | 'search' | 'question';
 // Reasoning (FR-49): 'off', 'on', or an effort level the model's chat template accepts (e.g. 'low', 'xhigh').
 export type Thinking = string;
 
+// Who made a Context operation: `user` or the Context Policy's name (ADR 0001). Information only: replay never reads it;
+// older logs and harness edits carry none.
+type By = { by?: string };
+
 export type Usage = { prompt_tokens: number; completion_tokens: number };
 
 export type SessionEvent =
@@ -30,16 +34,16 @@ export type SessionEvent =
   | { type: 'RequestSent'; hash: string; tokens: number }
   // A new Revision of the block's content (FR-8); the block's first content is Revision 1.
   // harness: the environment Note refreshed (FR-28) or a tool denied by rule taken out of the Tools Block (FR-21), not undoable.
-  | { type: 'Edit'; id: number; revision: number; content: string; harness?: true }
+  | ({ type: 'Edit'; id: number; revision: number; content: string; harness?: true } & By)
   // Context operations (FR-4); `after` is the block the moved block now follows.
   // Older logs may carry `Pin`/`Unpin` events (ADR 0002): ignored on replay.
-  | { type: 'Move'; id: number; after: number }
+  | ({ type: 'Move'; id: number; after: number } & By)
   // Removes the whole Tool Pair when `id` is one of its blocks (FR-9); `others`: marked blocks removed with it, undone together.
-  | { type: 'Remove'; id: number; others?: number[] }
+  | ({ type: 'Remove'; id: number; others?: number[] } & By)
   // The Tool Pair of Tool Call `call` becomes Note `id` after the calls and results of its answer (FR-9).
-  | { type: 'PairToNote'; id: number; call: number }
+  | ({ type: 'PairToNote'; id: number; call: number } & By)
   // Accepted Compaction (FR-16): Note `noteId` with `content` replaces `sources` at the first one's place.
-  | { type: 'Compact'; sources: number[]; instruction: string; noteId: number; content: string }
+  | ({ type: 'Compact'; sources: number[]; instruction: string; noteId: number; content: string } & By)
   // Display label only, never sent; empty = reset to the default title.
   | { type: 'Rename'; id: number; title: string }
   // "Allow for session" (FR-23, FR-25): an allow rule for the rest of the session, also after resume.

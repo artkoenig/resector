@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
 import { TOOLS } from '../toolcall/bash';
-import { approvable, decline, deny, edit, isFixed, inPair, move, nextCall, reject, remove, removeAll, toggleTool, withoutDenied, toNote, toolResult, undo } from './operations';
+import { approvable, attributed, decline, deny, edit, isFixed, inPair, move, moveAfter, nextCall, reject, remove, removeAll, revise, toggleTool, untouchable, withoutDenied, toNote, toolResult, undo } from './operations';
 
 const session = (...then: SessionEvent[]): SessionEvent[] => [
   { type: 'SessionCreated', profile: 'default', protocol: 'native' },
@@ -233,4 +233,59 @@ test('undo passes over the harness refreshing the environment Note (FR-28)', () 
 test('an edit after a harness Revision is numbered after it', () => {
   const events = session({ type: 'Edit', id: 3, revision: 2, content: 'env', harness: true });
   expect(edit(events, at(events, 3)[1], 'mine')).toEqual({ event: { type: 'Edit', id: 3, revision: 3, content: 'mine' } });
+});
+
+test('moveAfter anchors the block after any block of the Context, as a Context Policy moves it (ADR 0001)', () => {
+  expect(moveAfter(...at(session(), 4), 1)).toEqual({ event: { type: 'Move', id: 4, after: 1 } });
+  expect(moveAfter(...at(session(), 2), 4)).toEqual({ event: { type: 'Move', id: 2, after: 4 } });
+  expect(moveAfter(...at(session(tools), 2), 5)).toEqual({ event: { type: 'Move', id: 2, after: 5 } });
+});
+
+test('moveAfter keeps System and Tools first, the calls and results of an answer together, and needs a change', () => {
+  const events = session(call(6), call(7), answered(8, 6), answered(9, 7));
+  expect(moveAfter(...at(events, 1), 2)).toEqual(FIXED);
+  expect(moveAfter(...at(session(call(10)), 10), 2)).toEqual(AWAITS);
+  expect(moveAfter(...at(events, 8), 2)).toEqual({ error: 'a Tool Pair moves as a Note' });
+  expect(moveAfter(...at(events, 2), 6)).toEqual({ error: 'not between the Tool Calls and Tool Results of an answer' });
+  expect(moveAfter(...at(events, 2), 8)).toEqual({ error: 'not between the Tool Calls and Tool Results of an answer' });
+  expect(moveAfter(...at(events, 2), 9)).toEqual({ event: { type: 'Move', id: 2, after: 9 } });
+  const opening: SessionEvent[] = [
+    { type: 'SessionCreated', profile: 'default', protocol: 'native' },
+    { type: 'BlockAdded', id: 1, kind: 'System', origin: 'config', content: 'sys' },
+    { ...tools, id: 2 } as SessionEvent,
+    { type: 'BlockAdded', id: 3, kind: 'User', origin: 'user', content: 'a' },
+    { type: 'BlockAdded', id: 4, kind: 'User', origin: 'user', content: 'b' },
+  ];
+  expect(moveAfter(...at(opening, 4), 1)).toEqual({ error: 'System and Tools Block stay first' });
+  expect(moveAfter(...at(opening, 4), 2)).toEqual({ event: { type: 'Move', id: 4, after: 2 } });
+  expect(moveAfter(...at(session(), 3), 2)).toEqual({ error: 'unchanged – already there' });
+  expect(moveAfter(...at(session(), 3), 3)).toEqual({ error: 'no block 3 to move after' });
+  expect(moveAfter(...at(session({ type: 'Remove', id: 2 }), 4), 2)).toEqual({ error: 'no block 2 to move after' });
+});
+
+test('moveAfter looks past struck-through blocks: they are not sent', () => {
+  const struck = session({ type: 'Remove', id: 3 });
+  expect(moveAfter(...at(struck, 4), 2)).toEqual({ error: 'unchanged – already there' });
+  expect(moveAfter(...at(session(call(6), answered(7, 6), { type: 'Remove', id: 6 }), 2), 4)).toEqual({ event: { type: 'Move', id: 2, after: 4 } });
+});
+
+test('untouchable: System and Tools Block and pending Tool Calls, for any operation', () => {
+  const events = session(tools, call(6), answered(7, 6), call(8));
+  expect([1, 5, 8].map(id => untouchable(at(events, id)[1]))).toEqual([FIXED, { error: 'Tools Block is fixed' }, AWAITS]);
+  expect([2, 6, 7].map(id => untouchable(at(events, id)[1]))).toEqual([null, null, null]);
+});
+
+test('revise: the content as the next Revision, as is; unchanged, none', () => {
+  expect(revise(session(), at(session(), 2)[1], 'b\n')).toEqual({ event: { type: 'Edit', id: 2, revision: 2, content: 'b\n' } });
+  expect(revise(session(), at(session(), 2)[1], 'a')).toEqual({ error: 'unchanged – no new Revision' });
+});
+
+test('attributed names who made a Context operation; other events and harness edits stay as they are', () => {
+  const ops: SessionEvent[] = [
+    { type: 'Move', id: 2, after: 3 }, { type: 'Remove', id: 2 }, { type: 'Edit', id: 2, revision: 2, content: 'x' },
+    { type: 'PairToNote', id: 9, call: 6 }, { type: 'Compact', sources: [2], instruction: 'i', noteId: 9, content: 'n' },
+  ];
+  for (const event of ops) expect(attributed(event, 'trail')).toEqual({ ...event, by: 'trail' } as SessionEvent);
+  const others: SessionEvent[] = [{ type: 'Edit', id: 2, revision: 2, content: 'x', harness: true }, { type: 'Rename', id: 2, title: 't' }, { type: 'Undo', eventId: 3 }, call(6)];
+  for (const event of others) expect(attributed(event, 'user')).toEqual(event);
 });

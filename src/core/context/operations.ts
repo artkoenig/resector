@@ -16,7 +16,7 @@ const fixed = (block: Block) => ({ error: `${NAME[block.kind]} is fixed` });
 // A Tool Call awaiting approval keeps its place until it has a result.
 const AWAITS = { error: 'Tool Call awaits approval – y run once · a allow for session · n reject · e edit' };
 // Why an operation may not touch the block, if not.
-const guard = (block: Block) => (isFixed(block) ? fixed(block) : block.pending ? AWAITS : null);
+export const untouchable = (block: Block) => (isFixed(block) ? fixed(block) : block.pending ? AWAITS : null);
 const UNDOABLE = new Set<SessionEvent['type']>(['Move', 'Remove', 'Rename', 'Edit', 'PairToNote', 'Compact']);
 
 const isTool = (block: Block | undefined) => block?.kind === 'Tool Call' || block?.kind === 'Tool Result';
@@ -24,7 +24,7 @@ const isTool = (block: Block | undefined) => block?.kind === 'Tool Call' || bloc
 export const inPair = (block: Block) => block.kind === 'Tool Result' || (block.kind === 'Tool Call' && !block.pending);
 
 export function move({ blocks }: Context, block: Block, dir: -1 | 1): Outcome {
-  const blocked = guard(block);
+  const blocked = untouchable(block);
   if (blocked) return blocked;
   const live = blocks.filter(b => !b.removed);
   let far = live.indexOf(block) + dir;
@@ -35,6 +35,20 @@ export function move({ blocks }: Context, block: Block, dir: -1 | 1): Outcome {
   while (isTool(live[far]) && isTool(live[far + dir])) far += dir;
   const after = dir === 1 ? live[far]! : blocks[blocks.indexOf(live[far]!) - 1]!;
   return { event: { type: 'Move', id: block.id, after: after.id } };
+}
+
+// A Context Policy's move: the block right after `after`, a block sent next (ADR 0001). A Tool Pair is turned into a Note first.
+export function moveAfter({ blocks }: Context, block: Block, after: number): Outcome {
+  const blocked = untouchable(block) ?? (inPair(block) ? { error: 'a Tool Pair moves as a Note' } : null);
+  if (blocked) return blocked;
+  const live = blocks.filter(b => !b.removed);
+  const others = live.filter(b => b !== block);
+  const at = others.findIndex(b => b.id === after);
+  if (at < 0) return { error: `no block ${after} to move after` };
+  if (others[at + 1]?.kind === 'Tools') return { error: 'System and Tools Block stay first' };
+  if (isTool(others[at]) && isTool(others[at + 1])) return { error: 'not between the Tool Calls and Tool Results of an answer' };
+  if (live[live.indexOf(block) - 1]!.id === after) return { error: 'unchanged – already there' };
+  return { event: { type: 'Move', id: block.id, after } };
 }
 
 export function remove(block: Block): Outcome {
@@ -68,7 +82,7 @@ export function editable(block: Block): string | null {
 
 // Moving a Tool Pair turns it into Note `id` first (FR-9).
 export function toNote(block: Block, id: number): Outcome {
-  const blocked = guard(block);
+  const blocked = untouchable(block);
   if (blocked) return blocked;
   if (!inPair(block)) return { error: 'not a Tool Pair' };
   return { event: { type: 'PairToNote', id, call: block.kind === 'Tool Call' ? block.id : block.call! } };
@@ -79,10 +93,19 @@ export function toNote(block: Block, id: number): Outcome {
 export function edit(events: SessionEvent[], block: Block, edited: string): Outcome {
   const error = editable(block);
   if (error) return { error };
-  const content = block.content.endsWith('\n') ? edited : edited.replace(block.kind === 'Tool Call' ? /\n+$/ : /\n$/, '');
+  return revise(events, block, block.content.endsWith('\n') ? edited : edited.replace(block.kind === 'Tool Call' ? /\n+$/ : /\n$/, ''));
+}
+
+// The content as the block's next Revision, unless unchanged.
+export function revise(events: SessionEvent[], block: Block, content: string): Outcome {
   if (content === block.content) return { error: 'unchanged – no new Revision' };
   return { event: { type: 'Edit', id: block.id, revision: nextRevision(events, block.id), content } };
 }
+
+// The Context operations whose events name who made them (ADR 0001); a harness edit keeps its marker instead.
+const ATTRIBUTED = new Set<SessionEvent['type']>(['Move', 'Remove', 'Edit', 'PairToNote', 'Compact']);
+export const attributed = (event: SessionEvent, by: string): SessionEvent =>
+  ATTRIBUTED.has(event.type) && !('harness' in event) ? ({ ...event, by } as SessionEvent) : event;
 
 // /tools <name>: the Tools Block with the tool switched on or off, as a new Revision; a tool denied by rule stays off.
 export function toggleTool(events: SessionEvent[], { blocks }: Context, name: string, denied: Tool[]): Outcome {

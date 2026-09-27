@@ -27,9 +27,10 @@ function put(path: string, text: string) {
   writeFileSync(path, text);
 }
 
-type Setup = { config?: (url: string) => string; systemMd?: string; compactionMd?: string; servers?: (url: string) => LocalServer[]; sessions?: Record<string, SessionEvent[]>; locks?: Record<string, number>; resume?: true | string; files?: Record<string, string> };
+// policies: Context Policy modules by name, in policies/ next to the global config.
+type Setup = { config?: (url: string) => string; systemMd?: string; compactionMd?: string; policies?: Record<string, string>; servers?: (url: string) => LocalServer[]; sessions?: Record<string, SessionEvent[]>; locks?: Record<string, number>; resume?: true | string; files?: Record<string, string> };
 
-async function launch({ config, systemMd, compactionMd, servers, sessions = {}, locks = {}, resume, files = {} }: Setup = {}) {
+async function launch({ config, systemMd, compactionMd, policies = {}, servers, sessions = {}, locks = {}, resume, files = {} }: Setup = {}) {
   fake = startFakeLlamaCpp({ nCtx: 4096, model: 'qwen3-8b.gguf' });
   const root = mkdtempSync(join(tmpdir(), 'resector-launch-'));
   const project = join(root, 'project');
@@ -39,6 +40,7 @@ async function launch({ config, systemMd, compactionMd, servers, sessions = {}, 
   if (config) put(paths.global, config(fake.url));
   if (systemMd) put(join(dirname(paths.global), 'system.md'), systemMd);
   if (compactionMd) put(join(dirname(paths.global), 'compaction.md'), compactionMd);
+  for (const [name, text] of Object.entries(policies)) put(join(dirname(paths.global), 'policies', `${name}.ts`), text);
   const fatal: string[] = [];
   let created = 0;
   const store = openSessionStore(join(root, 'sessions'), { id: () => (created++ ? `ses_new${created - 1}` : 'ses_test') });
@@ -396,4 +398,37 @@ test('resuming does not read the project instructions again (FR-29)', async () =
   const { log } = await launch({ config: url => profileConfig(url), sessions: { ses_test: chat('local') }, resume: true, files: { 'AGENTS.md': '# Agents' } });
   await frameMatching(ui, f => f.includes('resumed'));
   expect(log().some(e => e.file === 'AGENTS.md')).toBe(false);
+});
+
+// Upper-cases every User block: one pass, then nothing to change.
+const SHOUT = `export default (context: { blocks: { id: number; kind: string; content: string }[] }) =>
+  context.blocks.filter(b => b.kind === 'User' && b.content !== b.content.toUpperCase()).map(b => ({ op: 'edit', id: b.id, content: b.content.toUpperCase() }));
+`;
+
+test('a Context Policy from the config directory is loaded, switched on, and edits the Context as itself before the request (ADR 0001)', async () => {
+  const { log } = await launch({ config: url => profileConfig(url), policies: { shout: SHOUT, broken: 'export default (;' } });
+  const opened = await frameMatching(ui, f => f.includes('/ 2k') && f.includes('– not loaded'));
+  expect(opened).toMatch(/policy broken: .* – not loaded/);
+  await command('/policy s');
+  await frameMatching(ui, f => f.includes('policy shout on'));
+  expect(ui.captureCharFrame()).toMatch(/local · thinking off · policy shout/);
+  fake.reply({ chunks: ['ok'] });
+  await command('hi there');
+  const answered = await frameMatching(ui, f => f.includes('answer complete'));
+  expect(answered).toContain('shout: 1 block edited · answer complete');
+  expect(log().filter(e => e.type === 'Edit' && !e.harness)).toEqual([{ type: 'Edit', id: 4, revision: 2, content: 'HI THERE', by: 'shout' }]);
+  expect(JSON.stringify(fake.chatRequests[0])).toContain('HI THERE');
+});
+
+test('the active policy belongs to the app: it stays when switching sessions and is not logged', async () => {
+  const { log } = await launch({ config: url => profileConfig(url), policies: { shout: SHOUT }, sessions: { ses_a: titled('local', 'fix the build') } });
+  await frameMatching(ui, f => f.includes('/ 2k'));
+  await command('/policy shout');
+  await frameMatching(ui, f => f.includes('policy shout on'));
+  await command('/sessions');
+  await frameMatching(ui, f => f.includes('Sessions ·'));
+  await key('down');
+  await key('enter');
+  expect(await frameMatching(ui, f => f.includes('resumed "fix the build"'))).toMatch(/local · thinking off · policy shout/);
+  expect(JSON.stringify(log())).not.toContain('shout');
 });
