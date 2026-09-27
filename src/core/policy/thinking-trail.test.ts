@@ -45,6 +45,12 @@ test('a pending Tool Call stays, also before the newest Thinking', () => {
   expect(run('User', 'Tool Call', 'Thinking')).toEqual([]);
 });
 
+test('a Tool Pair whose Tool Result comes after the newest Thinking stays: the model has not seen the result', () => {
+  const view = context('Thinking', 'Tool Call', 'Tool Result', 'Thinking');
+  const [call, result, newest] = view.blocks.slice(3);
+  expect(thinkingTrail({ ...view, blocks: [...view.blocks.slice(0, 3), call!, newest!, result!] })).toEqual([]);
+});
+
 test('4 Thinking: nothing to compact', () => {
   expect(run('User', 'Thinking', 'Assistant', 'Thinking', 'Thinking', 'User', 'Thinking')).toEqual([]);
 });
@@ -53,6 +59,10 @@ test('5 Thinking: one compact over exactly those 5, in Context order', () => {
   expect(run('Thinking', 'User', 'Thinking', 'Assistant', 'Thinking', 'Thinking', 'Note', 'Thinking')).toEqual([
     { op: 'compact', sources: [3, 5, 7, 8, 10], instruction: INSTRUCTION },
   ]);
+});
+
+test('6 Thinking: all of them into one Note', () => {
+  expect(run('Thinking', 'Thinking', 'Thinking', 'Thinking', 'Thinking', 'Thinking')).toEqual([{ op: 'compact', sources: [3, 4, 5, 6, 7, 8], instruction: INSTRUCTION }]);
 });
 
 test('both rules in one pass: the Tool Pairs go, the Thinking is compacted', () => {
