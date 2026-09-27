@@ -189,8 +189,10 @@ test('an inexact tokenizer shows ±drift and blocks sending that much below the 
   const total = Number(/(\d+) \/ 80 ±10 {2}$/m.exec(frame)![1]);
   // One word per two tokens: enough to reach the window less the drift, not the window itself.
   await write('x '.repeat(Math.ceil((70 - total - 5) / 2)).trim());
-  frame = await frameMatching(ui, f => f.includes('sending blocked'));
-  const header = /(\d+) \/ 80 ±10 over by (\d+) {2}$/m.exec(frame)!;
+  const over = /(\d+) \/ 80 ±10 over by (\d+) {2}$/m;
+  // The count comes after the block: wait for both.
+  frame = await frameMatching(ui, f => f.includes('sending blocked') && over.test(f));
+  const header = over.exec(frame)!;
   expect(Number(header[1])).toBeGreaterThanOrEqual(70);
   expect(Number(header[1])).toBeLessThan(80);
   expect(Number(header[2])).toBe(Number(header[1]) - 70 + 1);
@@ -600,7 +602,7 @@ test('typing / suggests the commands, filtered while typing; ↑↓ choose, Ente
   await until(() => opened.length > 0);
   await write('/nope');
   await frameMatching(ui, f => f.includes('✗ unknown command /nope') && f.includes('/sessions /rename /tools /filter'));
-  // Config is read at start only: a change needs a restart (ADR 0001).
+  // Config is read when a session opens: a change needs a restart (ADR 0001).
   await write('/reload');
   await frameMatching(ui, f => f.includes('✗ unknown command /reload'));
 });

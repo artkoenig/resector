@@ -44,7 +44,7 @@ export type Compactor = { profile: string; backend: Backend };
 // (FR-28), and $EDITOR on a file of the project (`e` on a reference).
 export type Project = { read: ReadFile; list: () => string[]; environment: () => string; open: (path: string) => Promise<void> };
 // Tool Approval (FR-22, FR-25): the splitter, the project root arguments must stay in, and the config's rules as read
-// at start (ignored: project allow patterns).
+// when the session opened (ignored: project allow patterns).
 export type Approval = { split: Split; root: string; permissions: () => { rules: Rule[]; ignored: string[] } };
 
 // Slash commands (FR-6), in suggestion order.
@@ -442,10 +442,10 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     return error ? null : block!;
   }
 
-  // y: run the call once – unless a rule denies it.
+  // y: run the call once. A call a rule denies never waits here: it is decided at once, an edited one too.
   function approve() {
     const call = decidable();
-    if (call) void (verdictOf(call).action === 'deny' ? advance() : run(call, []));
+    if (call) void run(call, []);
   }
 
   // a: allow the call's command prefixes for the session (FR-23, FR-25) – the preview shows them beforehand; they
@@ -673,7 +673,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
 
   // Thinking for the following requests (FR-49): the one set at the Gate, else the Model Profile's.
   const thinking = (): Thinking => context().thinking ?? backend().thinking ?? 'off';
-  // The modes of the model's chat template, as the backend read them when it connected (start, setup).
+  // The modes of the model's chat template, as the backend read them when it connected (session opened, setup).
   const thinkingModes = () => backend().thinkingModes ?? DEFAULT_MODES;
   function cycleThinking() {
     const modes = thinkingModes();
