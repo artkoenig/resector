@@ -23,3 +23,7 @@ bun scripts/build.ts             # all targets → dist/; --target linux-x64 for
 bun scripts/formula.ts > dist/resector.rb
 bun scripts/smoke.ts dist/linux-x64/resector <version>   # binary for this machine
 ```
+
+## Development install
+
+`scripts/install-dev.sh [bin-dir]` (default `~/local/bin`) writes a `resector` command that runs this checkout's source with Bun, so a `git pull` takes effect without a build. It runs `bun install` itself whenever `bun.lock` changed.

@@ -21,6 +21,10 @@ test('calls without text add no Assistant block; an answer without anything adds
   expect(answerBlocks(result({}), 3, ['bash']).events).toEqual([{ type: 'BlockAdded', id: 3, kind: 'Assistant', origin: 'model', content: '' }]);
 });
 
+test('text of only whitespace before calls adds no Assistant block', () => {
+  expect(answerBlocks(result({ content: '\n\n', calls: [bash('ls')] }), 3, ['bash']).events).toEqual([{ type: 'BlockAdded', id: 3, kind: 'Tool Call', origin: 'model', content: 'ls' }]);
+});
+
 test('a search call becomes a Tool Call of tool search, its query the content', () => {
   const search = { name: 'search', arguments: '{"query":"bun runtime"}' };
   expect(answerBlocks(result({ calls: [search, bash('ls')] }), 3, ['bash', 'search']).events).toEqual([
