@@ -26,4 +26,4 @@ bun scripts/smoke.ts dist/linux-x64/resector <version>   # binary for this machi
 
 ## Development install
 
-`scripts/install-dev.sh [bin-dir]` (default `~/local/bin`) writes a `resector` command that runs this checkout's source with Bun, so a `git pull` takes effect without a build. It runs `bun install` itself whenever `bun.lock` changed.
+`scripts/install-dev.sh [bin-dir]` (default `~/.local/bin`) writes a `resector` command that runs this checkout's source with Bun, so a `git pull` takes effect without a build. It runs `bun install` itself whenever `bun.lock` changed.

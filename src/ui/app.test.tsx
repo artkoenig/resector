@@ -241,13 +241,16 @@ test('Enter in the Context sends it', async () => {
   expect(events().at(-3)).toEqual({ type: 'RequestSent', hash: expect.any(String), tokens: 60 });
 });
 
-test('Esc aborts streaming; the partial answer is kept as cut off', async () => {
+test('Esc again aborts streaming; the partial answer is kept as cut off', async () => {
   const { events } = await start();
   fake.reply({ chunks: ['Hal'], hang: true });
   await write('hi there');
   const streaming = await frameMatching(ui, f => /4\s+Assistant\s+Hal/.test(f));
   expect(line(streaming, /Assistant/)).toMatch(/Hal\s+[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
   expect(events().at(-1).type).toBe('RequestSent');
+  await escape();
+  const stopping = await frameMatching(ui, f => f.includes('model is responding · stops after this answer'));
+  expect(stopping).toContain('esc abort  q quit');
   await escape();
   const frame = await frameMatching(ui, f => /Hal\s+\d+\s+[●○]\s+⚠ cut off/.test(f));
   expect(line(frame, /Assistant/)).toMatch(/4\s+Assistant\s+Hal\s+\d+\s+●\s+⚠ cut off/);
@@ -279,6 +282,7 @@ test('cut off while thinking: the Thinking row streams with status thinking, Esc
   const streaming = await frameMatching(ui, f => /4\s+Thinking\s+Let me see/.test(f));
   expect(streaming).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] model is thinking/);
   expect(previewed(streaming)).toBe('Let me see');
+  await escape();
   await escape();
   const frame = await frameMatching(ui, f => f.includes('⚠ cut off ✂'));
   // Flags beyond their column are cut, not wrapped.
@@ -330,7 +334,7 @@ test('while the answer streams, ↑↓ select and the preview scrolls; the Conte
   fake.reply({ chunks: ['Hal'], hang: true });
   await write('hi there');
   let frame = await frameMatching(ui, f => /4\s+Assistant\s+Hal/.test(f));
-  expect(frame).toContain('esc abort  q quit');
+  expect(frame).toContain('esc stop after  q quit');
   await press('up');
   frame = await frameMatching(ui, f => previewed(f) === 'hi there');
   await press('d');
@@ -338,6 +342,7 @@ test('while the answer streams, ↑↓ select and the preview scrolls; the Conte
   frame = await frameMatching(ui, f => previewed(f).startsWith('Hal'));
   expect(frame).not.toContain('removed');
   expect(events().at(-1).type).toBe('RequestSent');
+  await escape();
   await escape();
   await frameMatching(ui, f => f.includes('⚠ cut off'));
   expect(events().filter(e => e.type === 'Remove')).toEqual([]);
@@ -604,7 +609,7 @@ test('typing / suggests the commands, filtered while typing; ↑↓ choose, Ente
   await write('/sessions');
   await until(() => opened.length > 0);
   await write('/nope');
-  await frameMatching(ui, f => f.includes('✗ unknown command /nope') && f.includes('/sessions /rename /tools /filter /policy'));
+  await frameMatching(ui, f => f.includes('✗ unknown command /nope') && f.includes('/sessions /rename /tools /filter /policy /auto'));
   // Config is read when a session opens: a change needs a restart (ADR 0001).
   await write('/reload');
   await frameMatching(ui, f => f.includes('✗ unknown command /reload'));
@@ -813,18 +818,86 @@ test('several calls are decided one by one in order; results keep call order (FR
   expect(events().slice(-2).map(e => [e.call, e.content])).toEqual([[4, 'one\n[exit 0]'], [5, 'rejected by user']]);
 });
 
-test('Esc kills a running command: partial output + ⚠ killed (FR-21)', async () => {
+test('Esc again kills a running command: partial output + ⚠ killed (FR-21)', async () => {
   const { events } = await asked(['echo partial; sleep 5']);
   await press('y');
   let frame = await frameMatching(ui, f => f.includes('running: echo partial') && /^┃ partial\s*$/m.test(f));
   expect(frame).toMatch(/\d+s \/ 120s/);
-  expect(frame).toContain('esc kill');
+  expect(frame).toContain('esc stop after');
   expect(line(frame, /Tool Result/)).toMatch(/5\s+Tool Result\s+→ echo partial.*[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
   expect(line(frame, /Tool Call/)).not.toContain('? approve');
+  await escape();
+  await frameMatching(ui, f => f.includes('stops after this call'));
   await escape();
   frame = await frameMatching(ui, f => f.includes('⚠ killed – review the results'));
   expect(line(frame, /Tool Result/)).toMatch(/⚠ killed/);
   expect(events().at(-1)).toMatchObject({ kind: 'Tool Result', content: 'partial\n[killed]', stopped: 'killed' });
+});
+
+test('Esc while a call runs: it finishes, the next call waits and nothing is sent; Enter goes on', async () => {
+  const { events } = await answered(['sleep 0.3', 'ls'], { global: { 'sleep *': 'allow' } });
+  await frameMatching(ui, f => f.includes('running: sleep 0.3'));
+  await escape();
+  let frame = await frameMatching(ui, f => f.includes('stopped – make your changes, Enter goes on'));
+  expect(events().filter(e => e.kind === 'Tool Result').map(e => e.content)).toEqual(['[exit 0]']);
+  expect(fake.chatRequests).toHaveLength(1);
+  fake.reply({ chunks: ['ok'] });
+  ui.mockInput.pressEnter();
+  frame = await frameMatching(ui, f => f.includes('answer complete'));
+  expect(events().filter(e => e.kind === 'Tool Result')).toHaveLength(2);
+  expect(fake.chatRequests).toHaveLength(2);
+});
+
+test('reading an older row, the tool loop leaves the selection there; back on the last row it follows again', async () => {
+  await start();
+  fake.reply({ chunks: ['Look'], calls: [bash('ls')], delay: 0.3 });
+  fake.reply({ chunks: ['done'] });
+  await write('go');
+  await frameMatching(ui, f => /Assistant\s+Look/.test(f));
+  await press('up');
+  await frameMatching(ui, f => previewed(f) === 'go');
+  let frame = await frameMatching(ui, f => f.includes('answer complete'));
+  expect(previewed(frame)).toBe('go');
+  await press('down');
+  await press('down');
+  await press('down');
+  await press('down');
+  frame = await frameMatching(ui, f => previewed(f) === 'done');
+  fake.reply({ chunks: ['Again'], calls: [bash('ls')], delay: 0.3 });
+  fake.reply({ chunks: ['end'] });
+  ui.mockInput.pressTab();
+  await ui.flush();
+  await ui.mockInput.typeText('more');
+  ui.mockInput.pressEnter();
+  frame = await frameMatching(ui, f => f.includes('answer complete') && /Assistant\s+end/.test(f));
+  expect(previewed(frame)).toBe('end');
+});
+
+test('Esc while the answer streams: it completes, its calls wait, even allowed ones; Enter runs them', async () => {
+  const { events } = await start();
+  fake.reply({ chunks: ['Look'], calls: [bash('ls')], delay: 0.3 });
+  await write('go');
+  await frameMatching(ui, f => /Assistant\s+Look/.test(f));
+  await escape();
+  await frameMatching(ui, f => f.includes('model is responding · stops after this answer'));
+  await frameMatching(ui, f => f.includes('stopped – make your changes, Enter goes on'));
+  expect(events().filter(e => e.kind === 'Tool Result')).toEqual([]);
+  expect(events().find(e => e.kind === 'Assistant')).toEqual({ type: 'BlockAdded', id: 4, kind: 'Assistant', origin: 'model', content: 'Look' });
+  fake.reply({ chunks: ['ok'] });
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(events().filter(e => e.kind === 'Tool Result')).toHaveLength(1);
+});
+
+test('stopped at a call the rules ask for: Enter still asks for approval', async () => {
+  await start();
+  fake.reply({ chunks: ['Look'], calls: [bash('touch x.txt')], delay: 0.3 });
+  await write('go');
+  await frameMatching(ui, f => /Assistant\s+Look/.test(f));
+  await escape();
+  await frameMatching(ui, f => f.includes('stopped – make your changes, Enter goes on'));
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('Tool Calls await approval'));
 });
 
 test('a command running into the timeout ends with ⚠ timeout (FR-21)', async () => {
@@ -975,6 +1048,37 @@ test('a denied call is not run: its result says "denied by rule", the next call 
   expect(line(frame, /echo next/)).toMatch(/\? approve/);
   expect(await Bun.file(join(project, 'denied.txt')).exists()).toBe(false);
   expect(events().at(-1)).toEqual({ type: 'BlockAdded', id: 6, kind: 'Tool Result', origin: 'tool', content: 'denied by rule', call: 4 });
+});
+
+test('/auto runs the call awaiting approval at once and every later one a rule asks for; a deny stays; /auto again asks (FR-23)', async () => {
+  const { events } = await asked(['touch one.txt', 'touch denied.txt', 'touch two.txt'], { global: { 'touch denied.txt': 'deny' } });
+  await write('/auto');
+  let frame = await frameMatching(ui, f => f.includes('review the results, Enter sends'));
+  expect(frame).toContain('auto-approve on – Tool Calls run without asking, deny rules still apply');
+  expect(line(frame, /default/)).toMatch(/default · thinking off · auto-approve +/);
+  expect(frame).not.toContain('? approve');
+  expect(events().filter(e => e.kind === 'Tool Result').map(e => e.content)).toEqual(['[exit 0]', 'denied by rule', '[exit 0]']);
+  expect(await Bun.file(join(project, 'two.txt')).exists()).toBe(true);
+  expect(events().filter(e => e.type === 'AllowRuleAdded')).toEqual([]);
+  fake.reply({ chunks: [], calls: [bash('touch three.txt')] });
+  ui.mockInput.pressEnter();
+  fake.reply({ chunks: ['ok'] });
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(await Bun.file(join(project, 'three.txt')).exists()).toBe(true);
+  await write('/auto');
+  frame = await frameMatching(ui, f => f.includes('auto-approve off'));
+  expect(line(frame, /default/)).not.toContain('auto-approve');
+  fake.reply({ chunks: [], calls: [bash('touch four.txt')] });
+  await write('again');
+  await frameMatching(ui, f => f.includes('? approve –'));
+  expect(await Bun.file(join(project, 'four.txt')).exists()).toBe(false);
+});
+
+test('/auto with nothing awaiting approval only switches it', async () => {
+  await start();
+  await write('/auto');
+  await frameMatching(ui, f => f.includes('auto-approve on'));
+  expect(fake.chatRequests).toHaveLength(0);
 });
 
 test('the preview of a pending call shows each sub-command with the rule deciding it (FR-22)', async () => {

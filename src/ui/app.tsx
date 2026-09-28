@@ -260,7 +260,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   };
   // The key pressed last in the Context: only the same key again confirms (FR-9).
   let lastKey = '';
-  // A key in the Context. Streaming or running: only looking around (select, scroll, quit); Esc aborts, the Context stays as sent.
+  // A key in the Context. Streaming or running: only looking around (select, scroll, quit); Esc stops after the step, again aborts.
   function contextAction(name: string) {
     if (name !== lastKey) gate.cancelConfirm();
     lastKey = name;
@@ -626,8 +626,9 @@ function Header(props: { gate: Gate; width: number }) {
   };
   const tone = () => ({ ok: undefined, warn: TONE.warn, over: TONE.error })[budget()?.tone ?? 'ok'];
   const profile = () => props.gate.profile();
-  // The active Context Policy follows the thinking mode (ADR 0001).
-  const thinking = () => ` · thinking ${thinkingLabel(props.gate.thinking())}${props.gate.policy() ? ` · policy ${props.gate.policy()}` : ''}`;
+  // The active Context Policy follows the thinking mode (ADR 0001), then auto-approve (FR-23).
+  const thinking = () =>
+    ` · thinking ${thinkingLabel(props.gate.thinking())}${props.gate.policy() ? ` · policy ${props.gate.policy()}` : ''}${props.gate.autoApprove() ? ' · auto-approve' : ''}`;
   return (
     <HeaderBand
       width={props.width}
@@ -719,12 +720,14 @@ const columnFg = (row: Row, selected: boolean) => {
 
 // Status line: a running command, the streaming answer (both with the row's spinner), else the last action.
 function statusOf(gate: Gate, spin: string): Status | null {
+  // Esc pressed once: the loop stops after this step.
+  const stop = (step: string) => (gate.stopping() ? ` · stops after this ${step}` : '');
   const r = gate.running();
-  if (r) return { text: `${spin} running: ${cell(titleOf(r.call), 50).trimEnd()} · ${Math.round((Date.now() - r.started) / 1000)}s / ${r.timeout}s`, tone: 'warn' };
+  if (r) return { text: `${spin} running: ${cell(titleOf(r.call), 50).trimEnd()} · ${Math.round((Date.now() - r.started) / 1000)}s / ${r.timeout}s${stop('call')}`, tone: 'warn' };
   if (gate.compacting()?.phase === 'running') return { text: `${spin} compacting with ${gate.compacting()!.profile}`, tone: 'warn' };
   const s = gate.streaming();
   if (!s) return gate.status();
-  return { text: `${spin} model is ${s.thinking && !s.text ? 'thinking' : 'responding'}`, tone: 'warn' };
+  return { text: `${spin} model is ${s.thinking && !s.text ? 'thinking' : 'responding'}${stop('answer')}`, tone: 'warn' };
 }
 
 // Key hints right of the status; they stay visible. An error band adds how to dismiss it.
@@ -747,11 +750,14 @@ const MODE_KEYS: Partial<Record<KeyMode, Hint[]>> = {
   questions: [['↑↓', 'choose'], ['enter', 'pick'], ['←→', 'question'], ['r', 'recommended'], ['esc', 'decline'], ['q', 'quit']],
   answer: [['enter', 'answer'], ['esc', 'back']],
 };
+// Streaming or running: the first Esc stops the loop after the step, the second aborts it.
+function busyKeys(gate: Gate): Hint[] | null {
+  const step = gate.running() ? 'kill' : gate.streaming() ? 'abort' : null;
+  return step && [['esc', gate.stopping() ? step : 'stop after'], ...LOOK_KEYS];
+}
 function modeKeys(gate: Gate, mode: KeyMode): Hint[] {
-  const own = MODE_KEYS[mode];
+  const own = MODE_KEYS[mode] ?? busyKeys(gate);
   if (own) return own;
-  if (gate.running()) return [['esc', 'kill'], ...LOOK_KEYS];
-  if (gate.streaming()) return [['esc', 'abort'], ...LOOK_KEYS];
   if (gate.marked().size) return MARKED_KEYS;
   // No move under a Kind Filter (FR-51).
   const keys = gate.filter() ? KEYS.filter(k => k !== MOVE) : KEYS;

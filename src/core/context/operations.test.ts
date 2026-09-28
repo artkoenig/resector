@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
 import { TOOLS } from '../toolcall/bash';
-import { approvable, attributed, decline, deny, edit, isFixed, inPair, move, moveAfter, nextCall, reject, remove, removeAll, revise, toggleTool, untouchable, withoutDenied, toNote, toolResult, undo } from './operations';
+import { addNote, approvable, attributed, decline, deny, edit, isFixed, inPair, move, moveAfter, nextCall, reject, remove, removeAll, revise, toggleTool, untouchable, withoutDenied, toNote, toolResult, undo } from './operations';
 
 const session = (...then: SessionEvent[]): SessionEvent[] => [
   { type: 'SessionCreated', profile: 'default', protocol: 'native' },
@@ -259,8 +259,8 @@ test('moveAfter keeps System and Tools first, the calls and results of an answer
   expect(moveAfter(...at(opening, 4), 1)).toEqual({ error: 'System and Tools Block stay first' });
   expect(moveAfter(...at(opening, 4), 2)).toEqual({ event: { type: 'Move', id: 4, after: 2 } });
   expect(moveAfter(...at(session(), 3), 2)).toEqual({ error: 'unchanged – already there' });
-  expect(moveAfter(...at(session(), 3), 3)).toEqual({ error: 'no block 3 to move after' });
-  expect(moveAfter(...at(session({ type: 'Remove', id: 2 }), 4), 2)).toEqual({ error: 'no block 2 to move after' });
+  expect(moveAfter(...at(session(), 3), 3)).toEqual({ error: 'no block 3 in the Context' });
+  expect(moveAfter(...at(session({ type: 'Remove', id: 2 }), 4), 2)).toEqual({ error: 'no block 2 in the Context' });
 });
 
 test('moveAfter looks past struck-through blocks: they are not sent', () => {
@@ -284,8 +284,25 @@ test('attributed names who made a Context operation; other events and harness ed
   const ops: SessionEvent[] = [
     { type: 'Move', id: 2, after: 3 }, { type: 'Remove', id: 2 }, { type: 'Edit', id: 2, revision: 2, content: 'x' },
     { type: 'PairToNote', id: 9, call: 6 }, { type: 'Compact', sources: [2], instruction: 'i', noteId: 9, content: 'n' },
+    { type: 'NoteAdded', id: 9, after: 2, content: 'n' },
   ];
   for (const event of ops) expect(attributed(event, 'trail')).toEqual({ ...event, by: 'trail' } as SessionEvent);
   const others: SessionEvent[] = [{ type: 'Edit', id: 2, revision: 2, content: 'x', harness: true }, { type: 'Rename', id: 2, title: 't' }, { type: 'Undo', eventId: 3 }, call(6)];
   for (const event of others) expect(attributed(event, 'user')).toEqual(event);
+});
+
+test('addNote: a Context Policy\'s Note after any block sent, keeping System and Tools first and an answer together (FR-52)', () => {
+  const context = fold(session(tools, call(6), call(7), answered(8, 6), answered(9, 7)));
+  expect(addNote(context, 10, 5, 'about')).toEqual({ event: { type: 'NoteAdded', id: 10, after: 5, content: 'about' } });
+  expect(addNote(context, 10, 9, 'about')).toEqual({ event: { type: 'NoteAdded', id: 10, after: 9, content: 'about' } });
+  expect(addNote(context, 10, 6, 'about')).toEqual({ error: 'not between the Tool Calls and Tool Results of an answer' });
+  expect(addNote(context, 10, 99, 'about')).toEqual({ error: 'no block 99 in the Context' });
+  expect(addNote(fold(session({ type: 'Remove', id: 3 })), 10, 3, 'about')).toEqual({ error: 'no block 3 in the Context' });
+  expect(addNote(context, 10, 5, ' \n')).toEqual({ error: 'empty Note' });
+  const opening = fold([session()[0]!, session()[1]!, { ...tools, id: 2 } as SessionEvent]);
+  expect(addNote(opening, 3, 1, 'about')).toEqual({ error: 'System and Tools Block stay first' });
+});
+
+test('undo cancels a policy\'s Note', () => {
+  expect(undo(session({ type: 'NoteAdded', id: 5, after: 2, content: 'n' }))).toEqual({ event: { type: 'Undo', eventId: 5 } });
 });

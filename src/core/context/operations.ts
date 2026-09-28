@@ -17,7 +17,7 @@ const fixed = (block: Block) => ({ error: `${NAME[block.kind]} is fixed` });
 const AWAITS = { error: 'Tool Call awaits approval – y run once · a allow for session · n reject · e edit' };
 // Why an operation may not touch the block, if not.
 export const untouchable = (block: Block) => (isFixed(block) ? fixed(block) : block.pending ? AWAITS : null);
-const UNDOABLE = new Set<SessionEvent['type']>(['Move', 'Remove', 'Rename', 'Edit', 'PairToNote', 'Compact']);
+const UNDOABLE = new Set<SessionEvent['type']>(['Move', 'Remove', 'Rename', 'Edit', 'PairToNote', 'Compact', 'NoteAdded']);
 
 const isTool = (block: Block | undefined) => block?.kind === 'Tool Call' || block?.kind === 'Tool Result';
 // Tool Call and Tool Result behave as a unit once the call has run (FR-9).
@@ -50,9 +50,16 @@ export function moveAfter({ blocks }: Context, block: Block, after: number): Out
 // Why a block may not go right after `after` among the other blocks sent, if not.
 function misplaced(others: Block[], after: number): string | null {
   const at = others.findIndex(b => b.id === after);
-  if (at < 0) return `no block ${after} to move after`;
+  if (at < 0) return `no block ${after} in the Context`;
   if (others[at + 1]?.kind === 'Tools') return 'System and Tools Block stay first';
   return isTool(others[at]) && isTool(others[at + 1]) ? 'not between the Tool Calls and Tool Results of an answer' : null;
+}
+
+// A Context Policy's Note (FR-52): `content` as Note `id` right after `after`, a block sent next.
+export function addNote({ blocks }: Context, id: number, after: number, content: string): Outcome {
+  if (!content.trim()) return { error: 'empty Note' };
+  const error = misplaced(blocks.filter(b => !b.removed), after);
+  return error ? { error } : { event: { type: 'NoteAdded', id, after, content } };
 }
 
 export function remove(block: Block): Outcome {
@@ -107,7 +114,7 @@ export function revise(events: SessionEvent[], block: Block, content: string): O
 }
 
 // The Context operations whose events name who made them (ADR 0001); a harness edit keeps its marker instead.
-const ATTRIBUTED = new Set<SessionEvent['type']>(['Move', 'Remove', 'Edit', 'PairToNote', 'Compact']);
+const ATTRIBUTED = new Set<SessionEvent['type']>(['Move', 'Remove', 'Edit', 'PairToNote', 'Compact', 'NoteAdded']);
 export const attributed = (event: SessionEvent, by: string): SessionEvent =>
   ATTRIBUTED.has(event.type) && !('harness' in event) ? ({ ...event, by } as SessionEvent) : event;
 

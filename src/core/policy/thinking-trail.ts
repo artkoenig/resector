@@ -1,19 +1,62 @@
 // The built-in Context Policy thinking-trail (ADR 0001), written like a policy module in ~/.config/resector/policies:
 // a default export over the view, types only from the interface. The reference for writing one.
-import type { PolicyContext, PolicyOperation } from './policy';
+import type { PolicyBlock, PolicyContext, PolicyOperation } from './policy';
 
-const THINKING_TO_COMPACT = 5;
-export const INSTRUCTION =
-  'Summarise these reasoning steps into a concise trail: goal, findings and decisions so far with their reasons, approaches discarded, next planned step. No repetition, no tool output.';
+const TO_COMPACT = 5;
+// The trail is cut only once the Context takes this share of the window: until then it costs little.
+const CUT_FROM = 0.3;
+export const INSTRUCTION = [
+  'Accumulate the knowledge in these blocks into one Note that replaces them: a reader without them must be able to continue the work. Discard nothing: keep every insight, also those from earlier Notes; merge only what is said twice. Write each point as its result, never as the activity: not "located the files" but the paths; not "decided on an approach" but the approach and why. Keep names, paths, identifiers, commands and values verbatim. Under Next steps, list what remains, in order, each concrete enough to act on. Answer in exactly this structure:',
+  '## Goal',
+  '## Facts',
+  '## Decisions',
+  '## Done',
+  '## Dead ends',
+  '## Next steps',
+].join('\n');
 
-export default function thinkingTrail({ blocks }: PolicyContext): PolicyOperation[] {
+// A Note of its own right before the first Note of the trail: the model reads the trail as a user message, so it is told
+// this is its own work, not a new task. Not part of the trail, so never compacted into it.
+export const LEAD =
+  'The summary below is of your own earlier work in this session, not a new task. Build on it, do not redo what is under Done; continue with Next steps.';
+
+// What the model is told of this policy: what happens, no thresholds, no instructions.
+export const ABOUT =
+  'Tool calls and results are removed once you have reasoned past them; your reasoning and answers are later replaced by summaries, shown as user messages, which are merged over time without dropping insights.';
+
+export default function thinkingTrail({ window, used, blocks }: PolicyContext): PolicyOperation[] {
+  // Right after the Tools Block: early and unchanged, so the prefix cache keeps it.
+  const described = blocks.some(b => b.origin === 'policy' && b.content === ABOUT);
+  const tools = blocks.find(b => b.kind === 'Tools');
+  // Alone in its pass: the lead is placed after it.
+  if (!described && tools) return [{ op: 'note', after: tools.id, content: ABOUT }];
+  const about = led(blocks);
+  // Tool Pairs go and the Thinking is compacted together, once the window is filled that far.
+  if (used < window * CUT_FROM) return [...about, ...notesCompacted(blocks)];
   const thinking = blocks.filter(b => b.kind === 'Thinking');
   // The blocks before the newest Thinking: the model has reasoned past them.
   const before = new Set(blocks.slice(0, Math.max(blocks.indexOf(thinking.at(-1)!), 0)).map(b => b.id));
   // A Tool Pair with both blocks there; a Tool Call without result has no pair and stays.
   const reasonedPast = blocks.filter(b => b.kind === 'Tool Call' && before.has(b.id) && before.has(b.pair!));
-  const operations: PolicyOperation[] = reasonedPast.map(b => ({ op: 'remove', id: b.id }));
-  // The Note is not Thinking: the count restarts.
-  if (thinking.length >= THINKING_TO_COMPACT) operations.push({ op: 'compact', sources: thinking.map(b => b.id), instruction: INSTRUCTION });
-  return operations;
+  const operations: PolicyOperation[] = [...about, ...reasonedPast.map(b => ({ op: 'remove' as const, id: b.id }))];
+  // The answers between and the Notes of earlier Compactions go along: one trail, the reasoning and what came of it.
+  const trail = blocks.filter(b => b.kind === 'Thinking' || b.kind === 'Assistant' || b.origin === 'compaction');
+  if (!thinking.length) return [...operations, ...notesCompacted(blocks)];
+  return [...operations, { op: 'compact', sources: trail.map(b => b.id), instruction: INSTRUCTION }];
+}
+
+// The trails pile up as Notes: those of any Compaction, the user's too, are compacted the same way.
+function notesCompacted(blocks: PolicyContext['blocks']): PolicyOperation[] {
+  const notes = blocks.filter(b => b.origin === 'compaction');
+  return notes.length >= TO_COMPACT ? [{ op: 'compact', sources: notes.map(b => b.id), instruction: INSTRUCTION }] : [];
+}
+
+// Its lead right before the first Note of a Compaction; one elsewhere, left behind by a Compaction or without Notes, goes.
+function led(blocks: PolicyBlock[]): PolicyOperation[] {
+  const isLead = (b: PolicyBlock) => b.origin === 'policy' && b.content === LEAD;
+  const first = blocks.find(b => b.origin === 'compaction');
+  const before = first && blocks[blocks.indexOf(first) - 1]!;
+  const stale = blocks.filter(b => isLead(b) && b !== before);
+  const add: PolicyOperation[] = before && !isLead(before) ? [{ op: 'note', after: before.id, content: LEAD }] : [];
+  return [...stale.map(b => ({ op: 'remove' as const, id: b.id })), ...add];
 }

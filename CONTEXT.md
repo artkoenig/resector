@@ -33,7 +33,7 @@ Pause before every request to the model (including follow-up requests inside a t
 _Avoid_: breakpoint, approval
 
 **Tool Approval**:
-Decision whether a Tool Call the model requested may run, taken before execution by Permission Rules (`allow`, `ask`, `deny`) or by the user at the Review Gate. Distinct from the Review Gate itself, which sits before the request.
+Decision whether a Tool Call the model requested may run, taken before execution by Permission Rules (`allow`, `ask`, `deny`) or by the user at the Review Gate. With auto-approve on, what the rules would ask the user for runs without asking; `deny` still applies. Distinct from the Review Gate itself, which sits before the request.
 _Avoid_: permission prompt
 
 **Question**:
@@ -45,7 +45,7 @@ Rewrite of selected Context Blocks by the LLM, following an instruction, into on
 _Avoid_: summarization, auto-compact
 
 **Note**:
-Context Block of free text without API role semantics, keeping a reference to its origin: a moved Tool Pair, a Compaction result, the session environment (working directory, OS and shell, date, branch; refreshed by the harness when it changes), project instructions or a file.
+Context Block of free text without API role semantics, keeping a reference to its origin: a moved Tool Pair, a Compaction result, a Context Policy, the session environment (working directory, OS and shell, date, branch; refreshed by the harness when it changes), project instructions or a file.
 
 **Thinking**:
 Context Block holding the model's reasoning for one answer, placed before that answer. Stays in the Context until the user removes it; the model's chat template may still drop it from the rendered request.
@@ -56,7 +56,7 @@ View restriction at the Review Gate to Context Blocks of one Kind: User, Thinkin
 _Avoid_: search, hide
 
 **Context Policy**:
-Named set of rules that edits the Context automatically, using only the ordinary Context operations. Applied before every request; its operations are recorded in the Session Log like the user's, attributed to the policy and visible at the Review Gate. An undone operation is applied again before the next request as long as the policy is active. At most one is active at a time; it is switched on and off at the Review Gate, belongs to the running app rather than to a Session, and is off after every start. Context operations in the Session Log name who made them: the user or the policy; the Session does not depend on it.
+Named set of rules that edits the Context automatically, using only the ordinary Context operations and adding a Note of its own, e.g. to tell the model what it does. Applied before every request; its operations are recorded in the Session Log like the user's, attributed to the policy and visible at the Review Gate. An undone operation is applied again before the next request as long as the policy is active. At most one is active at a time; it is switched on and off at the Review Gate, belongs to the running app rather than to a Session, and is off after every start. Context operations in the Session Log name who made them: the user or the policy; the Session does not depend on it.
 _Avoid_: mode, strategy, autopilot, auto-compact
 
 **Model Profile**:

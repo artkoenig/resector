@@ -1,8 +1,9 @@
 // Session Log events (architecture §3). One JSON object per line in the session file.
 
 export type Kind = 'System' | 'Tools' | 'User' | 'Thinking' | 'Assistant' | 'Tool Call' | 'Tool Result' | 'Note';
-// file: an @path snapshot or the project instructions (FR-27, FR-29); environment: the environment Note (FR-28).
-export type Origin = 'config' | 'user' | 'model' | 'tool' | 'compaction' | 'file' | 'environment';
+// file: an @path snapshot or the project instructions (FR-27, FR-29); environment: the environment Note (FR-28);
+// policy: a Note a Context Policy added (FR-52).
+export type Origin = 'config' | 'user' | 'model' | 'tool' | 'compaction' | 'file' | 'environment' | 'policy';
 // How a bash run ended early (FR-21): Esc killed it, or it ran into the timeout.
 export type Stopped = 'killed' | 'timeout';
 export type ToolProtocol = 'native';
@@ -44,6 +45,8 @@ export type SessionEvent =
   | ({ type: 'PairToNote'; id: number; call: number } & By)
   // Accepted Compaction (FR-16): Note `noteId` with `content` replaces `sources` at the first one's place.
   | ({ type: 'Compact'; sources: number[]; instruction: string; noteId: number; content: string } & By)
+  // A Context Policy's Note `id` with `content` right after block `after` (FR-52).
+  | ({ type: 'NoteAdded'; id: number; after: number; content: string } & By)
   // Display label only, never sent; empty = reset to the default title.
   | { type: 'Rename'; id: number; title: string }
   // "Allow for session" (FR-23, FR-25): an allow rule for the rest of the session, also after resume.

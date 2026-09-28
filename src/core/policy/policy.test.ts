@@ -86,8 +86,14 @@ test('compact: every source sent and touchable, at least one, and an instruction
   expect(planOf({ op: 'compact', sources: [3], instruction: ' ' })).toEqual({ error: 'no instruction' });
 });
 
+test('note: a Note with the content after the block, the next id', () => {
+  expect(planOf({ op: 'note', after: 2, content: 'about' })).toEqual({ events: [{ type: 'NoteAdded', id: 8, after: 2, content: 'about' }], change: { noun: 'Note', verb: 'added' } });
+  expect(planOf({ op: 'note', after: 1, content: 'about' })).toEqual({ error: 'System and Tools Block stay first' });
+  expect(planOf({ op: 'note', after: 2, content: '' })).toEqual({ error: 'empty Note' });
+});
+
 test('an operation of another shape is refused', () => {
-  for (const op of [null, 'remove', { op: 'pin', id: 3 }, { op: 'remove', id: '3' }, { op: 'remove', id: 3.5 }, { op: 'edit', id: 3 }, { op: 'move', id: 3 }, { op: 'compact', sources: [3] }])
+  for (const op of [null, 'remove', { op: 'pin', id: 3 }, { op: 'remove', id: '3' }, { op: 'remove', id: 3.5 }, { op: 'edit', id: 3 }, { op: 'move', id: 3 }, { op: 'compact', sources: [3] }, { op: 'note', after: 2 }, { op: 'note', content: 'x' }])
     expect(parse(op)).toEqual({ error: `not an operation: ${JSON.stringify(op)}` });
   expect(parse({ op: 'move', id: 3, after: 4, extra: 1 })).toEqual({ op: 'move', id: 3, after: 4 });
 });
@@ -168,6 +174,7 @@ test('the refused operation is named', async () => {
   expect(await refused({ op: 'compact', sources: [1, 3], instruction: 'i' })).toBe('compact 1 3: System prompt is fixed');
   expect(await refused({ op: 'pin', id: 3 })).toBe('not an operation: {"op":"pin","id":3}');
   expect(await refused({ op: 'remove', id: 99 })).toBe('remove 99: no block 99 in the Context');
+  expect(await refused({ op: 'note', after: 1, content: 'x' })).toBe('note after 1: System and Tools Block stay first');
 });
 
 test('a policy that throws, or returns no list, stops', async () => {

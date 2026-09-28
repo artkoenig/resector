@@ -271,3 +271,11 @@ test('ThinkingSet sets the thinking of the following requests; the last one wins
   expect(fold([created]).thinking).toBeNull();
   expect(fold([created, { type: 'ThinkingSet', thinking: 'on' }, { type: 'ThinkingSet', thinking: 'high' }]).thinking).toBe('high');
 });
+
+test('NoteAdded puts a Context Policy\'s Note right after its anchor (FR-52); undo drops it', () => {
+  const events = session(3, { type: 'NoteAdded', id: 5, after: 2, content: 'about', by: 'trail' });
+  expect(ids(events)).toEqual([1, 2, 5, 3, 4]);
+  expect(block(events, 5)).toEqual({ id: 5, kind: 'Note', origin: 'policy', content: 'about', cutOff: false, title: null, removed: false, moved: false, revision: 1, revised: false });
+  expect(fold(events).nextId).toBe(6);
+  expect(ids([...events, { type: 'Undo', eventId: events.length - 1 }])).toEqual([1, 2, 3, 4]);
+});
