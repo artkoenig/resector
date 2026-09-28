@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { answerText, orderedOptions, parseQuestions, questionTitle } from './question';
+import { answerText, orderedOptions, parseQuestions, questionsOf, questionTitle } from './question';
 
 const options = [
   { label: 'Bun', description: 'fast' },
@@ -31,6 +31,13 @@ test('fewer than two options, missing texts or no questions are rejected', () =>
   expect(parsed(question({ header: undefined }))).toEqual({ error: 'question 1: question and header must be strings' });
   expect(parsed()).toEqual({ error: 'questions must be a non-empty list' });
   expect(parseQuestions(null)).toEqual({ error: 'questions must be a non-empty list' });
+});
+
+test('questions given as a JSON string (as small models send them) are accepted', () => {
+  expect(parseQuestions({ questions: JSON.stringify([question()]) })).toEqual({ questions: [question()] });
+  expect(questionsOf(JSON.stringify({ questions: JSON.stringify([question()]) }))).toEqual([question()]);
+  expect(parseQuestions({ questions: 'not json' })).toEqual({ error: 'questions is a string, but no JSON list' });
+  expect(parseQuestions({ questions: '{}' })).toEqual({ error: 'questions must be a non-empty list' });
 });
 
 test('the answer is one line per question: its full text, then the answer; several comma-separated, none Unanswered', () => {

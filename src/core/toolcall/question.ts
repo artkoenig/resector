@@ -54,9 +54,17 @@ function recommendedProblem({ recommended, multiple, options }: Record<string, u
   return unknown === undefined ? null : `recommended "${unknown}" is not an option label`;
 }
 
+// The questions argument as a list; small models often send it as a JSON string of the list.
+const listOf = (questions: unknown): unknown => (isText(questions) ? JSON.parse(questions) : questions);
+
 // The questions of a Question call, or why it is rejected back to the model.
 export function parseQuestions(args: unknown): { questions: Question[] } | { error: string } {
-  const questions = (args as { questions?: unknown } | null)?.questions;
+  let questions: unknown;
+  try {
+    questions = listOf((args as { questions?: unknown } | null)?.questions);
+  } catch {
+    return { error: 'questions is a string, but no JSON list' };
+  }
   if (!Array.isArray(questions) || !questions.length) return { error: 'questions must be a non-empty list' };
   for (const [i, q] of questions.entries()) {
     const problem = problemOf((q ?? {}) as Record<string, unknown>);
@@ -66,7 +74,7 @@ export function parseQuestions(args: unknown): { questions: Question[] } | { err
 }
 
 // The questions of a stored Question call (its content: the arguments as JSON).
-export const questionsOf = (content: string): Question[] => (JSON.parse(content) as { questions: Question[] }).questions;
+export const questionsOf = (content: string): Question[] => listOf((JSON.parse(content) as { questions: unknown }).questions) as Question[];
 
 // An answer: the chosen labels and the own answer, if any; none when the question was skipped.
 export type Answer = string[];
