@@ -1,11 +1,11 @@
 #!/bin/sh
 # Installs a `resector` command that runs this checkout's source with Bun, so every
 # `git pull` takes effect without a build. Release installs use the Homebrew tap instead.
-#   scripts/install-dev.sh [bin-dir]   (default: ~/local/bin)
+#   scripts/install-dev.sh [bin-dir]   (default: ~/.local/bin)
 set -eu
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
-BIN_DIR=${1:-"$HOME/local/bin"}
+BIN_DIR=${1:-"$HOME/.local/bin"}
 
 command -v bun >/dev/null || { echo "bun not found on PATH" >&2; exit 1; }
 mkdir -p "$BIN_DIR"

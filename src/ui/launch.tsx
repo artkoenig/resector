@@ -21,7 +21,7 @@ import type { Policy } from '../core/policy/policy';
 import { newSession, summarize, type SessionRef } from '../core/session/session';
 import { App } from './app';
 import { errorText } from './format';
-import type { GateOptions, Policies, Status } from './gate';
+import type { AutoApprove, GateOptions, Policies, Status } from './gate';
 import { Sessions } from './sessions';
 import { Setup } from './setup';
 
@@ -59,6 +59,9 @@ export function Launch(props: LaunchOptions) {
   // Context Policies (ADR 0001, FR-53), loaded at start: the active one belongs to the app, it stays when switching sessions.
   const [active, setActive] = createSignal<Policy | null>(null);
   const policies: Policies = { all: [], active, set: setActive };
+  // Auto-approve (FR-23) belongs to the app like the active policy: off at start, kept when switching sessions.
+  const [autoOn, setAutoOn] = createSignal(false);
+  const autoApprove: AutoApprove = { on: autoOn, set: setAutoOn };
   // Policies that failed to load, reported once in the first status line.
   let failed: string[] = [];
   const root = props.cwd ?? process.cwd();
@@ -122,7 +125,7 @@ export function Launch(props: LaunchOptions) {
     const searcher = createSearcher({ cwd: root, timeout: SEARCH_TIMEOUT });
     const approval = { split, root, permissions: () => config.permissions };
     const instruction = () => config.compactionInstruction();
-    setGate({ backend, runner, searcher, approval, editor: props.editor, clipboard: props.clipboard, log: opened.log, events, project, notice: withFailed(notice), openSessions: () => setView('sessions'), instruction, compactor: compactor(profile, opened.id), policies });
+    setGate({ backend, runner, searcher, approval, editor: props.editor, clipboard: props.clipboard, log: opened.log, events, project, notice: withFailed(notice), openSessions: () => setView('sessions'), instruction, compactor: compactor(profile, opened.id), policies, autoApprove });
   }
   function withFailed(notice: Status): Status {
     const text = failed.map(f => `policy ${f} – not loaded`);

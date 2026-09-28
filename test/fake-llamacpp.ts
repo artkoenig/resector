@@ -15,6 +15,8 @@ export type Reply = {
   finish?: 'stop' | 'length' | 'tool_calls';
   // Keep the stream open after the chunks until the client aborts.
   hang?: boolean;
+  // Seconds to wait after the chunks and calls before finishing.
+  delay?: number;
   usage?: { prompt_tokens: number; completion_tokens: number };
   cacheN?: number;
   // End the stream without finish_reason (dropped connection) or with a mid-stream error event.
@@ -141,6 +143,7 @@ export function stream(reply: Reply, signal: AbortSignal, final: unknown): Reada
         await new Promise(resolve => signal.addEventListener('abort', resolve));
         return;
       }
+      if (reply.delay) await Bun.sleep(reply.delay * 1000);
       ctrl.enqueue(data({ choices: [{ index: 0, delta: {}, finish_reason: reply.finish ?? (reply.calls ? 'tool_calls' : 'stop') }] }));
       ctrl.enqueue(data(final));
       ctrl.enqueue(enc.encode('data: [DONE]'));

@@ -106,6 +106,10 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
     insert(state, state.order.indexOf(first!.id), e.noteId);
     for (const b of [first!, ...rest]) Object.assign(b, { removed: true, hidden: true });
   },
+  NoteAdded: (state, e) => {
+    state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'policy', content: e.content, cutOff: false, ...NEW_ENTRY });
+    insert(state, state.order.indexOf(e.after) + 1, e.id);
+  },
   Rename: (state, e) => void (entry(state, e.id).title = e.title || null),
   RequestSent: state => {
     for (const e of state.entries.values()) Object.assign(e, { hidden: e.removed, moved: false, sentRevision: e.revision });

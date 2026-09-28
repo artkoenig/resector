@@ -17,6 +17,7 @@ const OPERATION = z.discriminatedUnion('op', [
   z.object({ op: z.literal('compact'), sources: z.array(id), instruction: z.string() }),
   z.object({ op: z.literal('edit'), id, content: z.string() }),
   z.object({ op: z.literal('move'), id, after: id }),
+  z.object({ op: z.literal('note'), after: id, content: z.string() }),
 ]);
 export type PolicyOperation = z.infer<typeof OPERATION>;
 // A policy module's default export; built-in policies are written the same way.
@@ -38,7 +39,8 @@ export function viewOf(context: Context, counted: { blocks: number[]; total: num
 // What an operation did, for the status line: counted (`3 Tool Pairs removed`) or as is (a Compaction).
 export type Change = { noun: string; verb: string } | { text: string };
 // The events an operation appends, or the Compaction to run first; or why not.
-export type Plan = { events: SessionEvent[]; change: Change } | { compact: { sources: number[]; instruction: string }; change: Change } | { error: string };
+export type Plan = { events: SessionEvent[]; change: Change } | { compact: Compaction; change: Change } | { error: string };
+type Compaction = { sources: number[]; instruction: string };
 type Of<O extends PolicyOperation['op']> = Extract<PolicyOperation, { op: O }>;
 type Planner<O extends PolicyOperation['op']> = (events: SessionEvent[], context: Context, op: Of<O>) => Plan;
 
@@ -56,6 +58,7 @@ const PLANNERS: { [O in PolicyOperation['op']]: Planner<O> } = {
   }),
   move: (events, context, op) => withBlock(context, op.id, block => (ops.inPair(block) ? moveAsNote(events, context, block, op.after) : done(ops.moveAfter(context, block, op.after), MOVED))),
   compact: (_, context, op) => compactPlan(context, op),
+  note: (_, context, op) => done(ops.addNote(context, context.nextId, op.after, op.content), { noun: 'Note', verb: 'added' }),
 };
 
 // A policy's module is not type-checked when loaded: what it returns is checked here.
@@ -188,7 +191,7 @@ async function applyOne(by: string, value: unknown, ports: Ports, changes: Chang
 }
 
 // The Compaction's Note, accepted without review.
-async function compacted({ sources, instruction }: { sources: number[]; instruction: string }, ports: Ports): Promise<SessionEvent[] | { error: string }> {
+async function compacted({ sources, instruction }: Compaction, ports: Ports): Promise<SessionEvent[] | { error: string }> {
   const context = fold(ports.events());
   const failed = (why: string) => ({ error: `compaction failed: ${why}` });
   try {
@@ -199,8 +202,9 @@ async function compacted({ sources, instruction }: { sources: number[]; instruct
   }
 }
 
-// The operation as the status line names it: `remove 5`, `move 5 after 3`, `compact 3 4`.
+// The operation as the status line names it: `remove 5`, `move 5 after 3`, `compact 3 4`, `note after 2`.
 function opText(op: PolicyOperation): string {
   if (op.op === 'compact') return `compact ${op.sources.join(' ')}`;
+  if (op.op === 'note') return `note after ${op.after}`;
   return `${op.op} ${op.id}${op.op === 'move' ? ` after ${op.after}` : ''}`;
 }

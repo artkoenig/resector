@@ -433,6 +433,20 @@ test('the built-in thinking-trail is offered and switched on without any policy 
   expect(ui.captureCharFrame()).toMatch(/local · thinking off · policy thinking-trail/);
 });
 
+test('thinking-trail tells the model what it does: a Note right after the Tools Block, titled Context Policy', async () => {
+  const { log } = await launch({ config: url => profileConfig(url) });
+  await frameMatching(ui, f => f.includes('/ 2k'));
+  await command('/policy thinking-trail');
+  await frameMatching(ui, f => f.includes('policy thinking-trail on'));
+  fake.reply({ chunks: ['ok'] });
+  await command('hi');
+  const answered = await frameMatching(ui, f => f.includes('answer complete'));
+  expect(answered).toContain('thinking-trail: 1 Note added · answer complete');
+  expect(answered).toMatch(/3\s+Note\s+Context Policy/);
+  expect(log().find(e => e.type === 'NoteAdded')).toMatchObject({ after: 2, by: 'thinking-trail' });
+  expect(JSON.stringify(fake.chatRequests[0])).toContain('Tool calls and results are removed once you have reasoned past them');
+});
+
 test('the active policy belongs to the app: it stays when switching sessions and is not logged', async () => {
   const { log } = await launch({ config: url => profileConfig(url), policies: { shout: SHOUT }, sessions: { ses_a: titled('local', 'fix the build') } });
   await frameMatching(ui, f => f.includes('/ 2k'));
@@ -444,4 +458,17 @@ test('the active policy belongs to the app: it stays when switching sessions and
   await key('enter');
   expect(await frameMatching(ui, f => f.includes('resumed "fix the build"'))).toMatch(/local · thinking off · policy shout/);
   expect(JSON.stringify(log())).not.toContain('shout');
+});
+
+test('auto-approve belongs to the app: it stays when switching sessions and is not logged (FR-23)', async () => {
+  const { log } = await launch({ config: url => profileConfig(url), sessions: { ses_a: titled('local', 'fix the build') } });
+  await frameMatching(ui, f => f.includes('/ 2k'));
+  await command('/auto');
+  await frameMatching(ui, f => f.includes('auto-approve on'));
+  await command('/sessions');
+  await frameMatching(ui, f => f.includes('Sessions ·'));
+  await key('down');
+  await key('enter');
+  expect(await frameMatching(ui, f => f.includes('resumed "fix the build"'))).toMatch(/local · thinking off · auto-approve/);
+  expect(JSON.stringify(log())).not.toContain('auto');
 });

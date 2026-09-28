@@ -16,7 +16,8 @@ const firstLine = (text: string) => (text.split('\n').find(l => l.trim()) ?? '')
 
 // FR-4: display label only, never sent. A rename wins; default = first non-empty line of the content;
 // origin titles: `System prompt`, the tool names, `→ <call>` (the call from `blocks`), `⇄ <call>` (a Note from a Tool Pair),
-// `◇ N blocks compacted` (a Note from a Compaction, FR-16), `@<path>` (FR-27, FR-29), `Environment` (FR-28).
+// `◇ N blocks compacted` (a Note from a Compaction, FR-16), `@<path>` (FR-27, FR-29), `Environment` (FR-28),
+// `Context Policy` (a policy's Note, FR-52).
 export function titleOf(block: Titled, blocks: readonly Called[] = []): string {
   if (block.title) return block.title;
   if (block.kind === 'System') return 'System prompt';
@@ -39,6 +40,7 @@ function originTitle(block: Titled, blocks: readonly Called[]): string | null {
   if (block.source !== undefined) return `⇄ ${firstLine(block.source)}`;
   if (block.file !== undefined) return `@${block.file}`;
   if (block.origin === 'environment') return 'Environment';
+  if (block.origin === 'policy') return 'Context Policy';
   return block.compacted ? `◇ ${count(block.compacted.sources.length, 'block')} compacted` : null;
 }
 

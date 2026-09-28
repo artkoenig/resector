@@ -40,10 +40,13 @@ export type GateOptions = {
   instruction?: () => string;
   compactor?: () => Promise<Compactor | null>;
   policies?: Policies;
+  autoApprove?: AutoApprove;
 };
 // Context Policies (ADR 0001): the ones loaded at start, and the active one, which belongs to the app, not the session.
 export type Policies = { all: Policy[]; active: () => Policy | null; set: (policy: Policy | null) => void };
 const NO_POLICIES: Policies = { all: [], active: () => null, set: () => {} };
+// Auto-approve (FR-23): every call a rule asks for runs without asking; like the active policy it belongs to the app.
+export type AutoApprove = { on: () => boolean; set: (on: boolean) => void };
 export type Compactor = { profile: string; backend: Backend };
 // The project on disk: files for @path references and their completion (FR-27), the environment Note's text now
 // (FR-28), and $EDITOR on a file of the project (`e` on a reference).
@@ -59,6 +62,7 @@ export const COMMANDS = [
   { name: '/tools', arg: '<tool>', description: 'switch a tool on or off' },
   { name: '/filter', arg: '<kind>', description: 'show only blocks of one Kind' },
   { name: '/policy', arg: '<name>', description: 'switch a Context Policy on or off' },
+  { name: '/auto', arg: '', description: 'switch auto-approve of Tool Calls on or off' },
 ] as const;
 // What a Kind Filter takes (FR-51), in glossary order: the Kinds each shows; a Tool Call never without its Tool Result.
 export type Filter = { name: string; kinds: readonly Kind[] };
@@ -114,7 +118,13 @@ const QUESTION_HINT = 'the model asks – answer in the dock';
 const cacheMiss = ({ predicted, cached }: ChatResult) =>
   predicted !== null && cached !== null && cached < predicted ? `cache: predicted ${predicted} · server reused ${cached}` : null;
 
-export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, policies = NO_POLICIES, ...options }: GateOptions) {
+// Without an app-wide one, the Gate keeps its own, off.
+function ownAutoApprove(): AutoApprove {
+  const [on, set] = createSignal(false);
+  return { on, set };
+}
+
+export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, policies = NO_POLICIES, autoApprove = ownAutoApprove(), ...options }: GateOptions) {
   const [events, setEvents] = createSignal(options.events);
   const [counted, setCounted] = createSignal<{ prefixes: Request[]; split: Counted } | null>(null);
   const [streaming, setStreaming] = createSignal<Streaming | null>(null);
@@ -207,6 +217,14 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     if (shown().length) setSelected(shown()[Math.max(0, Math.min(shown().length - 1, i))]!);
   };
   const keepSelection = () => shown().includes(selected()) || selectAt(shown().length - 1);
+  // Whether the user moved up to read an older row: the tool loop then leaves the selection alone. Moving back to
+  // the last row, writing, sending or deciding a call follows the loop again.
+  let reading = false;
+  const follow = (id: number) => void (reading || setSelected(id));
+  function select(delta: number) {
+    selectAt(shown().indexOf(selected()) + delta);
+    reading = selected() !== shown().at(-1);
+  }
 
   createEffect(() => {
     recount();
@@ -240,6 +258,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   function addUser(content: string) {
     const id = nextId();
     append({ type: 'BlockAdded', id, kind: 'User', origin: 'user', content });
+    reading = false;
     setSelected(id);
   }
 
@@ -364,7 +383,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     append({ type: 'ResponseReceived', usage: result.usage, cached: result.cached });
     const miss = cacheMiss(result);
     // Calls to decide, or only a rejected Question already answered: the loop goes on.
-    if (events.some(e => e.kind === 'Tool Call')) return advance([policy, notRun && notRunText(notRun), miss && `⚠ ${miss}`].filter((n): n is string => !!n));
+    if (events.some(e => e.kind === 'Tool Call')) return goOn([policy, notRun && notRunText(notRun), miss && `⚠ ${miss}`].filter((n): n is string => !!n));
     const status = answerStatus(result, notRun);
     const text = [policy, status.text, miss && `⚠ ${miss}`].filter(Boolean).join(' · ');
     setStatus({ text, tone: miss ? 'warn' : status.tone });
@@ -379,14 +398,42 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   // bash call) or was stopped (killed, timeout). Otherwise, once every call ran, the results are sent (FR-23).
   let held = false;
 
+  // What happens to a call: it runs (allow), waits for the user (ask) or is denied. Auto-approve runs what a rule
+  // asks for; a deny stays a deny, a Question still waits for its answer.
+  function decided(call: Block): Verdict['action'] {
+    const { action } = verdictOf(call);
+    if (call.tool === 'question') return action === 'deny' ? 'deny' : 'ask';
+    return action === 'ask' && autoApprove.on() ? 'allow' : action;
+  }
+
+  // Esc while an answer streams or a call runs: the step finishes, then the tool loop stops at the Gate for changes;
+  // Esc again aborts the step. Enter goes on.
+  const [stopping, setStopping] = createSignal(false);
+  // Esc: the first stops after the step, the second aborts it (then the loop stops anyway); a policy's or the
+  // user's Compaction is aborted at once.
+  function abort() {
+    const step = streaming() ?? running();
+    if (step && !stopping()) return void setStopping(true);
+    setStopping(false);
+    (policing() ?? (step ?? compacting())?.abort)?.abort();
+  }
+  // The loop goes on after a step, unless Esc asked to stop: then the next call waits, its results are held.
+  function goOn(notes: string[]) {
+    if (!stopping()) return advance(notes);
+    setStopping(false);
+    held = true;
+    follow(ops.nextCall(context())?.id ?? nextId());
+    setStatus({ text: [...notes, 'stopped – make your changes, Enter goes on'].join(' · '), tone: 'info' });
+  }
+
   // Decides the pending calls in order (FR-24): an allowed one runs, a denied one is answered "denied by rule", the
   // first to ask for is selected. Then the results are sent, or held at the Gate. notes: what happened so far.
   function advance(notes: string[] = []) {
     for (let call = ops.nextCall(context()); call; call = ops.nextCall(context())) {
-      const { action } = verdictOf(call);
-      if (action === 'allow' && call.tool !== 'question') return void run(call, notes);
+      const action = decided(call);
+      if (action === 'allow') return void run(call, notes);
       if (action !== 'deny') return awaitUser(call, notes);
-      setSelected(nextId());
+      follow(nextId());
       held = true;
       apply(ops.deny(context(), call, nextId()));
       notes = [...notes, `⚠ denied by rule: ${titleOf(call)}`];
@@ -397,7 +444,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
 
   // The call waits for the user: a Question for its answer in the dock (it never needs Tool Approval), others for approval.
   function awaitUser(call: Block, notes: string[]) {
-    setSelected(call.id);
+    follow(call.id);
     setStatus({ text: [...notes, call.tool === 'question' ? `? ${QUESTION_HINT}` : `? approve – ${APPROVE}`].join(' · '), tone: 'warn' });
   }
 
@@ -405,20 +452,21 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   async function run(call: Block, notes: string[]) {
     const abort = new AbortController();
     const tool = call.tool === 'search' ? searcher : runner;
+    setStopping(false);
     setRunning({ call, output: '', started: Date.now(), timeout: tool.timeout, abort });
-    setSelected(nextId());
+    follow(nextId());
     setStatus(null);
     try {
       const onOutput = (text: string) => setRunning({ ...running()!, output: running()!.output + text });
       const result = await tool.run(call.content, { signal: abort.signal, onOutput });
       setRunning(null);
-      setSelected(nextId());
+      follow(nextId());
       append(ops.toolResult(call, nextId(), result, tool.timeout));
       if (result.stopped) held = true;
-      advance(result.stopped ? [...notes, `⚠ ${result.stopped}`] : notes);
+      goOn(result.stopped ? [...notes, `⚠ ${result.stopped}`] : notes);
     } catch (e) {
       setRunning(null);
-      setSelected(call.id);
+      follow(call.id);
       setStatus({ text: `${call.tool ?? 'bash'} failed: ${errorText(e)}`, tone: 'error' });
     }
   }
@@ -433,7 +481,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   function answer(answers: Answer[]) {
     const question = asked();
     if (!question) return;
-    setSelected(nextId());
+    follow(nextId());
     append({ type: 'BlockAdded', id: nextId(), kind: 'Tool Result', origin: 'user', content: answerText(question.questions, answers), call: question.call.id });
     advance();
   }
@@ -449,6 +497,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     const block = selectedBlock();
     const error = block?.tool === 'question' && block.pending ? QUESTION_HINT : block ? ops.approvable(context(), block) : 'not awaiting approval';
     if (error) setStatus({ text: error, tone: 'info' });
+    else reading = false;
     return error ? null : block!;
   }
 
@@ -478,7 +527,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   // The call is answered without running; the results are held at the Gate.
   function notRun(operation: typeof ops.reject, call: Block, notes: string[] = []) {
     held = true;
-    setSelected(nextId());
+    follow(nextId());
     if (apply(operation(context(), call, nextId()))) advance(notes);
   }
 
@@ -487,6 +536,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   function unsendable(): Status | null {
     const pending = ops.nextCall(context());
     if (pending) {
+      reading = false;
       setSelected(pending.id);
       return { text: pending.tool === 'question' ? QUESTION_HINT : `Tool Calls await approval – ${APPROVE} on the ? approve row`, tone: 'warn' };
     }
@@ -525,9 +575,19 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     return halt;
   }
 
+  const idle = () => !streaming() && !running() && !policing();
+  // Calls left pending by a stop go on as the rules decide them; one to ask for still blocks the send.
+  function wentOn(): boolean {
+    const pending = ops.nextCall(context());
+    if (!pending || decided(pending) === 'ask') return false;
+    held = false;
+    advance();
+    return true;
+  }
+
   // The check stays synchronous without a policy: a second send in the same tick finds the first streaming.
   async function send() {
-    if (streaming() || running() || policing()) return;
+    if (!idle() || wentOn()) return;
     const policy = policies.active();
     if (!(policy ? await readyWith(policy) : ready())) return;
     const did = ran;
@@ -535,6 +595,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     const requested = prefixes();
     const payload = requested.at(-1)!;
     const abort = new AbortController();
+    setStopping(false);
     setStreaming({ thinking: '', text: '', abort });
     setStatus(null);
     try {
@@ -542,12 +603,12 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
       if (halted(abort.signal.aborted, total)) return withDid(did);
       append({ type: 'RequestSent', hash: Bun.hash(JSON.stringify(payload)).toString(16), tokens: total });
       setMarked(new Set<number>());
-      setSelected(nextId());
+      follow(nextId());
       const onThinking = (d: string) => setStreaming({ ...streaming()!, thinking: streaming()!.thinking + d });
       // The answer follows its reasoning: the selection moves on with it.
       const onDelta = (d: string) => {
         const { thinking, text } = streaming()!;
-        if (thinking && !text && selected() === nextId()) setSelected(nextId() + 1);
+        if (thinking && !text && selected() === nextId()) follow(nextId() + 1);
         setStreaming({ ...streaming()!, text: text + d });
       };
       const result = await backend().chat(payload, { signal: abort.signal, onDelta, onThinking, maxTokens: budgetOf(total).maxTokens });
@@ -614,6 +675,15 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     if (chosen === undefined) return setStatus({ text: `unknown policy ${name}: ${values}`, tone: 'error' });
     policies.set(chosen);
     setStatus({ text: chosen ? `policy ${chosen.name} on – edits the Context before every request` : 'policy off', tone: 'info' });
+  }
+
+  // /auto switches auto-approve on or off (FR-23); a call awaiting approval then runs at once.
+  function switchAutoApprove() {
+    autoApprove.set(!autoApprove.on());
+    const text = autoApprove.on() ? 'auto-approve on – Tool Calls run without asking, deny rules still apply' : 'auto-approve off';
+    const call = ops.nextCall(context());
+    if (autoApprove.on() && call && call.tool !== 'question' && !running() && !streaming()) return advance([text]);
+    setStatus({ text, tone: 'info' });
   }
 
   // Compaction (FR-13–FR-17) ------------------------------------------------------------------------------
@@ -787,7 +857,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   }
 
   const commands: Record<CommandName, (arg: string) => void> = {
-    '/sessions': openSessions, '/rename': renameSession, '/tools': toggleTool, '/filter': filterBy, '/policy': switchPolicy,
+    '/sessions': openSessions, '/rename': renameSession, '/tools': toggleTool, '/filter': filterBy, '/policy': switchPolicy, '/auto': switchAutoApprove,
   };
   // Input text: a known command runs with the rest as argument; an unknown `/word` is an error; anything else becomes
   // a User block and is sent right away – if sending is blocked, the block stays and the status says why (FR-6).
@@ -853,11 +923,17 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     // The active Context Policy and the ones to switch on (ADR 0001).
     policy: () => policies.active()?.name ?? null,
     policyNames: () => policies.all.map(p => p.name),
+    autoApprove: autoApprove.on,
     thinking,
     cycleThinking,
     submit,
-    send,
-    abort: () => (policing() ?? (streaming() ?? running() ?? compacting())?.abort)?.abort(),
+    // Enter: the user sends, the selection follows the answer.
+    send: () => {
+      reading = false;
+      return send();
+    },
+    abort,
+    stopping,
     compacting,
     sourceTokens: () => (compacting() ? tokensOf(compacting()!.sources) : null),
     review: () => (compacting()?.phase === 'review' ? review(compacting()!) : null),
@@ -878,7 +954,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     verdict: (block: Block): Verdict | null => (block.pending && block.tool !== 'question' ? verdictOf(block) : null),
     asked,
     answer,
-    select: (delta: number) => selectAt(shown().indexOf(selected()) + delta),
+    select,
     move,
     remove,
     undo,
