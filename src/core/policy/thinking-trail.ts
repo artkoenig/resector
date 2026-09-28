@@ -4,7 +4,7 @@ import type { PolicyBlock, PolicyContext, PolicyOperation } from './policy';
 
 const TO_COMPACT = 5;
 // The trail is cut only once the Context takes this share of the window: until then it costs little.
-const CUT_FROM = 0.3;
+const CUT_FROM = 2 / 3;
 export const INSTRUCTION = [
   'Accumulate the knowledge in these blocks into one Note that replaces them: a reader without them must be able to continue the work. Discard nothing: keep every insight, also those from earlier Notes; merge only what is said twice. Write each point as its result, never as the activity: not "located the files" but the paths; not "decided on an approach" but the approach and why. Keep names, paths, identifiers, commands and values verbatim. Under Next steps, list what remains, in order, each concrete enough to act on. Answer in exactly this structure:',
   '## Goal',

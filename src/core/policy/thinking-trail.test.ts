@@ -13,9 +13,9 @@ const log = (...kinds: Kind[]): SessionEvent[] => [
   { type: 'BlockAdded', id: 2, kind: 'Tools', origin: 'config', content: '[]' },
   ...kinds.map((kind, i): SessionEvent => ({ type: 'BlockAdded', id: i + 3, kind, origin: 'model', content: kind, ...(kind === 'Tool Result' ? { call: i + 2 } : {}) })),
 ];
-// 30 % of the window used: Tool Pairs the model has reasoned past go.
+// 2/3 of the window used: Tool Pairs the model has reasoned past go.
 const WINDOW = 1000;
-const FULL = 300;
+const FULL = 667;
 const view = (...kinds: Kind[]) => {
   const folded = fold(log(...kinds));
   return viewOf(folded, { blocks: sentBlocks(folded).map(() => 1), total: FULL }, WINDOW);
@@ -71,7 +71,7 @@ test('Tool Pairs before the newest Thinking are removed, once each, as the Think
   ]);
 });
 
-test('under 30 % of the window used, the trail stays; from 30 % on the Tool Pairs go and the Thinking is compacted together', () => {
+test('under 2/3 of the window used, the trail stays; from 2/3 on the Tool Pairs go and the Thinking is compacted together', () => {
   const trail = context('Thinking', 'Tool Call', 'Tool Result', 'Thinking', 'Thinking', 'Thinking', 'Thinking', 'Thinking');
   expect(thinkingTrail({ ...trail, used: FULL - 1 })).toEqual([]);
   expect(thinkingTrail({ ...trail, used: FULL })).toEqual([{ op: 'remove', id: 4 }, compact(3, 6, 7, 8, 9, 10)]);
@@ -117,11 +117,11 @@ test('5 Notes of a Compaction: one compact over exactly those 5, in Context orde
   ]);
 });
 
-test('Notes of a Compaction are compacted also under 30 % of the window', () => {
+test('Notes of a Compaction are compacted also under 2/3 of the window', () => {
   expect(thinkingTrail({ ...compacted('Note', 'Note', 'Note', 'Note', 'Note', 'Thinking'), used: 0 })).toEqual([compact(3, 4, 5, 6, 7)]);
 });
 
-test('its lead right before the first Note of a Compaction, also under 30 % of the window', () => {
+test('its lead right before the first Note of a Compaction, also under 2/3 of the window', () => {
   // 3 User, 4 Note, 5 Note: the lead after 3.
   const { blocks, ...rest } = context('User', 'Note', 'Note');
   const notes = blocks.map(b => (b.kind === 'Note' && b !== about ? { ...b, origin: 'compaction' as const } : b));
