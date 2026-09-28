@@ -1,5 +1,5 @@
 // Review Gate state: the Session Log in memory, Context = fold(events), token split, streaming answer.
-import { createEffect, createMemo, createSignal } from 'solid-js';
+import { batch, createEffect, createMemo, createSignal } from 'solid-js';
 import type { Clipboard } from '../adapters/clipboard/clipboard';
 import type { Backend, ChatResult, Counted } from '../core/backend';
 import { deniedTools, quoted, sessionAllowed, sessionRules, verdictOf as decide, type Rule, type Split, type Verdict } from '../core/approval/approval';
@@ -17,7 +17,7 @@ import { DEFAULT_MODES } from '../core/render/template';
 import { budget, lastDrift, type Budget } from '../core/tokens/budget';
 import { answerBlocks } from '../core/toolcall/answer';
 import { toolsIn, type Runner } from '../core/toolcall/bash';
-import { answerText, questionsOf, type Answer, type Question } from '../core/toolcall/question';
+import { answerText, parseQuestions, type Answer, type Question } from '../core/toolcall/question';
 import { count, errorText, formatTokens, thinkingLabel, titleOf } from './format';
 
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
@@ -378,9 +378,12 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   function finish(result: ChatResult, policy: string | null) {
     // Calls to a tool denied by rule are parsed too: they are answered "denied by rule" (FR-21).
     const { events, notRun } = answerBlocks(result, nextId(), [...toolsOn(), ...deniedTools(rules())]);
-    events.forEach(append);
+    // At once: a rejected Question is never pending without its Tool Result.
+    batch(() => {
+      events.forEach(append);
+      append({ type: 'ResponseReceived', usage: result.usage, cached: result.cached });
+    });
     held = !!notRun;
-    append({ type: 'ResponseReceived', usage: result.usage, cached: result.cached });
     const miss = cacheMiss(result);
     // Calls to decide, or only a rejected Question already answered: the loop goes on.
     if (events.some(e => e.kind === 'Tool Call')) return goOn([policy, notRun && notRunText(notRun), miss && `⚠ ${miss}`].filter((n): n is string => !!n));
@@ -475,7 +478,8 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   const asked = createMemo((): Asked | null => {
     const call = ops.nextCall(context());
     if (call?.tool !== 'question' || streaming() || running() || verdictOf(call).action === 'deny') return null;
-    return { call, questions: questionsOf(call.content) };
+    const parsed = parseQuestions(JSON.parse(call.content));
+    return 'questions' in parsed ? { call, questions: parsed.questions } : null;
   });
   // The user's answers, one per question: the Tool Result, written by the user; then the loop goes on.
   function answer(answers: Answer[]) {

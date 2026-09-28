@@ -4,7 +4,7 @@ import type { PolicyBlock, PolicyContext, PolicyOperation } from './policy';
 
 const TO_COMPACT = 5;
 // The trail is cut only once the Context takes this share of the window: until then it costs little.
-const CUT_FROM = 0.3;
+const CUT_FROM = 2 / 3;
 export const INSTRUCTION = [
   'Accumulate the knowledge in these blocks into one Note that replaces them: a reader without them must be able to continue the work. Discard nothing: keep every insight, also those from earlier Notes; merge only what is said twice. Write each point as its result, never as the activity: not "located the files" but the paths; not "decided on an approach" but the approach and why. Keep names, paths, identifiers, commands and values verbatim. Under Next steps, list what remains, in order, each concrete enough to act on. Answer in exactly this structure:',
   '## Goal',
@@ -37,7 +37,9 @@ export default function thinkingTrail({ window, used, blocks }: PolicyContext): 
   // The blocks before the newest Thinking: the model has reasoned past them.
   const before = new Set(blocks.slice(0, Math.max(blocks.indexOf(thinking.at(-1)!), 0)).map(b => b.id));
   // A Tool Pair with both blocks there; a Tool Call without result has no pair and stays.
-  const reasonedPast = blocks.filter(b => b.kind === 'Tool Call' && before.has(b.id) && before.has(b.pair!));
+  // A Tool Result of the user (a Question's answers) stays with its call: the user's word is not reasoned past.
+  const byUser = new Set(blocks.filter(b => b.origin === 'user').map(b => b.id));
+  const reasonedPast = blocks.filter(b => b.kind === 'Tool Call' && before.has(b.id) && before.has(b.pair!) && !byUser.has(b.pair!));
   const operations: PolicyOperation[] = [...about, ...reasonedPast.map(b => ({ op: 'remove' as const, id: b.id }))];
   // The answers between and the Notes of earlier Compactions go along: one trail, the reasoning and what came of it.
   const trail = blocks.filter(b => b.kind === 'Thinking' || b.kind === 'Assistant' || b.origin === 'compaction');

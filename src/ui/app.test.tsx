@@ -1522,6 +1522,24 @@ test('a Question without a valid Recommended Option goes back to the model as er
   ]);
 });
 
+test('questions given as a JSON string open the dock like a list', async () => {
+  await start({ tools: TOOLS });
+  fake.reply({ chunks: [], calls: [{ name: 'question', arguments: JSON.stringify({ questions: JSON.stringify([RUNTIME]) }) }] });
+  await write('go');
+  expect(await frameMatching(ui, f => f.includes('own answer'))).toContain('Which runtime should we use?');
+});
+
+test('a Question the dock cannot show goes back to the model as error, not as a crash', async () => {
+  const { events } = await start({ tools: TOOLS });
+  fake.reply({ chunks: [], calls: [{ name: 'question', arguments: JSON.stringify({ questions: [{ ...RUNTIME, options: 'Node or Bun' }] }) }] });
+  fake.reply({ chunks: ['sorry'] });
+  await write('go');
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(events().filter(e => e.kind === 'Tool Result')).toEqual([
+    { type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'error: question 1: at least 2 options', call: 4 },
+  ]);
+});
+
 // Question: several questions & multi-select (#34) ------------------------------------------------------------
 const LINTERS = {
   question: 'Which linters should run?',
