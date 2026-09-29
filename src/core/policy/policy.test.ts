@@ -114,15 +114,15 @@ function ports(events: SessionEvent[], { note = async () => 'the gist', abortAt 
   let checks = 0;
   const log = [...events];
   const seen: PolicyContext[] = [];
-  const compacted: { sources: number[]; instruction: string; blocks: number }[] = [];
+  const compacted: { sources: number[]; instruction: string; blocks: number; inContext?: boolean }[] = [];
   const port: Ports = {
     events: () => log,
     append: event => void log.push(event),
     count: async (context: Context) => ({ blocks: context.blocks.filter(b => !b.removed).map(() => 10), total: 999 }),
     window: 4096,
     aborted: () => ++checks > abortAt,
-    compact: async (context, sources, instruction) => {
-      compacted.push({ sources, instruction, blocks: context.blocks.length });
+    compact: async (context, sources, instruction, inContext) => {
+      compacted.push({ sources, instruction, blocks: context.blocks.length, ...(inContext && { inContext }) });
       return note(context, sources, instruction);
     },
   };
@@ -195,6 +195,12 @@ test('compact: the Compaction runs on the Context, its Note accepted without rev
     { type: 'Compact', sources: [3, 4], instruction: 'short', noteId: 8, content: 'the gist', by: 'trail' },
     { type: 'Remove', id: 7, by: 'trail' },
   ]);
+});
+
+test('compact in the Context: the port is told so', async () => {
+  const { port, compacted } = ports(session());
+  await applyPolicy(policy([[{ op: 'compact', sources: [3, 4], instruction: 'short', inContext: true }]]), port);
+  expect(compacted).toEqual([{ sources: [3, 4], instruction: 'short', blocks: 7, inContext: true }]);
 });
 
 test('a Compaction that fails or writes nothing stops the policy', async () => {

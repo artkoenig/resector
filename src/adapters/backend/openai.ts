@@ -16,15 +16,26 @@ type StreamEvent = {
   error?: { message: string };
 };
 
+// Attempts of a request the server answers 503.
+const RETRIES = 10;
+
 // Requests against one server; failures name the backend (`name`) so the user knows which one broke.
 export function httpClient(name: string, endpoint: string) {
   const base = endpoint.replace(/\/$/, '');
   const request = async (path: string, init?: RequestInit): Promise<Response> => {
-    const res = await fetch(base + path, init).catch(e => {
-      throw init?.signal?.aborted ? e : new Error(`cannot reach ${name} at ${base}`);
-    });
-    if (!res.ok) throw new Error(`${name} ${res.status}: ${reason(await res.text())}`);
-    return res;
+    for (let attempt = 1; ; attempt++) {
+      const res = await fetch(base + path, init).catch(e => {
+        throw init?.signal?.aborted ? e : new Error(`cannot reach ${name} at ${base}`);
+      });
+      if (res.ok) return res;
+      // 503: the server is busy (e.g. its request slots are full) and took nothing on: again after Retry-After.
+      if (res.status === 503 && attempt < RETRIES && !init?.signal?.aborted) {
+        await res.body?.cancel();
+        await Bun.sleep(1000 * Number(res.headers.get('retry-after') ?? 1));
+        continue;
+      }
+      throw new Error(`${name} ${res.status}: ${reason(await res.text())}`);
+    }
   };
   const post = async <T>(path: string, body: unknown): Promise<T> =>
     (await request(path, jsonPost(body))).json() as Promise<T>;
@@ -52,8 +63,12 @@ export function thinkingParams(thinking: Thinking | undefined): Record<string, u
   return { chat_template_kwargs: { enable_thinking: true, reasoning_effort: thinking }, reasoning_effort: thinking };
 }
 
-// Request body fields of a Request: the tools field only when there are tools.
-export const chatFields = ({ messages, tools }: Request) => ({ messages, ...(tools.length && { tools }) });
+// Request body fields of a Request: the tools field only when there are tools; the answer's start as the last,
+// partial assistant message, which the server continues (oMLX reads partial, llama.cpp continues a final assistant message).
+export const chatFields = ({ messages, tools, answerStart }: Request) => ({
+  messages: answerStart === undefined ? messages : [...messages, { role: 'assistant', content: answerStart, partial: true }],
+  ...(tools.length && { tools }),
+});
 
 // The answer as an assistant message, as the next request renders it (call ids by position), for the
 // cache prediction.

@@ -8,8 +8,9 @@ import { answer, chatml, stream, tokenize, type ChatMessage, type ChatTool, type
 // path: the model directory the admin API names.
 export type FakeModel = { id: string; maxModelLen?: number; path?: string };
 // probe: whether the admin cache probe answers; lagging: it does not see the last request yet (blocks
-// are written to the SSD cache after the answer); blockSize: cache block size in fake tokens.
-export type FakeOmlxOptions = { models?: FakeModel[]; probe?: boolean; lagging?: boolean; blockSize?: number };
+// are written to the SSD cache after the answer); blockSize: cache block size in fake tokens; busy: the next
+// POST requests are refused with 503 and Retry-After: 0, as splash refuses requests beyond its slots.
+export type FakeOmlxOptions = { models?: FakeModel[]; probe?: boolean; lagging?: boolean; blockSize?: number; busy?: number };
 
 type Block = { type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: unknown } | { type: 'tool_result'; tool_use_id: string; content: string };
 type AnthropicTool = { name: string; description: string; input_schema: unknown };
@@ -36,7 +37,7 @@ function chatMessages({ system, messages }: AnthropicCount): ChatMessage[] {
 const chatTools = (tools: AnthropicTool[] = []): ChatTool[] =>
   tools.map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } }));
 
-export function startFakeOmlx({ models = [{ id: 'Qwen3-8B-4bit', maxModelLen: 57344 }], probe = true, lagging = false, blockSize = 4 }: FakeOmlxOptions = {}) {
+export function startFakeOmlx({ models = [{ id: 'Qwen3-8B-4bit', maxModelLen: 57344 }], probe = true, lagging = false, blockSize = 4, busy = 0 }: FakeOmlxOptions = {}) {
   const replies: Reply[] = [];
   // Paged prefix cache: the last chat prompt and its answer, hit in whole blocks.
   let cache: number[] = [];
@@ -48,7 +49,9 @@ export function startFakeOmlx({ models = [{ id: 'Qwen3-8B-4bit', maxModelLen: 57
   };
   const chatRequests: unknown[] = [];
   const countRequests: AnthropicCount[] = [];
-  const error = (status: number, message: string) => Response.json({ error: { message, type: 'server_error' } }, { status });
+  const error = (status: number, message: string, headers?: Record<string, string>) => Response.json({ error: { message, type: 'server_error' } }, { status, headers });
+  const overloaded = () => error(503, 'frontend request capacity is exhausted', { 'retry-after': '0' });
+  const counts = { active: 0, most: 0 };
   const known = (model: string) => models.some(m => m.id === model);
 
   const server = Bun.serve({
@@ -62,6 +65,10 @@ export function startFakeOmlx({ models = [{ id: 'Qwen3-8B-4bit', maxModelLen: 57
           data: models.map(m => ({ id: m.id, object: 'model', created: 0, owned_by: 'omlx', max_model_len: m.maxModelLen ?? null })),
         });
       if (req.method !== 'POST') return new Response('not found', { status: 404 });
+      if (busy > 0) {
+        busy--;
+        return overloaded();
+      }
       if (req.headers.get('content-type') !== 'application/json') return error(422, 'body is not JSON');
       const body = (await req.json()) as Record<string, any>;
       if (url.pathname === '/admin/api/cache/probe') {
@@ -70,6 +77,10 @@ export function startFakeOmlx({ models = [{ id: 'Qwen3-8B-4bit', maxModelLen: 57
       }
       if (!known(body.model)) return error(404, `Model '${body.model}' not found`);
       if (url.pathname === '/v1/messages/count_tokens') {
+        counts.active++;
+        counts.most = Math.max(counts.most, counts.active);
+        await Bun.sleep(1);
+        counts.active--;
         countRequests.push(body as AnthropicCount);
         const all = chatMessages(body as AnthropicCount);
         const tools = chatTools((body as AnthropicCount).tools);
@@ -95,6 +106,8 @@ export function startFakeOmlx({ models = [{ id: 'Qwen3-8B-4bit', maxModelLen: 57
     reply: (r: Reply) => replies.push(r),
     chatRequests,
     countRequests,
+    // The most count_tokens requests in flight at once.
+    mostCounts: () => counts.most,
     stop: () => server.stop(true),
   };
 }

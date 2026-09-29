@@ -2,7 +2,8 @@ import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
 import { undo } from '../context/operations';
-import { accept, COMPACTION_SYSTEM, compactionRequest, DEFAULT_INSTRUCTION, reduction, sourcesOf } from './compaction';
+import { renderNative } from '../render/native';
+import { accept, COMPACTION_SYSTEM, compactionRequest, DEFAULT_INSTRUCTION, inContextRequest, reduction, sourcesOf } from './compaction';
 
 const session = (...then: SessionEvent[]): SessionEvent[] => [
   { type: 'SessionCreated', profile: 'default', protocol: 'native' },
@@ -51,6 +52,16 @@ test('the request holds only the sources and the instruction (FR-14)', () => {
     ],
     tools: [],
   });
+});
+
+test('in the Context: the request as sent, the instruction appended, so the prefix cache holds all but it', () => {
+  const context = fold(session());
+  const sent = renderNative(context);
+  expect(inContextRequest(context, 'summarize')).toEqual({ ...sent, messages: [...sent.messages, { role: 'user', content: 'summarize' }] });
+});
+
+test('in the Context: the answer begins with the first heading the instruction asks for, so the model writes no reasoning', () => {
+  expect(inContextRequest(fold(session()), 'summarize as:\n## Goal\n## Done').answerStart).toBe('## Goal\n');
 });
 
 test('accept logs the Compaction; an empty proposal is not accepted (FR-16)', () => {

@@ -6,7 +6,7 @@ import { chatml, tokenize } from '../../../test/fake-llamacpp';
 import { startFakeOmlx, type FakeOmlxOptions } from '../../../test/fake-omlx';
 import type { Message } from '../../core/render/native';
 import { prefixes, request, toolLoop } from '../../../test/requests';
-import { connectOmlx, type OmlxOptions } from './omlx';
+import { connectOmlx, COUNTS, type OmlxOptions } from './omlx';
 
 let fake: ReturnType<typeof startFakeOmlx>;
 afterEach(() => fake.stop());
@@ -251,6 +251,40 @@ test('a request with its own thinking overrides the profile (FR-49)', async () =
   fake.reply({ chunks: ['ok'] });
   await backend.chat({ messages: [{ role: 'user', content: 'hi' }], tools: [], thinking: 'high' }, { signal: new AbortController().signal, onDelta: () => {} });
   expect(fake.chatRequests[0]).toMatchObject({ chat_template_kwargs: { enable_thinking: true }, reasoning_effort: 'high' });
+});
+
+test('a count takes at most COUNTS server slots at once: servers refuse requests beyond their slots', async () => {
+  const messages: Message[] = [{ role: 'user', content: 'hi' }];
+  for (let i = 0; i < 40; i++) messages.push({ role: 'assistant', content: `a${i}` }, { role: 'user', content: `u${i}` });
+  const split = await (await open()).count(prefixes(messages));
+  expect(split.blocks).toHaveLength(81);
+  expect(fake.mostCounts()).toBe(COUNTS);
+});
+
+test('a request the server answers 503 goes again, after Retry-After', async () => {
+  const backend = await open({}, { busy: 3 });
+  const messages: Message[] = [{ role: 'user', content: 'hi' }];
+  expect((await backend.count([{ messages, tools: [] }])).blocks).toHaveLength(1);
+});
+
+test('counts render the thinking as the chat request does: the profile, else the request its own (FR-49)', async () => {
+  const backend = await open({ thinking: 'low' });
+  const messages: Message[] = [{ role: 'user', content: 'hi' }];
+  await backend.count([{ messages, tools: [] }]);
+  expect(fake.countRequests.at(-1)).toMatchObject({ thinking: { type: 'adaptive' }, output_config: { effort: 'low' } });
+  await backend.count([{ messages, tools: [], thinking: 'on' }]);
+  expect(fake.countRequests.at(-1)).toMatchObject({ thinking: { type: 'adaptive' } });
+  expect(fake.countRequests.at(-1)).not.toHaveProperty('output_config');
+  await backend.count([{ messages, tools: [], thinking: 'off' }]);
+  expect(fake.countRequests.at(-1)).toMatchObject({ thinking: { type: 'disabled' } });
+});
+
+test("a request's answer start is sent as a partial assistant message for oMLX to continue", async () => {
+  const backend = await open({});
+  fake.reply({ chunks: ['rest'] });
+  const result = await backend.chat({ messages: [{ role: 'user', content: 'hi' }], tools: [], answerStart: '## Goal\n' }, { signal: new AbortController().signal, onDelta: () => {} });
+  expect(fake.chatRequests[0]).toMatchObject({ messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: '## Goal\n', partial: true }] });
+  expect(result.content).toBe('rest');
 });
 
 test('reasoning is counted inline; before the last user message the chat template drops it (FR-48)', async () => {
