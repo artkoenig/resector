@@ -653,7 +653,8 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   const policyPorts = (signal: AbortSignal): Ports => ({
     events, append, window: backend().window, aborted: () => signal.aborted,
     count: context => backend().count(renderPrefixes(context)),
-    compact: (context, sources, instruction) => policyCompaction(compaction.compactionRequest(context, sources, instruction), signal),
+    compact: (context, sources, instruction, inContext) =>
+      policyCompaction(inContext ? compaction.inContextRequest(context, instruction) : compaction.compactionRequest(context, sources, instruction), signal),
   });
   // A policy's Compaction runs like the user's (FR-14, FR-17), without review; its Note is the answer.
   async function policyCompaction(request: Request, signal: AbortSignal): Promise<string> {
@@ -664,7 +665,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
       if (total >= on.window) throw new Error(`request ${formatTokens(total)} ≥ window ${formatTokens(on.window)}`);
       const result = await on.chat(request, { signal, onDelta: () => {}, maxTokens: on.window - total });
       if (result.finish === 'aborted' || result.finish === 'length') throw new Error(result.finish === 'length' ? 'cut off at max_tokens' : 'aborted');
-      return result.content;
+      return (request.answerStart ?? '') + result.content;
     } finally {
       // The session's server cache now holds the compaction request (FR-17).
       if (!own) setRecount(recount() + 1);

@@ -279,6 +279,14 @@ test('counts render the thinking as the chat request does: the profile, else the
   expect(fake.countRequests.at(-1)).toMatchObject({ thinking: { type: 'disabled' } });
 });
 
+test("a request's answer start is sent as a partial assistant message for oMLX to continue", async () => {
+  const backend = await open({});
+  fake.reply({ chunks: ['rest'] });
+  const result = await backend.chat({ messages: [{ role: 'user', content: 'hi' }], tools: [], answerStart: '## Goal\n' }, { signal: new AbortController().signal, onDelta: () => {} });
+  expect(fake.chatRequests[0]).toMatchObject({ messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: '## Goal\n', partial: true }] });
+  expect(result.content).toBe('rest');
+});
+
 test('reasoning is counted inline; before the last user message the chat template drops it (FR-48)', async () => {
   const thought = { role: 'assistant', content: '', reasoning_content: 'plan it' } as const;
   const kept: Message[] = [{ role: 'user', content: 'hi there' }, { ...thought, tool_calls: [{ id: 'call_0', type: 'function', function: { name: 'bash', arguments: '{"command":"ls"}' } }] }, { role: 'tool', tool_call_id: 'call_0', content: 'a' }];

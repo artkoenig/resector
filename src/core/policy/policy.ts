@@ -14,7 +14,8 @@ export type PolicyContext = { window: number; used: number; blocks: PolicyBlock[
 const id = z.number().int();
 const OPERATION = z.discriminatedUnion('op', [
   z.object({ op: z.literal('remove'), id }),
-  z.object({ op: z.literal('compact'), sources: z.array(id), instruction: z.string() }),
+  // inContext: the Compaction continues the Context as sent, the instruction appended (the server's prefix cache holds it).
+  z.object({ op: z.literal('compact'), sources: z.array(id), instruction: z.string(), inContext: z.boolean().optional() }),
   z.object({ op: z.literal('edit'), id, content: z.string() }),
   z.object({ op: z.literal('move'), id, after: id }),
   z.object({ op: z.literal('note'), after: id, content: z.string() }),
@@ -40,7 +41,7 @@ export function viewOf(context: Context, counted: { blocks: number[]; total: num
 export type Change = { noun: string; verb: string } | { text: string };
 // The events an operation appends, or the Compaction to run first; or why not.
 export type Plan = { events: SessionEvent[]; change: Change } | { compact: Compaction; change: Change } | { error: string };
-type Compaction = { sources: number[]; instruction: string };
+type Compaction = { sources: number[]; instruction: string; inContext?: boolean };
 type Of<O extends PolicyOperation['op']> = Extract<PolicyOperation, { op: O }>;
 type Planner<O extends PolicyOperation['op']> = (events: SessionEvent[], context: Context, op: Of<O>) => Plan;
 
@@ -92,7 +93,7 @@ function unfit(context: Context, id: number): string | undefined {
   return block ? ops.untouchable(block)?.error : `no block ${id} in the Context`;
 }
 
-function compactPlan(context: Context, { sources, instruction }: Of<'compact'>): Plan {
+function compactPlan(context: Context, { sources, instruction, inContext }: Of<'compact'>): Plan {
   const error = sources.map(id => unfit(context, id)).find(Boolean);
   if (error) return { error };
   if (!sources.length) return { error: 'nothing to compact' };
@@ -103,7 +104,7 @@ function compactPlan(context: Context, { sources, instruction }: Of<'compact'>):
   const nouns = new Map<string, number>();
   for (const b of ordered.filter(b => b.kind !== 'Tool Result')) nouns.set(nounOf(b), (nouns.get(nounOf(b)) ?? 0) + 1);
   const text = [...nouns].map(([noun, n]) => `${n} ${noun}`).join(' + ');
-  return { compact: { sources: ordered.map(b => b.id), instruction }, change: { text: `${text} → 1 Note` } };
+  return { compact: { sources: ordered.map(b => b.id), instruction, ...(inContext && { inContext }) }, change: { text: `${text} → 1 Note` } };
 }
 
 // Counted nouns in plural; a kind reads as is (`2 Thinking removed`).
@@ -133,7 +134,7 @@ export type Ports = {
   append: (event: SessionEvent) => void;
   count: (context: Context) => Promise<{ blocks: number[]; total: number }>;
   window: number;
-  compact: (context: Context, sources: number[], instruction: string) => Promise<string>;
+  compact: (context: Context, sources: number[], instruction: string, inContext?: boolean) => Promise<string>;
   // Esc at the Gate: no further pass or operation.
   aborted: () => boolean;
 };
@@ -191,11 +192,11 @@ async function applyOne(by: string, value: unknown, ports: Ports, changes: Chang
 }
 
 // The Compaction's Note, accepted without review.
-async function compacted({ sources, instruction }: Compaction, ports: Ports): Promise<SessionEvent[] | { error: string }> {
+async function compacted({ sources, instruction, inContext }: Compaction, ports: Ports): Promise<SessionEvent[] | { error: string }> {
   const context = fold(ports.events());
   const failed = (why: string) => ({ error: `compaction failed: ${why}` });
   try {
-    const content = await ports.compact(context, sources, instruction);
+    const content = await ports.compact(context, sources, instruction, inContext);
     return content.trim() ? [{ type: 'Compact', sources, instruction, noteId: context.nextId, content }] : failed('empty Note');
   } catch (e) {
     return failed(message(e));

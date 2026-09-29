@@ -10,8 +10,8 @@ export type Message =
   | { role: 'tool'; tool_call_id: string; content: string };
 export type ToolDefinition = { type: 'function'; function: { name: string; description: string; parameters: unknown } };
 // A chat request as the backend receives it: messages plus the tools field; thinking: set at the Gate,
-// else the backend sends the Model Profile's (FR-49).
-export type Request = { messages: Message[]; tools: ToolDefinition[]; thinking?: Thinking };
+// else the backend sends the Model Profile's (FR-49); answerStart: the answer begins with it, the server continues it without reasoning.
+export type Request = { messages: Message[]; tools: ToolDefinition[]; thinking?: Thinking; answerStart?: string };
 
 // What goes into the next request: removed blocks are only struck through at the Gate.
 export const sentBlocks = (context: Context): Block[] => context.blocks.filter(b => !b.removed);

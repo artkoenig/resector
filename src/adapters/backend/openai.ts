@@ -63,8 +63,12 @@ export function thinkingParams(thinking: Thinking | undefined): Record<string, u
   return { chat_template_kwargs: { enable_thinking: true, reasoning_effort: thinking }, reasoning_effort: thinking };
 }
 
-// Request body fields of a Request: the tools field only when there are tools.
-export const chatFields = ({ messages, tools }: Request) => ({ messages, ...(tools.length && { tools }) });
+// Request body fields of a Request: the tools field only when there are tools; the answer's start as the last,
+// partial assistant message, which the server continues (oMLX reads partial, llama.cpp continues a final assistant message).
+export const chatFields = ({ messages, tools, answerStart }: Request) => ({
+  messages: answerStart === undefined ? messages : [...messages, { role: 'assistant', content: answerStart, partial: true }],
+  ...(tools.length && { tools }),
+});
 
 // The answer as an assistant message, as the next request renders it (call ids by position), for the
 // cache prediction.
