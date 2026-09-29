@@ -16,15 +16,26 @@ type StreamEvent = {
   error?: { message: string };
 };
 
+// Attempts of a request the server answers 503.
+const RETRIES = 10;
+
 // Requests against one server; failures name the backend (`name`) so the user knows which one broke.
 export function httpClient(name: string, endpoint: string) {
   const base = endpoint.replace(/\/$/, '');
   const request = async (path: string, init?: RequestInit): Promise<Response> => {
-    const res = await fetch(base + path, init).catch(e => {
-      throw init?.signal?.aborted ? e : new Error(`cannot reach ${name} at ${base}`);
-    });
-    if (!res.ok) throw new Error(`${name} ${res.status}: ${reason(await res.text())}`);
-    return res;
+    for (let attempt = 1; ; attempt++) {
+      const res = await fetch(base + path, init).catch(e => {
+        throw init?.signal?.aborted ? e : new Error(`cannot reach ${name} at ${base}`);
+      });
+      if (res.ok) return res;
+      // 503: the server is busy (e.g. its request slots are full) and took nothing on: again after Retry-After.
+      if (res.status === 503 && attempt < RETRIES && !init?.signal?.aborted) {
+        await res.body?.cancel();
+        await Bun.sleep(1000 * Number(res.headers.get('retry-after') ?? 1));
+        continue;
+      }
+      throw new Error(`${name} ${res.status}: ${reason(await res.text())}`);
+    }
   };
   const post = async <T>(path: string, body: unknown): Promise<T> =>
     (await request(path, jsonPost(body))).json() as Promise<T>;

@@ -57,6 +57,34 @@ function anthropic({ messages, tools }: Request) {
   };
 }
 
+// The thinking as the Anthropic format names it, so count_tokens renders the chat template as the chat
+// request does (a template adds its own lines for the thinking, e.g. an effort's instruction).
+function anthropicThinking(thinking: Thinking | undefined) {
+  if (thinking === undefined) return {};
+  if (thinking === 'off') return { thinking: { type: 'disabled' } };
+  return { thinking: { type: 'adaptive' }, ...(thinking !== 'on' && { output_config: { effort: thinking } }) };
+}
+
+// Counts in flight at once.
+export const COUNTS = 8;
+
+// Runs the calls with at most `size` of them at a time, the others in their order after.
+function slots(size: number) {
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  return async <T>(call: () => Promise<T>): Promise<T> => {
+    if (active >= size) await new Promise<void>(resolve => waiting.push(resolve));
+    else active++;
+    try {
+      return await call();
+    } finally {
+      const next = waiting.shift();
+      if (next) next();
+      else active--;
+    }
+  };
+}
+
 type ModelList = { data: { id: string; max_model_len?: number | null }[] };
 type AdminModels = { models: { id: string; model_path?: string }[] };
 
@@ -95,8 +123,13 @@ export async function connectOmlx(endpoint: string, { window, model, sampling, t
   // some templates (Qwen3-2507) cannot render a prompt without user message and oMLX then silently
   // counts a plain concatenation; both cancel out in the prefix differences and land in the Template
   // row.
-  const tokens = async (request: Request): Promise<number> =>
-    (await post<{ input_tokens: number }>('/v1/messages/count_tokens', { model, ...anthropic(request) })).input_tokens;
+  // At most COUNTS at a time: a count takes one per block, and servers refuse requests beyond their slots
+  // (splash: 32).
+  const slot = slots(COUNTS);
+  const tokens = (request: Request): Promise<number> =>
+    slot(async () =>
+      (await post<{ input_tokens: number }>('/v1/messages/count_tokens', { model, ...anthropic(request), ...anthropicThinking(request.thinking ?? thinking) }))
+        .input_tokens);
 
   // Prefix cache (architecture §4): oMLX predicts its hits itself with the admin cache probe, in whole
   // cache blocks. The probe sees a request's blocks only a moment after its answer, so the unchanged
