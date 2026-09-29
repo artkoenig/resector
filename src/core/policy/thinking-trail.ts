@@ -1,19 +1,12 @@
 // The built-in Context Policy thinking-trail (ADR 0001), written like a policy module in ~/.config/resector/policies:
 // a default export over the view, types only from the interface. The reference for writing one.
 import type { PolicyBlock, PolicyContext, PolicyOperation } from './policy';
+import instruction from './thinking-trail-instruction.md' with { type: 'text' };
 
 const TO_COMPACT = 5;
 // The trail is cut only once the Context takes this share of the window: until then it costs little.
 const CUT_FROM = 2 / 3;
-export const INSTRUCTION = [
-  'Accumulate the knowledge in these blocks into one Note that replaces them: a reader without them must be able to continue the work. Discard nothing: keep every insight, also those from earlier Notes; merge only what is said twice. Write each point as its result, never as the activity: not "located the files" but the paths; not "decided on an approach" but the approach and why. Keep names, paths, identifiers, commands and values verbatim. Under Next steps, list what remains, in order, each concrete enough to act on. Answer in exactly this structure:',
-  '## Goal',
-  '## Facts',
-  '## Decisions',
-  '## Done',
-  '## Dead ends',
-  '## Next steps',
-].join('\n');
+export const INSTRUCTION = instruction.trimEnd();
 
 // A Note of its own right before the first Note of the trail: the model reads the trail as a user message, so it is told
 // this is its own work, not a new task. Not part of the trail, so never compacted into it.
