@@ -3,12 +3,14 @@ import { isFixed, type Outcome } from '../context/operations';
 import type { SessionEvent } from '../log/events';
 import { pairOf, type Context } from '../log/fold';
 import { renderNative, type Request } from '../render/native';
+import system from './compaction-system.md' with { type: 'text' };
+import instruction from './default-instruction.md' with { type: 'text' };
 
 type Compact = Extract<SessionEvent, { type: 'Compact' }>;
 
-export const COMPACTION_SYSTEM = 'Rewrite the given context blocks into one compact note, following the instruction. Output only the note.';
+export const COMPACTION_SYSTEM = system.trimEnd();
 // Used when the user sends an empty instruction and no `compaction.md` exists (FR-13).
-export const DEFAULT_INSTRUCTION = 'Keep file paths, line numbers, decisions, errors and open todos. Drop passing output and code already fixed.';
+export const DEFAULT_INSTRUCTION = instruction.trimEnd();
 
 const NOTHING = { error: 'nothing to compact (System, Tools and pending Tool Calls, unread @path references are excluded)' };
 
