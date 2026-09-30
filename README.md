@@ -10,7 +10,7 @@ See, measure and edit every token before it reaches the model.
 <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" /></a>
 
 <br /><br />
-<img width="800" alt="resector demo: a task, a tool call, then the Tool Pair compacted into a Note (52 → 16 tokens) and the thinking-trail policy switched on" src="docs/assets/demo.gif" />
+<img width="800" alt="resector demo: the tool loop stopped at the Gate, a read Tool Pair removed, two Thinking blocks compacted into a Note (166 → 34 tokens), then the lean-compact policy switched on" src="docs/assets/demo.gif" />
 
 </div>
 
