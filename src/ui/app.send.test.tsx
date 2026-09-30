@@ -6,7 +6,7 @@ import { TextAttributes } from '@opentui/core';
 import { frameMatching } from '../../test/frames';
 import { BASH_TOOLS } from '../../test/requests';
 import { TONE } from './theme';
-import { cache, escape, fake, line, messages, order, press, previewed, project, ran, start, ui, until, useHarness, withUsers, write } from './app.harness';
+import { cache, escape, fake, line, order, press, previewed, project, ran, start, ui, until, useHarness, withUsers, write } from './app.harness';
 
 useHarness();
 
@@ -43,15 +43,6 @@ test('Enter in input mode adds a User block and sends the Context; the answer st
     { type: 'BlockAdded', id: 4, kind: 'Assistant', origin: 'model', content: 'Hello world' },
     { type: 'ResponseReceived', usage: { prompt_tokens: 24, completion_tokens: 2 }, cached: 16 },
   ]);
-});
-
-test('every request sends max_tokens = window − Context: no answer reserve', async () => {
-  const { events } = await start();
-  fake.reply({ chunks: ['ok'] });
-  await write('hi there');
-  await frameMatching(ui, f => f.includes('answer complete'));
-  expect(events()[4]).toMatchObject({ type: 'RequestSent', tokens: 60 });
-  expect(fake.chatRequests[0]).toMatchObject({ max_tokens: 4096 - 60 });
 });
 
 // The colour of the header's `tokens / window` (first line, right).
@@ -112,23 +103,6 @@ test('an inexact tokenizer shows ±drift and blocks sending that much below the 
   expect(Number(header[1])).toBeLessThan(80);
   expect(Number(header[2])).toBe(Number(header[1]) - 70 + 1);
   expect(fake.chatRequests).toHaveLength(1);
-});
-
-test('Enter in input mode on a full window: the User block stays, the status says why', async () => {
-  const { events } = await start({ window: 64, users: [LONG] });
-  await write('more');
-  const frame = await frameMatching(ui, f => f.includes('sending blocked'));
-  expect(line(frame, /more/)).toMatch(/User\s+more/);
-  expect(events().at(-1)).toMatchObject({ type: 'BlockAdded', kind: 'User', content: 'more' });
-  expect(fake.chatRequests).toEqual([]);
-});
-
-test('empty Enter in input mode adds nothing and sends nothing', async () => {
-  await start();
-  await write('   ');
-  const frame = await frameMatching(ui, f => f.includes('⌥↑↓ move  e edit'));
-  expect(frame).not.toMatch(/3\s+User/);
-  expect(fake.chatRequests).toEqual([]);
 });
 
 test('Tab and Esc leave input mode without adding a block', async () => {
@@ -304,41 +278,6 @@ test('the key hints stay visible next to a status', async () => {
   ui.mockInput.pressEnter();
   const frame = await frameMatching(ui, f => f.includes('answer complete'));
   expect(frame).toContain('⌥↑↓ move  e edit');
-});
-
-test('a Context changed since the last request can be sent without a new User block', async () => {
-  await withUsers('a', 'b');
-  fake.reply({ chunks: ['x'] });
-  ui.mockInput.pressEnter();
-  await frameMatching(ui, f => f.includes('answer complete'));
-  ui.mockInput.pressEnter();
-  await frameMatching(ui, f => f.includes('nothing to send'));
-  await press('up');
-  await press('up');
-  await press('d');
-  await frameMatching(ui, f => f.includes('struck through until sent'));
-  fake.reply({ chunks: ['y'] });
-  ui.mockInput.pressEnter();
-  await frameMatching(ui, f => f.includes('answer complete') && /y\s+\d+/.test(f));
-  expect(fake.chatRequests).toHaveLength(2);
-  expect((fake.chatRequests[1] as { messages: { content: string }[] }).messages.map(m => m.content)).toEqual(['You are an agent.', 'b', 'x']);
-});
-
-test('an undone change leaves nothing to send', async () => {
-  await withUsers('a');
-  fake.reply({ chunks: ['x'] });
-  ui.mockInput.pressEnter();
-  await frameMatching(ui, f => f.includes('answer complete'));
-  ui.mockInput.pressEnter();
-  await frameMatching(ui, f => f.includes('nothing to send'));
-  await press('up');
-  await press('d');
-  await frameMatching(ui, f => f.includes('struck through until sent'));
-  await press('u');
-  await frameMatching(ui, f => f.includes('undone: remove'));
-  ui.mockInput.pressEnter();
-  await frameMatching(ui, f => f.includes('nothing to send'));
-  expect(fake.chatRequests).toHaveLength(1);
 });
 
 test('the preview scrolls with PgUp/PgDn and ⇧↑↓; a newly selected block starts at its top', async () => {

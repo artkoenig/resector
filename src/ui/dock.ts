@@ -1,6 +1,6 @@
 // The Question dock's state (#33, #34): one tab per question plus a Confirm tab; a lone single-choice Question has no
 // tabs and is sent on the first pick. Pure: every step returns a new state.
-import { orderedOptions, type Answer, type Question } from '../core/toolcall/question';
+import { orderedOptions, type Answer, type Question } from '../core/tools/question';
 
 // picks: the chosen labels per question; own: the own answer per question ('' none); row: the cursor in the current tab.
 export type DockState = { questions: Question[]; tab: number; row: number; picks: string[][]; own: string[] };

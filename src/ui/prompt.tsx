@@ -1,7 +1,9 @@
 // The prompt band's meta line (what Enter does, or the Compaction's effect) and the status line of the step under way.
 import { Show } from 'solid-js';
-import type { Compaction, Gate, Status } from './gate';
-import { cell, count, formatTokens, titleOf } from './format';
+import type { Compaction, Status } from '../gate';
+import type { Screen } from './screen';
+import { cell } from './format';
+import { count, formatTokens, titleOf } from '../gate/text';
 import { ACCENT, KIND_COLOR, MUTED, TONE } from './theme';
 
 export type Mode = 'context' | 'input';
@@ -17,7 +19,7 @@ export function PromptMeta(props: { mode: Mode }) {
 }
 
 // Compaction: the header while writing the instruction, the proposal's effect while it is reviewed.
-export function CompactionMeta(props: { gate: Gate; compaction: Compaction }) {
+export function CompactionMeta(props: { gate: Screen; compaction: Compaction }) {
   const c = () => props.compaction;
   const tokens = (t: number | null) => (t === null ? '…' : formatTokens(t));
   const fits = () => c().request === null || c().request! < c().backend.window;
@@ -39,7 +41,7 @@ export function CompactionMeta(props: { gate: Gate; compaction: Compaction }) {
 }
 
 // Status line: a running command, policy or Compaction, the streaming answer (both with the row's spinner), else the last action.
-export function statusOf(gate: Gate, spin: string): Status | null {
+export function statusOf(gate: Screen, spin: string): Status | null {
   // Esc pressed once: the loop stops after this step.
   const stop = (step: string) => (gate.stopping() ? ` · stops after this ${step}` : '');
   const r = gate.running();

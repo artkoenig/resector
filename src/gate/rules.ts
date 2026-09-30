@@ -1,7 +1,7 @@
 // Tool Approval at the Gate: the rules for a call, what happens to it, and the tools the rules deny.
-import { deniedTools, quoted, sessionAllowed, verdictOf as decide, type Verdict } from '../../core/approval/approval';
-import * as ops from '../../core/context/operations';
-import type { Block } from '../../core/log/fold';
+import { deniedTools, quoted, sessionAllowed, verdictOf as decide, type Verdict } from '../core/approval/approval';
+import * as ops from '../core/context/operations';
+import type { Block } from '../core/log/fold';
 import type { Kernel } from './kernel';
 import type { Approval, AutoApprove } from './types';
 

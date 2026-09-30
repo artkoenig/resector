@@ -1,7 +1,7 @@
 // oMLX server backend (MLX on Apple Silicon): exact token counts via the Anthropic-format
 // /v1/messages/count_tokens, which applies the model's chat template with the generation prompt.
 import { join } from 'node:path';
-import type { Backend, CacheHit } from '../../core/backend';
+import type { Backend, CacheHit } from '../../gate/ports';
 import { commonPrefix } from '../../core/cache/cache';
 import type { Thinking } from '../../core/log/events';
 import { EMPTY_REQUEST as EMPTY, type AssistantMessage, type Message, type Request } from '../../core/render/native';

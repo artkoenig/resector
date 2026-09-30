@@ -1,9 +1,9 @@
 // Question dock (#33, #34): its state and keys while the model's Question is next, and its rendering.
 import { createEffect, createSignal, For, type JSX, on, Show } from 'solid-js';
-import { isRecommended, shownAnswer } from '../core/toolcall/question';
+import { isRecommended, shownAnswer } from '../core/tools/question';
 import * as dock from './dock';
 import type { DockState } from './dock';
-import type { Gate } from './gate';
+import type { Screen } from './screen';
 import { cell } from './format';
 import { ACCENT, KIND_COLOR, MUTED, SELECTED_BG, TEXT, TONE } from './theme';
 
@@ -18,7 +18,7 @@ type Ui = {
 };
 
 // Replaces the prompt band while the model's Question is next; the own answer is typed while `typingOwn`.
-export function createDockControl(gate: Gate, ui: Ui) {
+export function createDockControl(gate: Screen, ui: Ui) {
   const [state, setDock] = createSignal<DockState | null>(null);
   const [typingOwn, setTypingOwn] = createSignal(false);
   createEffect(

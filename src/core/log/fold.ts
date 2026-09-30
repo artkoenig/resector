@@ -18,25 +18,17 @@ export type Block = {
   // Note from a file only: the file; unread: an @path reference not read yet.
   file?: string;
   unread?: true;
-  // An unread reference whose file cannot be read now (set at the Gate, never logged).
-  missing?: string;
   // Tool Call only: no Tool Result yet, so it awaits approval.
   pending?: boolean;
-  title: string | null;
-  // Struck through until the next request, then hidden.
-  removed: boolean;
-  // Flags since the last request.
-  moved: boolean;
-  // Current Revision; revised: another one than at the last request (`✎n`).
+  // Current Revision.
   revision: number;
-  revised: boolean;
 };
-// thinking: set at the Gate; null = the Model Profile's.
+// The blocks sent in the next request, in order; removed ones are gone. thinking: set at the Gate; null = the
+// Model Profile's.
 export type Context = { profile: string; protocol: ToolProtocol; thinking: Thinking | null; blocks: Block[]; nextId: number };
 
-type Entry = Omit<Block, 'revised'> & { hidden: boolean; sentRevision: number };
-// unsent: indices of events logged since the last request.
-type State = { profile: string; thinking: Thinking | null; entries: Map<number, Entry>; order: number[]; events: SessionEvent[]; unsent: Set<number> };
+type Entry = Block & { removed: boolean };
+type State = { profile: string; thinking: Thinking | null; entries: Map<number, Entry>; order: number[] };
 type Apply<T extends SessionEvent['type']> = (state: State, event: Extract<SessionEvent, { type: T }>) => void;
 
 const entry = (state: State, id: number) => state.entries.get(id)!;
@@ -61,7 +53,7 @@ export function pairOf(blocks: Pick<Block, 'id' | 'kind' | 'call'>[], id: number
 // A Tool Call as the user reads it: the bash command, or the tool name and its query.
 export const callText = ({ tool, content }: Pick<Block, 'tool' | 'content'>): string => (tool && tool !== 'bash' ? `${tool} ${content}` : content);
 
-const NEW_ENTRY = { title: null, removed: false, moved: false, revision: 1, hidden: false, sentRevision: 1 };
+const NEW_ENTRY = { revision: 1, removed: false };
 
 const pairIn = (state: State, id: number) => pairOf([...state.entries.values()], id);
 
@@ -83,45 +75,31 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   Move: (state, e) => {
     take(state, e.id);
     insert(state, state.order.indexOf(e.after) + 1, e.id);
-    entry(state, e.id).moved = true;
   },
   Edit: (state, e) => void Object.assign(entry(state, e.id), { content: e.content, revision: e.revision }),
   ProfileFallback: (state, e) => void (state.profile = e.profile),
   ThinkingSet: (state, e) => void (state.thinking = e.thinking),
   Remove: (state, e) => [e.id, ...(e.others ?? [])].flatMap(id => pairIn(state, id)).forEach(id => (entry(state, id).removed = true)),
-  // The pair is gone at once, not struck through: its Note follows the calls and results of its answer,
-  // so the other calls of the answer keep their results right after them.
+  // Its Note follows the calls and results of its answer, so the other calls of the answer keep their results
+  // right after them.
   PairToNote: (state, e) => {
     const [call, result] = pairIn(state, e.call).map(id => entry(state, id));
     const content = `[Tool ${call!.tool ?? 'bash'}: ${call!.content}]\n${result!.content}`;
     state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'tool', content, source: callText(call!), cutOff: false, ...NEW_ENTRY });
     insert(state, afterCalls(state.order.map(id => entry(state, id)), e.call), e.id);
-    for (const b of [call!, result!]) Object.assign(b, { removed: true, hidden: true });
+    for (const b of [call!, result!]) b.removed = true;
   },
-  // The sources are gone at once; the Note takes the first one's place.
+  // The Note takes the first source's place.
   Compact: (state, e) => {
     const [first, ...rest] = e.sources.map(id => entry(state, id));
     const compacted = { sources: e.sources, instruction: e.instruction };
     state.entries.set(e.noteId, { id: e.noteId, kind: 'Note', origin: 'compaction', content: e.content, compacted, cutOff: false, ...NEW_ENTRY });
     insert(state, state.order.indexOf(first!.id), e.noteId);
-    for (const b of [first!, ...rest]) Object.assign(b, { removed: true, hidden: true });
+    for (const b of [first!, ...rest]) b.removed = true;
   },
   NoteAdded: (state, e) => {
     state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'policy', content: e.content, cutOff: false, ...NEW_ENTRY });
     insert(state, state.order.indexOf(e.after) + 1, e.id);
-  },
-  Rename: (state, e) => void (entry(state, e.id).title = e.title || null),
-  RequestSent: state => {
-    for (const e of state.entries.values()) Object.assign(e, { hidden: e.removed, moved: false, sentRevision: e.revision });
-    state.unsent.clear();
-  },
-  // Undoing an operation that was already sent changes the Context since the last request.
-  Undo: (state, e) => {
-    const target = state.events[e.eventId]!;
-    if (state.unsent.has(e.eventId)) return;
-    if (target.type === 'Move') entry(state, target.id).moved = true;
-    // The replay skipped the sent Revision; the one restored differs from it.
-    if (target.type === 'Edit') entry(state, target.id).sentRevision = target.revision;
   },
 };
 
@@ -129,22 +107,21 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
 export const undone = (events: SessionEvent[]): Set<number> =>
   new Set(events.flatMap(e => (e.type === 'Undo' ? [e.eventId] : [])));
 
-// Context = fold(events): replaying the Session Log, minus undone events, yields the Context.
-export function fold(events: SessionEvent[]): Context {
+// Context = fold(events): replaying the Session Log, minus undone events, yields the Context. skip: the events
+// not replayed.
+export function fold(events: SessionEvent[], skip = undone(events)): Context {
   const [first] = events;
   if (first?.type !== 'SessionCreated') throw new Error('Session Log must start with SessionCreated');
-  const skip = undone(events);
-  const state: State = { profile: first.profile, thinking: null, entries: new Map(), order: [], events, unsent: new Set() };
+  const state: State = { profile: first.profile, thinking: null, entries: new Map(), order: [] };
   events.forEach((e, i) => {
-    state.unsent.add(i);
     if (skip.has(i)) return;
     (APPLY[e.type] as Apply<typeof e.type> | undefined)?.(state, e as never);
   });
   const answered = new Set([...state.entries.values()].map(e => e.call));
   const blocks = state.order
     .map(id => entry(state, id))
-    .filter(e => !e.hidden)
-    .map(({ hidden, sentRevision, ...block }) => ({ ...block, revised: block.revision !== sentRevision }))
+    .filter(e => !e.removed)
+    .map(({ removed, ...block }): Block => block)
     .map(block => (block.kind === 'Tool Call' ? { ...block, pending: !answered.has(block.id) } : block));
   return { profile: state.profile, protocol: first.protocol, thinking: state.thinking, blocks, nextId: Math.max(0, ...state.entries.keys()) + 1 };
 }

@@ -1,5 +1,5 @@
 // Opens the backend a Model Profile names.
-import type { Backend } from '../../core/backend';
+import type { Backend } from '../../gate/ports';
 import type { BackendKind, ModelProfile } from '../../core/config/config';
 import { connectLlamaCpp } from './llamacpp';
 import { connectOmlx } from './omlx';

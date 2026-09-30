@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { frameMatching } from '../../test/frames';
 import { BASH_TOOLS } from '../../test/requests';
-import { TOOLS } from '../core/toolcall/bash';
+import { TOOLS } from '../core/tools/catalog';
 import type { Tool } from '../core/log/events';
 import { bash, escape, fake, fixture, line, press, project, type Sent, start, ui, useHarness, write } from './app.harness';
 

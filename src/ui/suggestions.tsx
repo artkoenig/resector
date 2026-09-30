@@ -2,15 +2,16 @@
 import { createMemo, createSignal, For } from 'solid-js';
 import { basename } from 'node:path';
 import { fileCompletions } from '../core/notes/files';
-import { TOOL_NAMES } from '../core/toolcall/bash';
-import { FILTERS, type Gate } from './gate';
+import { TOOL_NAMES } from '../core/tools/catalog';
+import type { Screen } from './screen';
+import { FILTERS } from './selection';
 import type { Mode } from './prompt';
 import { ACCENT, MUTED, SELECTED_BG, TEXT } from './theme';
 
 // A line above the input: Tab puts `draft` into it; Enter runs `run`, or (null) completes as Tab does.
 export type Suggestion = { label: string; description: string; draft: string; run: string | null };
 
-export function createSuggestions(gate: Gate, draft: () => string, mode: () => Mode, files: () => string[]) {
+export function createSuggestions(gate: Screen, draft: () => string, mode: () => Mode, files: () => string[]) {
   const [suggested, setSuggested] = createSignal(0);
   // Commands while the draft is a single `/word`, the tools after `/tools `, the filter values after `/filter `, the policies after `/policy `, project files while an @path
   // is typed at its end. Tab completes; Enter runs a command taking no argument, else completes too.

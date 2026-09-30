@@ -1,18 +1,17 @@
 // The tool loop: an answer's calls are decided in order, run, answered by the user or held; then the results are sent.
 import { batch, createMemo, createSignal } from 'solid-js';
-import { quoted, sessionRules } from '../../core/approval/approval';
-import type { ChatResult } from '../../core/backend';
-import * as ops from '../../core/context/operations';
-import type { Block } from '../../core/log/fold';
-import { answerBlocks } from '../../core/toolcall/answer';
-import type { Runner } from '../../core/toolcall/bash';
-import { answerText, parseQuestions, type Answer } from '../../core/toolcall/question';
-import { errorText, titleOf } from '../format';
+import { quoted, sessionRules } from '../core/approval/approval';
+import type { ChatResult } from '../core/tools/answer';
+import * as ops from '../core/context/operations';
+import type { Block } from '../core/log/fold';
+import { answerBlocks } from '../core/tools/answer';
+import type { Runner } from './ports';
+import { answerText, parseQuestions, type Answer } from '../core/tools/question';
+import { errorText, titleOf } from './text';
 import type { GitSlice } from './git';
 import type { Kernel } from './kernel';
 import type { Rules } from './rules';
-import type { Selection } from './selection';
-import type { Asked, Status } from './types';
+import type { Asked, Status, View } from './types';
 
 export const APPROVE = 'y run once · a allow for session · n reject · e edit';
 export const QUESTION_HINT = 'the model asks – answer in the dock';
@@ -23,7 +22,7 @@ const notRunText = (why: string) => `⚠ tool call not run: ${why}`;
 
 export type ToolLoop = ReturnType<typeof createToolLoop>;
 
-export function createToolLoop(k: Kernel, sel: Selection, rules: Rules, git: GitSlice, tools: { runner: Runner; searcher: Runner; send: () => void }) {
+export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice, tools: { runner: Runner; searcher: Runner; send: () => void }) {
   const { context, nextId, append, apply, setStatus, running, setRunning } = k;
   const { follow } = sel;
 

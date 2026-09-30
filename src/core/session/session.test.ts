@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
-import { TOOLS } from '../toolcall/bash';
+import { TOOLS } from '../tools/catalog';
 import { inWorktree, newSession, openingBlocks, summarize } from './session';
 
 const start = newSession('qwen', 'You are an agent.');

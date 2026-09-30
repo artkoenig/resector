@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
-import { TOOLS } from '../toolcall/bash';
+import { TOOLS } from '../tools/catalog';
 import { addNote, approvable, attributed, decline, deny, edit, isFixed, inPair, move, moveAfter, nextCall, reject, remove, removeAll, revise, toggleTool, untouchable, withoutDenied, toNote, toolResult, undo } from './operations';
 
 const session = (...then: SessionEvent[]): SessionEvent[] => [

@@ -1,154 +1,132 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
-exports[`fixture tool-pair.jsonl replays to its Context and request 1`] = `
+exports[`fixture file-notes.jsonl replays to its Context and request 1`] = `
 {
   "context": {
     "blocks": [
       {
-        "content": "You are a coding agent.",
+        "content": "You are an agent.",
         "cutOff": false,
         "id": 1,
         "kind": "System",
-        "moved": false,
         "origin": "config",
-        "removed": false,
-        "revised": false,
         "revision": 1,
-        "title": null,
       },
       {
-        "content": 
-"[
-  {
-    "name": "bash",
-    "description": "Run a shell command in the project root. Returns combined stdout/stderr and the exit code.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "command": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "command"
-      ]
-    }
-  }
-]"
-,
+        "content": "[{"name":"bash","description":"Run a bash command.","parameters":{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}}]",
         "cutOff": false,
         "id": 2,
         "kind": "Tools",
-        "moved": false,
         "origin": "config",
-        "removed": false,
-        "revised": false,
         "revision": 1,
-        "title": null,
       },
       {
-        "content": "What is here?",
+        "content": 
+"[environment]
+cwd: /p
+os: linux x64 · shell: bash
+date: 2026-09-27
+git branch: main"
+,
         "cutOff": false,
         "id": 3,
-        "kind": "User",
-        "moved": false,
-        "origin": "user",
-        "removed": false,
-        "revised": false,
-        "revision": 1,
-        "title": null,
+        "kind": "Note",
+        "origin": "environment",
+        "revision": 2,
       },
       {
-        "content": "Looking.",
-        "cutOff": false,
-        "id": 4,
-        "kind": "Assistant",
-        "moved": false,
-        "origin": "model",
-        "removed": false,
-        "revised": false,
-        "revision": 1,
-        "title": null,
-      },
-      {
-        "content": "cat README.md",
-        "cutOff": false,
-        "id": 6,
-        "kind": "Tool Call",
-        "moved": false,
-        "origin": "model",
-        "pending": false,
-        "removed": true,
-        "revised": false,
-        "revision": 1,
-        "title": null,
-      },
-      {
-        "call": 6,
         "content": 
-"# Demo
-[exit 0]"
+"[AGENTS.md]
+# Rules
+"
 ,
+        "cutOff": false,
+        "file": "AGENTS.md",
+        "id": 4,
+        "kind": "Note",
+        "origin": "file",
+        "revision": 1,
+      },
+      {
+        "content": 
+"[src/a.ts:2-3]
+2: b
+3: c"
+,
+        "cutOff": false,
+        "file": "src/a.ts:2-3",
+        "id": 5,
+        "kind": "Note",
+        "origin": "file",
+        "revision": 1,
+      },
+      {
+        "content": "explain",
+        "cutOff": false,
+        "id": 7,
+        "kind": "User",
+        "origin": "user",
+        "revision": 1,
+      },
+      {
+        "content": "It returns b and c.",
         "cutOff": false,
         "id": 8,
-        "kind": "Tool Result",
-        "moved": false,
-        "origin": "tool",
-        "removed": true,
-        "revised": false,
+        "kind": "Assistant",
+        "origin": "model",
         "revision": 1,
-        "title": null,
-      },
-      {
-        "content": 
-"[Tool bash: ls]
-README.md src
-[exit 0]"
-,
-        "cutOff": false,
-        "id": 9,
-        "kind": "Note",
-        "moved": false,
-        "origin": "tool",
-        "removed": false,
-        "revised": false,
-        "revision": 1,
-        "source": "ls",
-        "title": null,
       },
     ],
-    "nextId": 10,
-    "profile": "local",
+    "nextId": 9,
+    "profile": "default",
     "protocol": "native",
     "thinking": null,
   },
   "request": {
     "messages": [
       {
-        "content": "You are a coding agent.",
+        "content": "You are an agent.",
         "role": "system",
       },
       {
-        "content": "What is here?",
+        "content": 
+"[environment]
+cwd: /p
+os: linux x64 · shell: bash
+date: 2026-09-27
+git branch: main"
+,
         "role": "user",
-      },
-      {
-        "content": "Looking.",
-        "role": "assistant",
       },
       {
         "content": 
-"[Tool bash: ls]
-README.md src
-[exit 0]"
+"[AGENTS.md]
+# Rules
+"
 ,
         "role": "user",
+      },
+      {
+        "content": 
+"[src/a.ts:2-3]
+2: b
+3: c"
+,
+        "role": "user",
+      },
+      {
+        "content": "explain",
+        "role": "user",
+      },
+      {
+        "content": "It returns b and c.",
+        "role": "assistant",
       },
     ],
     "tools": [
       {
         "function": {
-          "description": "Run a shell command in the project root. Returns combined stdout/stderr and the exit code.",
+          "description": "Run a bash command.",
           "name": "bash",
           "parameters": {
             "properties": {
@@ -167,10 +145,10 @@ README.md src
     ],
   },
   "summary": {
-    "blocks": 5,
-    "profile": "local",
+    "blocks": 7,
+    "profile": "default",
     "renamed": false,
-    "title": "What is here?",
+    "title": "explain",
     "tokens": 120,
   },
 }
@@ -185,24 +163,8 @@ exports[`fixture profile-fallback.jsonl replays to its Context and request 1`] =
         "cutOff": false,
         "id": 1,
         "kind": "System",
-        "moved": false,
         "origin": "config",
-        "removed": false,
-        "revised": false,
         "revision": 1,
-        "title": null,
-      },
-      {
-        "content": "hi",
-        "cutOff": false,
-        "id": 2,
-        "kind": "User",
-        "moved": false,
-        "origin": "user",
-        "removed": true,
-        "revised": false,
-        "revision": 1,
-        "title": null,
       },
     ],
     "nextId": 3,
@@ -229,7 +191,7 @@ exports[`fixture profile-fallback.jsonl replays to its Context and request 1`] =
 }
 `;
 
-exports[`fixture edit-revisions.jsonl replays to its Context and request 1`] = `
+exports[`fixture context-operations.jsonl replays to its Context and request 1`] = `
 {
   "context": {
     "blocks": [
@@ -238,65 +200,43 @@ exports[`fixture edit-revisions.jsonl replays to its Context and request 1`] = `
         "cutOff": false,
         "id": 1,
         "kind": "System",
-        "moved": false,
         "origin": "config",
-        "removed": false,
-        "revised": false,
         "revision": 1,
-        "title": null,
       },
       {
-        "content": "Fix the build.",
+        "content": "Project rules: use bun, no semicolons.",
         "cutOff": false,
         "id": 2,
         "kind": "User",
-        "moved": false,
         "origin": "user",
-        "removed": false,
-        "revised": false,
-        "revision": 2,
-        "title": null,
+        "revision": 1,
       },
       {
-        "content": "Running the build.",
+        "content": "Why does the build fail?",
         "cutOff": false,
         "id": 3,
-        "kind": "Assistant",
-        "moved": false,
-        "origin": "model",
-        "removed": false,
-        "revised": false,
+        "kind": "User",
+        "origin": "user",
         "revision": 1,
-        "title": null,
       },
       {
-        "content": "bun run build",
-        "cutOff": false,
-        "id": 4,
-        "kind": "Tool Call",
-        "moved": false,
-        "origin": "model",
-        "pending": false,
-        "removed": false,
-        "revised": true,
-        "revision": 2,
-        "title": null,
-      },
-      {
-        "call": 4,
-        "content": "[exit 0]",
+        "content": "Fix it.",
         "cutOff": false,
         "id": 5,
-        "kind": "Tool Result",
-        "moved": false,
-        "origin": "tool",
-        "removed": false,
-        "revised": true,
-        "revision": 2,
-        "title": null,
+        "kind": "User",
+        "origin": "user",
+        "revision": 1,
+      },
+      {
+        "content": "Done: src/ui is included again.",
+        "cutOff": false,
+        "id": 6,
+        "kind": "Assistant",
+        "origin": "model",
+        "revision": 1,
       },
     ],
-    "nextId": 6,
+    "nextId": 7,
     "profile": "qwen3-8b",
     "protocol": "native",
     "thinking": null,
@@ -308,27 +248,20 @@ exports[`fixture edit-revisions.jsonl replays to its Context and request 1`] = `
         "role": "system",
       },
       {
-        "content": "Fix the build.",
+        "content": "Project rules: use bun, no semicolons.",
         "role": "user",
       },
       {
-        "content": "Running the build.",
+        "content": "Why does the build fail?",
+        "role": "user",
+      },
+      {
+        "content": "Fix it.",
+        "role": "user",
+      },
+      {
+        "content": "Done: src/ui is included again.",
         "role": "assistant",
-        "tool_calls": [
-          {
-            "function": {
-              "arguments": "{"command":"bun run build"}",
-              "name": "bash",
-            },
-            "id": "call_0",
-            "type": "function",
-          },
-        ],
-      },
-      {
-        "content": "[exit 0]",
-        "role": "tool",
-        "tool_call_id": "call_0",
       },
     ],
     "tools": [],
@@ -336,118 +269,9 @@ exports[`fixture edit-revisions.jsonl replays to its Context and request 1`] = `
   "summary": {
     "blocks": 5,
     "profile": "qwen3-8b",
-    "renamed": false,
-    "title": "Fix teh build.",
-    "tokens": 30,
-  },
-}
-`;
-
-exports[`fixture compaction.jsonl replays to its Context and request 1`] = `
-{
-  "context": {
-    "blocks": [
-      {
-        "content": "You are a coding agent.",
-        "cutOff": false,
-        "id": 1,
-        "kind": "System",
-        "moved": false,
-        "origin": "config",
-        "removed": false,
-        "revised": false,
-        "revision": 1,
-        "title": null,
-      },
-      {
-        "content": "[]",
-        "cutOff": false,
-        "id": 2,
-        "kind": "Tools",
-        "moved": false,
-        "origin": "config",
-        "removed": false,
-        "revised": false,
-        "revision": 1,
-        "title": null,
-      },
-      {
-        "content": "Why does the test fail?",
-        "cutOff": false,
-        "id": 3,
-        "kind": "User",
-        "moved": false,
-        "origin": "user",
-        "removed": false,
-        "revised": false,
-        "revision": 1,
-        "title": null,
-      },
-      {
-        "compacted": {
-          "instruction": "Keep errors and file paths.",
-          "sources": [
-            4,
-            5,
-            6,
-          ],
-        },
-        "content": "bun test: x.test.ts:3 fails (expected 1, got 2); cause: add() off by one in src/x.ts:12.",
-        "cutOff": false,
-        "id": 7,
-        "kind": "Note",
-        "moved": false,
-        "origin": "compaction",
-        "removed": false,
-        "revised": false,
-        "revision": 1,
-        "title": null,
-      },
-      {
-        "content": "Fix it.",
-        "cutOff": false,
-        "id": 8,
-        "kind": "User",
-        "moved": false,
-        "origin": "user",
-        "removed": false,
-        "revised": false,
-        "revision": 1,
-        "title": null,
-      },
-    ],
-    "nextId": 9,
-    "profile": "local",
-    "protocol": "native",
-    "thinking": null,
-  },
-  "request": {
-    "messages": [
-      {
-        "content": "You are a coding agent.",
-        "role": "system",
-      },
-      {
-        "content": "Why does the test fail?",
-        "role": "user",
-      },
-      {
-        "content": "bun test: x.test.ts:3 fails (expected 1, got 2); cause: add() off by one in src/x.ts:12.",
-        "role": "user",
-      },
-      {
-        "content": "Fix it.",
-        "role": "user",
-      },
-    ],
-    "tools": [],
-  },
-  "summary": {
-    "blocks": 5,
-    "profile": "local",
-    "renamed": false,
-    "title": "Why does the test fail?",
-    "tokens": 110,
+    "renamed": true,
+    "title": "tsconfig fix",
+    "tokens": 61,
   },
 }
 `;
@@ -461,12 +285,8 @@ exports[`fixture tool-loop.jsonl replays to its Context and request 1`] = `
         "cutOff": false,
         "id": 1,
         "kind": "System",
-        "moved": false,
         "origin": "config",
-        "removed": false,
-        "revised": false,
         "revision": 1,
-        "title": null,
       },
       {
         "content": 
@@ -491,62 +311,42 @@ exports[`fixture tool-loop.jsonl replays to its Context and request 1`] = `
         "cutOff": false,
         "id": 2,
         "kind": "Tools",
-        "moved": false,
         "origin": "config",
-        "removed": false,
-        "revised": false,
         "revision": 1,
-        "title": null,
       },
       {
         "content": "Which tests fail?",
         "cutOff": false,
         "id": 3,
         "kind": "User",
-        "moved": false,
         "origin": "user",
-        "removed": false,
-        "revised": false,
         "revision": 1,
-        "title": null,
       },
       {
         "content": "Running them.",
         "cutOff": false,
         "id": 4,
         "kind": "Assistant",
-        "moved": false,
         "origin": "model",
-        "removed": false,
-        "revised": false,
         "revision": 1,
-        "title": null,
       },
       {
         "content": "bun test 2>&1 | tail -5",
         "cutOff": false,
         "id": 5,
         "kind": "Tool Call",
-        "moved": false,
         "origin": "model",
         "pending": false,
-        "removed": false,
-        "revised": false,
         "revision": 1,
-        "title": null,
       },
       {
         "content": "git status --short",
         "cutOff": false,
         "id": 6,
         "kind": "Tool Call",
-        "moved": false,
         "origin": "model",
         "pending": false,
-        "removed": false,
-        "revised": false,
         "revision": 1,
-        "title": null,
       },
       {
         "call": 5,
@@ -557,12 +357,8 @@ exports[`fixture tool-loop.jsonl replays to its Context and request 1`] = `
         "cutOff": false,
         "id": 7,
         "kind": "Tool Result",
-        "moved": false,
         "origin": "tool",
-        "removed": false,
-        "revised": false,
         "revision": 1,
-        "title": null,
       },
       {
         "call": 6,
@@ -570,25 +366,17 @@ exports[`fixture tool-loop.jsonl replays to its Context and request 1`] = `
         "cutOff": false,
         "id": 8,
         "kind": "Tool Result",
-        "moved": false,
         "origin": "tool",
-        "removed": false,
-        "revised": false,
         "revision": 1,
-        "title": null,
       },
       {
         "content": "sleep 300",
         "cutOff": false,
         "id": 9,
         "kind": "Tool Call",
-        "moved": false,
         "origin": "model",
         "pending": false,
-        "removed": false,
-        "revised": false,
         "revision": 1,
-        "title": null,
       },
       {
         "call": 9,
@@ -596,26 +384,18 @@ exports[`fixture tool-loop.jsonl replays to its Context and request 1`] = `
         "cutOff": false,
         "id": 10,
         "kind": "Tool Result",
-        "moved": false,
         "origin": "tool",
-        "removed": false,
-        "revised": false,
         "revision": 1,
         "stopped": "killed",
-        "title": null,
       },
       {
         "content": "ls",
         "cutOff": false,
         "id": 11,
         "kind": "Tool Call",
-        "moved": false,
         "origin": "model",
         "pending": true,
-        "removed": false,
-        "revised": false,
         "revision": 1,
-        "title": null,
       },
     ],
     "nextId": 12,
@@ -733,7 +513,7 @@ exports[`fixture tool-loop.jsonl replays to its Context and request 1`] = `
 }
 `;
 
-exports[`fixture context-operations.jsonl replays to its Context and request 1`] = `
+exports[`fixture edit-revisions.jsonl replays to its Context and request 1`] = `
 {
   "context": {
     "blocks": [
@@ -742,63 +522,45 @@ exports[`fixture context-operations.jsonl replays to its Context and request 1`]
         "cutOff": false,
         "id": 1,
         "kind": "System",
-        "moved": false,
         "origin": "config",
-        "removed": false,
-        "revised": false,
         "revision": 1,
-        "title": null,
       },
       {
-        "content": "Project rules: use bun, no semicolons.",
+        "content": "Fix the build.",
         "cutOff": false,
         "id": 2,
         "kind": "User",
-        "moved": false,
         "origin": "user",
-        "removed": false,
-        "revised": false,
-        "revision": 1,
-        "title": null,
+        "revision": 2,
       },
       {
-        "content": "Why does the build fail?",
+        "content": "Running the build.",
         "cutOff": false,
         "id": 3,
-        "kind": "User",
-        "moved": false,
-        "origin": "user",
-        "removed": false,
-        "revised": false,
+        "kind": "Assistant",
+        "origin": "model",
         "revision": 1,
-        "title": "build failure",
       },
       {
-        "content": "Fix it.",
+        "content": "bun run build",
+        "cutOff": false,
+        "id": 4,
+        "kind": "Tool Call",
+        "origin": "model",
+        "pending": false,
+        "revision": 2,
+      },
+      {
+        "call": 4,
+        "content": "[exit 0]",
         "cutOff": false,
         "id": 5,
-        "kind": "User",
-        "moved": false,
-        "origin": "user",
-        "removed": false,
-        "revised": false,
-        "revision": 1,
-        "title": null,
-      },
-      {
-        "content": "Done: src/ui is included again.",
-        "cutOff": false,
-        "id": 6,
-        "kind": "Assistant",
-        "moved": false,
-        "origin": "model",
-        "removed": false,
-        "revised": false,
-        "revision": 1,
-        "title": null,
+        "kind": "Tool Result",
+        "origin": "tool",
+        "revision": 2,
       },
     ],
-    "nextId": 7,
+    "nextId": 6,
     "profile": "qwen3-8b",
     "protocol": "native",
     "thinking": null,
@@ -810,20 +572,27 @@ exports[`fixture context-operations.jsonl replays to its Context and request 1`]
         "role": "system",
       },
       {
-        "content": "Project rules: use bun, no semicolons.",
+        "content": "Fix the build.",
         "role": "user",
       },
       {
-        "content": "Why does the build fail?",
-        "role": "user",
-      },
-      {
-        "content": "Fix it.",
-        "role": "user",
-      },
-      {
-        "content": "Done: src/ui is included again.",
+        "content": "Running the build.",
         "role": "assistant",
+        "tool_calls": [
+          {
+            "function": {
+              "arguments": "{"command":"bun run build"}",
+              "name": "bash",
+            },
+            "id": "call_0",
+            "type": "function",
+          },
+        ],
+      },
+      {
+        "content": "[exit 0]",
+        "role": "tool",
+        "tool_call_id": "call_0",
       },
     ],
     "tools": [],
@@ -831,168 +600,113 @@ exports[`fixture context-operations.jsonl replays to its Context and request 1`]
   "summary": {
     "blocks": 5,
     "profile": "qwen3-8b",
-    "renamed": true,
-    "title": "tsconfig fix",
-    "tokens": 61,
+    "renamed": false,
+    "title": "Fix teh build.",
+    "tokens": 30,
   },
 }
 `;
 
-exports[`fixture file-notes.jsonl replays to its Context and request 1`] = `
+exports[`fixture tool-pair.jsonl replays to its Context and request 1`] = `
 {
   "context": {
     "blocks": [
       {
-        "content": "You are an agent.",
+        "content": "You are a coding agent.",
         "cutOff": false,
         "id": 1,
         "kind": "System",
-        "moved": false,
         "origin": "config",
-        "removed": false,
-        "revised": false,
         "revision": 1,
-        "title": null,
       },
       {
-        "content": "[{"name":"bash","description":"Run a bash command.","parameters":{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}}]",
+        "content": 
+"[
+  {
+    "name": "bash",
+    "description": "Run a shell command in the project root. Returns combined stdout/stderr and the exit code.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "command"
+      ]
+    }
+  }
+]"
+,
         "cutOff": false,
         "id": 2,
         "kind": "Tools",
-        "moved": false,
         "origin": "config",
-        "removed": false,
-        "revised": false,
         "revision": 1,
-        "title": null,
       },
       {
-        "content": 
-"[environment]
-cwd: /p
-os: linux x64 · shell: bash
-date: 2026-09-27
-git branch: main"
-,
+        "content": "What is here?",
         "cutOff": false,
         "id": 3,
-        "kind": "Note",
-        "moved": false,
-        "origin": "environment",
-        "removed": false,
-        "revised": false,
-        "revision": 2,
-        "title": null,
-      },
-      {
-        "content": 
-"[AGENTS.md]
-# Rules
-"
-,
-        "cutOff": false,
-        "file": "AGENTS.md",
-        "id": 4,
-        "kind": "Note",
-        "moved": false,
-        "origin": "file",
-        "removed": false,
-        "revised": false,
-        "revision": 1,
-        "title": null,
-      },
-      {
-        "content": 
-"[src/a.ts:2-3]
-2: b
-3: c"
-,
-        "cutOff": false,
-        "file": "src/a.ts:2-3",
-        "id": 5,
-        "kind": "Note",
-        "moved": false,
-        "origin": "file",
-        "removed": false,
-        "revised": false,
-        "revision": 1,
-        "title": null,
-      },
-      {
-        "content": "explain",
-        "cutOff": false,
-        "id": 7,
         "kind": "User",
-        "moved": false,
         "origin": "user",
-        "removed": false,
-        "revised": false,
         "revision": 1,
-        "title": null,
       },
       {
-        "content": "It returns b and c.",
+        "content": "Looking.",
         "cutOff": false,
-        "id": 8,
+        "id": 4,
         "kind": "Assistant",
-        "moved": false,
         "origin": "model",
-        "removed": false,
-        "revised": false,
         "revision": 1,
-        "title": null,
+      },
+      {
+        "content": 
+"[Tool bash: ls]
+README.md src
+[exit 0]"
+,
+        "cutOff": false,
+        "id": 9,
+        "kind": "Note",
+        "origin": "tool",
+        "revision": 1,
+        "source": "ls",
       },
     ],
-    "nextId": 9,
-    "profile": "default",
+    "nextId": 10,
+    "profile": "local",
     "protocol": "native",
     "thinking": null,
   },
   "request": {
     "messages": [
       {
-        "content": "You are an agent.",
+        "content": "You are a coding agent.",
         "role": "system",
       },
       {
-        "content": 
-"[environment]
-cwd: /p
-os: linux x64 · shell: bash
-date: 2026-09-27
-git branch: main"
-,
+        "content": "What is here?",
         "role": "user",
       },
       {
-        "content": 
-"[AGENTS.md]
-# Rules
-"
-,
-        "role": "user",
-      },
-      {
-        "content": 
-"[src/a.ts:2-3]
-2: b
-3: c"
-,
-        "role": "user",
-      },
-      {
-        "content": "explain",
-        "role": "user",
-      },
-      {
-        "content": "It returns b and c.",
+        "content": "Looking.",
         "role": "assistant",
+      },
+      {
+        "content": 
+"[Tool bash: ls]
+README.md src
+[exit 0]"
+,
+        "role": "user",
       },
     ],
     "tools": [
       {
         "function": {
-          "description": "Run a bash command.",
+          "description": "Run a shell command in the project root. Returns combined stdout/stderr and the exit code.",
           "name": "bash",
           "parameters": {
             "properties": {
@@ -1011,11 +725,100 @@ git branch: main"
     ],
   },
   "summary": {
-    "blocks": 7,
-    "profile": "default",
+    "blocks": 5,
+    "profile": "local",
     "renamed": false,
-    "title": "explain",
+    "title": "What is here?",
     "tokens": 120,
+  },
+}
+`;
+
+exports[`fixture compaction.jsonl replays to its Context and request 1`] = `
+{
+  "context": {
+    "blocks": [
+      {
+        "content": "You are a coding agent.",
+        "cutOff": false,
+        "id": 1,
+        "kind": "System",
+        "origin": "config",
+        "revision": 1,
+      },
+      {
+        "content": "[]",
+        "cutOff": false,
+        "id": 2,
+        "kind": "Tools",
+        "origin": "config",
+        "revision": 1,
+      },
+      {
+        "content": "Why does the test fail?",
+        "cutOff": false,
+        "id": 3,
+        "kind": "User",
+        "origin": "user",
+        "revision": 1,
+      },
+      {
+        "compacted": {
+          "instruction": "Keep errors and file paths.",
+          "sources": [
+            4,
+            5,
+            6,
+          ],
+        },
+        "content": "bun test: x.test.ts:3 fails (expected 1, got 2); cause: add() off by one in src/x.ts:12.",
+        "cutOff": false,
+        "id": 7,
+        "kind": "Note",
+        "origin": "compaction",
+        "revision": 1,
+      },
+      {
+        "content": "Fix it.",
+        "cutOff": false,
+        "id": 8,
+        "kind": "User",
+        "origin": "user",
+        "revision": 1,
+      },
+    ],
+    "nextId": 9,
+    "profile": "local",
+    "protocol": "native",
+    "thinking": null,
+  },
+  "request": {
+    "messages": [
+      {
+        "content": "You are a coding agent.",
+        "role": "system",
+      },
+      {
+        "content": "Why does the test fail?",
+        "role": "user",
+      },
+      {
+        "content": "bun test: x.test.ts:3 fails (expected 1, got 2); cause: add() off by one in src/x.ts:12.",
+        "role": "user",
+      },
+      {
+        "content": "Fix it.",
+        "role": "user",
+      },
+    ],
+    "tools": [],
+  },
+  "summary": {
+    "blocks": 5,
+    "profile": "local",
+    "renamed": false,
+    "title": "Why does the test fail?",
+    "tokens": 110,
   },
 }
 `;

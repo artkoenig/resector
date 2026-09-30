@@ -1,11 +1,10 @@
 // Git at the Gate: the branch where the session runs, the environment Note following it, /git:branch and /git:worktree.
 import { createSignal, onCleanup } from 'solid-js';
-import type { Branches } from '../../adapters/git/git';
-import { refreshEnvironment } from '../../core/notes/environment';
-import { inWorktree } from '../../core/session/session';
-import { errorText } from '../format';
+import { refreshEnvironment } from '../core/notes/environment';
+import { inWorktree } from '../core/session/session';
+import { errorText } from './text';
 import type { Kernel } from './kernel';
-import type { Git, Project, Status } from './types';
+import type { Branches, Git, Project, Status } from './types';
 
 export type GitSlice = ReturnType<typeof createGit>;
 

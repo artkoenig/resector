@@ -75,11 +75,11 @@ const session = (...then: SessionEvent[]) =>
 const twoRefs = session({ type: 'FileReferenced', id: 2, file: 'a.ts:1' }, { type: 'FileReferenced', id: 3, file: 'b.ts' });
 
 test('at the Gate an unread reference shows the file as it is now; a missing one says so', () => {
-  const peeked = peekReferences(twoRefs, read).blocks;
-  expect(peeked[1]).toMatchObject({ id: 2, unread: true, content: '[a.ts:1]\n1: one' });
-  expect(peeked[1]!.missing).toBeUndefined();
-  expect(peeked[2]).toMatchObject({ id: 3, unread: true, content: '', missing: 'file not found: b.ts' });
-  expect(peeked[0]).toBe(twoRefs.blocks[0]!);
+  const { context, missing } = peekReferences(twoRefs, read);
+  expect(context.blocks[1]).toMatchObject({ id: 2, unread: true, content: '[a.ts:1]\n1: one' });
+  expect(context.blocks[2]).toMatchObject({ id: 3, unread: true, content: '' });
+  expect(context.blocks[0]).toBe(twoRefs.blocks[0]!);
+  expect([...missing]).toEqual([[3, 'file not found: b.ts']]);
 });
 
 test('on send each unread reference is read into its snapshot', () => {

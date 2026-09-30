@@ -1,7 +1,11 @@
 // An answer of the model as Context Blocks: its reasoning, its text, then one Tool Call per tool call.
-import type { ChatResult } from '../backend';
-import type { SessionEvent } from '../log/events';
-import { parseCall, type RawCall } from './bash';
+import type { SessionEvent, Usage } from '../log/events';
+import { parseCall, type RawCall } from './call';
+
+export type Finish = 'stop' | 'tool_calls' | 'length' | 'aborted';
+// thinking: the model's reasoning; calls: tool calls of the answer, in order; cached: prompt tokens the server reports as reused;
+// predicted: what the prediction expected (verification).
+export type ChatResult = { thinking: string; content: string; calls: RawCall[]; finish: Finish; usage: Usage | null; cached: number | null; predicted: number | null };
 
 type BlockAdded = Extract<SessionEvent, { type: 'BlockAdded' }>;
 type Parsed = { raw: RawCall; parsed: ReturnType<typeof parseCall> };

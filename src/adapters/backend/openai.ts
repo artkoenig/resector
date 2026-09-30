@@ -1,8 +1,9 @@
 // HTTP and OpenAI-compatible chat streaming shared by the backends that speak /v1/chat/completions.
-import type { ChatOptions, ChatResult } from '../../core/backend';
+import type { ChatOptions } from '../../gate/ports';
+import type { ChatResult } from '../../core/tools/answer';
 import type { Thinking } from '../../core/log/events';
 import { callId, type Message, type Request } from '../../core/render/native';
-import { splitThinking } from '../../core/toolcall/thinking';
+import { splitThinking } from '../../core/render/thinking';
 
 // A tool call streams in pieces: name first, arguments appended, both under the call's index.
 type CallDelta = { index: number; function?: { name?: string; arguments?: string } };

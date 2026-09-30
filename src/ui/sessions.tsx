@@ -3,8 +3,9 @@ import { useKeyboard, useTerminalDimensions } from '@opentui/solid';
 import { createSignal, For, Show } from 'solid-js';
 import type { SessionStore, StoredSession } from '../adapters/store/sessions';
 import { fold } from '../core/log/fold';
-import { ago, around, cell, errorText, formatTokens, right, titleOf } from './format';
-import type { Status } from './gate';
+import { ago, around, cell, right } from './format';
+import { errorText, formatTokens, titleOf } from '../gate/text';
+import type { Status } from '../gate';
 import { Footer, footerLines, HeaderBand, type Hint } from './parts';
 import { ACCENT, BG, KIND_COLOR, MUTED, SELECTED_BG, TEXT, TONE } from './theme';
 
@@ -131,7 +132,7 @@ export function Sessions(props: SessionsProps) {
   const preview = () => {
     const s = selected();
     if (!s) return [];
-    const blocks = fold(s.events).blocks.filter(b => !b.removed);
+    const blocks = fold(s.events).blocks;
     return blocks.slice(-PREVIEW_BLOCKS).map((b, i) => ({ n: blocks.length - Math.min(PREVIEW_BLOCKS, blocks.length) + i + 1, block: b }));
   };
 

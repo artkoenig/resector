@@ -1,5 +1,6 @@
 // Key hints in the footer: the keys of the current mode, the busy step, the marks or the selected block.
-import type { Compaction, Gate } from './gate';
+import type { Compaction } from '../gate';
+import type { Screen } from './screen';
 import * as dock from './dock';
 import type { DockState } from './dock';
 import type { Hint } from './parts';
@@ -15,7 +16,7 @@ const KEYS: Hint[] = [MOVE, ['e', 'edit'], ['d', 'remove'], ['space', 'mark'], [
 export type KeyMode = Mode | 'suggest' | 'complete' | 'question' | 'questions' | 'answer' | Compaction['phase'];
 // The dock's keys: tabs only with several questions or a `multiple` one.
 export const dockMode = (s: DockState, typingOwn: boolean): KeyMode => (typingOwn ? 'answer' : dock.direct(s) ? 'question' : 'questions');
-export function keysOf(gate: Gate, mode: KeyMode, error: boolean): Hint[] {
+export function keysOf(gate: Screen, mode: KeyMode, error: boolean): Hint[] {
   const keys = modeKeys(gate, mode);
   return error && mode === 'context' ? [...keys.slice(0, -1), ['esc', 'dismiss'], keys.at(-1)!] : keys;
 }
@@ -32,11 +33,11 @@ const MODE_KEYS: Partial<Record<KeyMode, Hint[]>> = {
   answer: [['enter', 'answer'], ['esc', 'back']],
 };
 // Streaming or running: the first Esc stops the loop after the step, the second aborts it.
-function busyKeys(gate: Gate): Hint[] | null {
+function busyKeys(gate: Screen): Hint[] | null {
   const step = gate.running() ? 'kill' : gate.streaming() ? 'abort' : null;
   return step && [['esc', gate.stopping() ? step : 'stop after'], ...LOOK_KEYS];
 }
-function modeKeys(gate: Gate, mode: KeyMode): Hint[] {
+function modeKeys(gate: Screen, mode: KeyMode): Hint[] {
   const own = MODE_KEYS[mode] ?? busyKeys(gate);
   if (own) return own;
   if (gate.marked().size) return MARKED_KEYS;

@@ -1,8 +1,8 @@
 // The input line: slash commands, and text with @path references that becomes a User block and is sent.
-import { references } from '../../core/notes/files';
-import { count } from '../format';
+import { references } from '../core/notes/files';
+import { count } from './text';
 import type { Kernel } from './kernel';
-import type { Selection } from './selection';
+import type { View } from './types';
 
 // Slash commands, in suggestion order.
 export const COMMANDS = [
@@ -19,7 +19,7 @@ export const COMMANDS = [
 export type CommandName = (typeof COMMANDS)[number]['name'];
 
 // `inRepo`: the /git: commands are offered only in a git repository.
-export function createCommands(k: Kernel, sel: Selection, handlers: Record<CommandName, (arg: string) => void>, deps: { inRepo: boolean; send: () => void }) {
+export function createCommands(k: Kernel, sel: View, handlers: Record<CommandName, (arg: string) => void>, deps: { inRepo: boolean; send: () => void }) {
   const { nextId, append, setStatus } = k;
   // The commands offered: the /git: ones only in a git repository.
   const offered = COMMANDS.filter(c => deps.inRepo || !c.name.startsWith('/git:'));

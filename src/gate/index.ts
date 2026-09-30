@@ -1,9 +1,9 @@
-// Review Gate: state and actions of the main screen, composed of its slices over one kernel.
+// Review Gate: the request cycle the user steers, composed of its slices over one kernel; it acts on the view's selection (View).
 import { createSignal } from 'solid-js';
-import * as compaction from '../../core/compaction/compaction';
-import * as ops from '../../core/context/operations';
-import type { Verdict } from '../../core/approval/approval';
-import type { Block } from '../../core/log/fold';
+import * as compaction from '../core/compaction/compaction';
+import * as ops from '../core/context/operations';
+import type { Verdict } from '../core/approval/approval';
+import type { Block } from '../core/log/fold';
 import { createCommands } from './commands';
 import { createCompaction } from './compaction';
 import { createEdits } from './edits';
@@ -11,15 +11,16 @@ import { createGit } from './git';
 import { createKernel } from './kernel';
 import { createPolicy } from './policy';
 import { createRules, ignoredHint } from './rules';
-import { createSelection } from './selection';
 import { createSend } from './send';
 import { createSettings } from './settings';
 import { createToolLoop } from './tool-loop';
-import type { AutoApprove, GateOptions, Policies, Status } from './types';
+import type { Kernel } from './kernel';
+import type { AutoApprove, GateOptions, Policies, Status, View } from './types';
 
 export * from './types';
+export type * from './ports';
 export { COMMANDS } from './commands';
-export { FILTERS, type Filter } from './selection';
+export type { Kernel } from './kernel';
 
 const NO_POLICIES: Policies = { all: [], active: () => null, set: () => {} };
 
@@ -32,9 +33,9 @@ function ownAutoApprove(): AutoApprove {
 const withHint = (status: Status | null, hint: string | null): Status | null =>
   hint ? { text: status ? `${status.text} · ${hint}` : hint, tone: 'warn' } : status;
 
-export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, policies = NO_POLICIES, autoApprove = ownAutoApprove(), hidden = ['tool-calls'], git = null, ...options }: GateOptions) {
+export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, policies = NO_POLICIES, autoApprove = ownAutoApprove(), git = null, ...options }: GateOptions, view: (k: Kernel) => View) {
   const k = createKernel({ log, project, backend: options.backend, events: options.events, status: withHint(options.notice ?? null, ignoredHint(approval)) });
-  const sel = createSelection(k, hidden);
+  const sel = view(k);
   const repo = createGit(k, git, project, approval.root);
   const rules = createRules(k, approval, autoApprove);
   const loop = createToolLoop(k, sel, rules, repo, { runner, searcher, send: () => void sender.send() });
@@ -42,9 +43,9 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   const sender = createSend(k, sel, { loop, policy, git: repo, project, policies });
   const compacting = createCompaction(k, sel, { editor, instruction, compactor });
   const edits = createEdits(k, sel, loop, { editor, clipboard, project });
-  const settings = createSettings(k, sel, rules, loop, autoApprove);
+  const settings = createSettings(k, rules, loop, autoApprove);
   const input = createCommands(k, sel, {
-    '/sessions': openSessions, '/rename': settings.renameSession, '/tools': settings.toggleTool, '/filter': settings.filterBy, '/policy': policy.switchPolicy,
+    '/sessions': openSessions, '/rename': settings.renameSession, '/tools': settings.toggleTool, '/filter': sel.filterBy, '/policy': policy.switchPolicy,
     '/auto': settings.switchAutoApprove, '/thinking': settings.setThinking, '/git:branch': repo.switchBranch, '/git:worktree': repo.switchWorktree,
   }, { inRepo: !!git, send: () => void sender.send() });
 
@@ -55,30 +56,17 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   const { split, sent } = k;
   return {
     context: k.context,
+    reviewed: k.reviewed,
     sent,
     split,
     streaming: k.streaming,
     running: k.running,
     // The name of the policy editing the Context before a request.
     policing: () => k.policing()?.name ?? null,
-    live: sel.live,
     // Streaming or running: only Esc (abort, kill) acts.
     nextCall: () => ops.nextCall(k.context()),
     busy: () => k.streaming() !== null || k.running() !== null || k.policing() !== null || k.compacting()?.phase === 'running',
     status: k.status,
-    rows: sel.rows,
-    selected: sel.selected,
-    selectedBlock: sel.selectedBlock,
-    marked: sel.marked,
-    hidden: sel.hidden,
-    hiding: sel.hiding,
-    passes: sel.passes,
-    // The Kind Filters' share of the Context: the sent blocks shown, their tokens (null while counting).
-    filterShare: () => {
-      const indexes = sent().flatMap((b, i) => (sel.hides(b.kind) ? [] : [i]));
-      const s = split();
-      return { blocks: indexes.length, all: sent().length, tokens: s && indexes.reduce((sum, i) => sum + s.blocks[i]!, 0), total: s && s.total };
-    },
     window: () => k.backend().window,
     // The Context's budget; null while counting.
     budget: () => (split() ? k.budgetOf(split()!.total) : null),
@@ -102,11 +90,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     thinking: settings.thinking,
     thinkingOptions: settings.thinkingOptions,
     submit: input.submit,
-    // Enter: the user sends, the selection follows the answer.
-    send: () => {
-      sel.release();
-      return sender.send();
-    },
+    send: sender.send,
     abort: loop.abort,
     stopping: loop.stopping,
     ...compacting,
@@ -118,10 +102,8 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     verdict: (block: Block): Verdict | null => (block.pending && block.tool !== 'question' ? rules.verdictOf(block) : null),
     asked: loop.asked,
     answer: loop.answer,
-    select: sel.select,
     ...edits,
     toolsOn: k.toolsOn,
-    clearMarks: () => sel.setMarked(new Set<number>()),
     dismiss: () => k.setStatus(null),
   };
 }

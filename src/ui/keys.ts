@@ -1,5 +1,5 @@
 // Key maps of the main screen: the Context, the input line, the Compaction's instruction and review.
-import type { Gate } from './gate';
+import type { Screen } from './screen';
 import type { Mode } from './prompt';
 
 // Keys acting on the selected block only: off while blocks are marked.
@@ -21,7 +21,7 @@ type Ui = {
   onQuit: () => void;
 };
 
-export function createKeys(gate: Gate, ui: Ui) {
+export function createKeys(gate: Screen, ui: Ui) {
   const { scrollPreview, previewPage } = ui;
   const submit = () => {
     gate.submit(ui.draft());

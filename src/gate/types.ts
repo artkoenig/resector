@@ -1,15 +1,30 @@
-// Types of the Review Gate: its options (the ports it runs on) and the state it shows.
-import type { Clipboard } from '../../adapters/clipboard/clipboard';
-import type { Branches } from '../../adapters/git/git';
-import type { Backend } from '../../core/backend';
-import type { Rule, Split } from '../../core/approval/approval';
-import type * as ops from '../../core/context/operations';
-import type { Kind, SessionEvent, SessionLog } from '../../core/log/events';
-import type { Block } from '../../core/log/fold';
-import type { ReadFile } from '../../core/notes/files';
-import type { Policy } from '../../core/policy/policy';
-import type { Runner } from '../../core/toolcall/bash';
-import type { Question } from '../../core/toolcall/question';
+// Types of the Review Gate: its options (the ports it runs on), the view it drives and the state it shows.
+import type { Rule, Split } from '../core/approval/approval';
+import type { Kind, SessionEvent } from '../core/log/events';
+import type { Block } from '../core/log/fold';
+import type { ReadFile } from '../core/notes/files';
+import type { Policy } from '../core/policy/policy';
+import type { Question } from '../core/tools/question';
+import type { Backend, Clipboard, Editor, Runner, SessionLog } from './ports';
+
+// The view's selection and marks, which the Gate acts on and moves (ADR 0003): the rows shown, the selected block,
+// the marked ones. follow moves the selection unless the user reads an older row; release makes it follow again;
+// keepSelection moves it onto a shown row. /filter switches a Kind Filter of the view.
+export type View = {
+  rows: () => number[];
+  shown: () => number[];
+  hiding: () => boolean;
+  selected: () => number;
+  selectedBlock: () => Block | undefined;
+  setSelected: (id: number) => void;
+  selectAt: (index: number) => void;
+  keepSelection: () => void;
+  follow: (id: number) => void;
+  release: () => void;
+  marked: () => ReadonlySet<number>;
+  setMarked: (ids: ReadonlySet<number>) => void;
+  filterBy: (name: string) => void;
+};
 
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
 // events: the Session Log so far (new or resumed); openSessions: shows /sessions; notice: initial status line.
@@ -20,7 +35,7 @@ export type GateOptions = {
   runner: Runner;
   searcher: Runner;
   approval: Approval;
-  editor: ops.Editor;
+  editor: Editor;
   clipboard: Clipboard;
   log: SessionLog;
   events: SessionEvent[];
@@ -32,8 +47,6 @@ export type GateOptions = {
   compactor?: () => Promise<Compactor | null>;
   policies?: Policies;
   autoApprove?: AutoApprove;
-  // The Kind Filters off at start.
-  hidden?: readonly string[];
   // Absent outside a git repository: the /git: commands are then not offered.
   git?: Git | null;
 };
@@ -48,6 +61,9 @@ export type Project = { read: ReadFile; list: () => string[]; environment: () =>
 // Tool Approval: the splitter, the project root arguments must stay in, and the config's rules as read
 // when the session opened (ignored: project allow patterns).
 export type Approval = { split: Split; root: string; permissions: () => { rules: Rule[]; ignored: string[] } };
+
+// The local branches, the current one (null when detached) and those checked out in another worktree, with its path.
+export type Branches = { current: string | null; all: string[]; elsewhere: Record<string, string> };
 
 // Git where the session runs: the branches, switching to one and watching for switches; worktree(on) prepares the session's own worktree
 // (or the project directory) and returns it, reopen shows the Gate again running there, with a status.

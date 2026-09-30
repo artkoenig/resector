@@ -1,11 +1,11 @@
 // The Gate's header: profile and modes, the Context's tokens with its bar, and the Kind Filters line below.
 import { For } from 'solid-js';
-import type { Gate } from './gate';
-import { formatTokens, thinkingLabel } from './format';
+import type { Screen } from './screen';
+import { formatTokens, thinkingLabel } from '../gate/text';
 import { HeaderBand } from './parts';
 import { ACCENT, BORDER, FAINT, KIND_COLOR, MUTED, TEXT, TONE } from './theme';
 
-export function Header(props: { gate: Gate; width: number }) {
+export function Header(props: { gate: Screen; width: number }) {
   const total = () => props.gate.split()?.total ?? 0;
   const used = () => (props.gate.split() ? formatTokens(total()) : '…');
   const budget = () => props.gate.budget();
@@ -51,7 +51,7 @@ export function Header(props: { gate: Gate; width: number }) {
 }
 
 // While blocks are hidden: the Kind Filters off below the header, and the share of the blocks and tokens sent that is shown; removed ones are not.
-export function FilterLine(props: { gate: Gate }) {
+export function FilterLine(props: { gate: Screen }) {
   const share = () => props.gate.filterShare();
   const tokens = () => (share().total === null ? '…' : `${formatTokens(share().tokens!)}/${formatTokens(share().total!)}`);
   return (
@@ -67,7 +67,7 @@ export function FilterLine(props: { gate: Gate }) {
 // Half cells: thicker than a line, lighter than a solid strip.
 const BAR = '▀';
 const EDGE = '│';
-function contextBar(gate: Gate, width: number): { char: string; color: string }[] {
+function contextBar(gate: Screen, width: number): { char: string; color: string }[] {
   const split = gate.split();
   const cells = Array.from({ length: width }, () => ({ char: BAR, color: BORDER }));
   if (!split) return cells;

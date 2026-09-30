@@ -5,7 +5,7 @@ import grammar from 'tree-sitter-bash/tree-sitter-bash.wasm' with { type: 'file'
 import highlights from 'tree-sitter-bash/queries/highlights.scm' with { type: 'file' };
 import { quoted, sessionRules, type Action, type Verdict } from '../core/approval/approval';
 import type { Kind, Tool } from '../core/log/events';
-import type { Block } from '../core/log/fold';
+import type { Reviewed } from '../gate/review';
 import { parseReference } from '../core/notes/files';
 import { ACCENT, BORDER, FAINT, KIND_COLOR, MUTED, TEXT, TONE } from './theme';
 
@@ -135,7 +135,7 @@ export function Checks(props: { verdict: Verdict }) {
 }
 
 // An unread @path reference in the preview: when it is read, or why it cannot be.
-export function ReferenceHint(props: { block: Block | undefined }) {
+export function ReferenceHint(props: { block: Reviewed | undefined }) {
   return (
     <Show when={props.block?.unread}>
       <text fg={props.block!.missing ? TONE.warn : MUTED}>{props.block!.missing ?? '@path reference – read at send, a snapshot from then on · e opens the file'}</text>

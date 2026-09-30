@@ -1,18 +1,17 @@
 // Sending the Context: whether it may go, reading its references, the count right before, and the streaming answer.
 import { createMemo } from 'solid-js';
-import * as ops from '../../core/context/operations';
-import { fold, type Block } from '../../core/log/fold';
-import { readReferences } from '../../core/notes/files';
-import type { Policy } from '../../core/policy/policy';
-import { renderNative } from '../../core/render/native';
-import { openingBlocks } from '../../core/session/session';
-import { errorText, formatTokens } from '../format';
+import * as ops from '../core/context/operations';
+import { fold, type Block } from '../core/log/fold';
+import { readReferences } from '../core/notes/files';
+import type { Policy } from '../core/policy/policy';
+import { renderNative } from '../core/render/native';
+import { openingBlocks } from '../core/session/session';
+import { errorText, formatTokens } from './text';
 import type { GitSlice } from './git';
 import { same, type Kernel } from './kernel';
 import type { PolicySlice } from './policy';
-import type { Selection } from './selection';
 import { APPROVE, QUESTION_HINT, type ToolLoop } from './tool-loop';
-import type { Policies, Project, Status } from './types';
+import type { Policies, Project, Status, View } from './types';
 
 // The last block: a User message, a Tool Result or a Note (e.g. an @path reference) asks for an answer,
 // not the Notes a new session starts with (environment, project instructions).
@@ -21,7 +20,7 @@ function asksForAnswer(blocks: Block[], opening: Set<number>): boolean {
   return last === 'User' || last === 'Tool Result' || last === 'Note';
 }
 
-export function createSend(k: Kernel, sel: Selection, deps: { loop: ToolLoop; policy: PolicySlice; git: GitSlice; project: Project; policies: Policies }) {
+export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy: PolicySlice; git: GitSlice; project: Project; policies: Policies }) {
   const { context, events, nextId, append, setStatus, backend, streaming, setStreaming, split } = k;
   const { follow, setSelected } = sel;
   const { loop } = deps;

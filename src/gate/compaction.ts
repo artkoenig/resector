@@ -1,21 +1,13 @@
 // The user's Compaction at the Gate: the instruction is written, the proposal streams, then it is reviewed.
-import type * as ops from '../../core/context/operations';
-import * as compaction from '../../core/compaction/compaction';
-import { fold } from '../../core/log/fold';
-import { renderPrefixes, sentBlocks, type Request } from '../../core/render/native';
-import { count, errorText, formatTokens } from '../format';
+import * as compaction from '../core/compaction/compaction';
+import { fold } from '../core/log/fold';
+import { renderPrefixes, type Request } from '../core/render/native';
+import { errorText, formatTokens } from './text';
 import type { Kernel } from './kernel';
-import type { Selection } from './selection';
-import type { Compaction, Compactor, Live, Review, Status } from './types';
+import type { Editor } from './ports';
+import type { Compaction, Compactor, Live, Review, Status, View } from './types';
 
-// The proposal row goes before the first source, so each source's row number is one more than its place.
-export function proposalRow(k: Kernel, c: Compaction): Live {
-  const numbers = c.sources.map(id => `#${k.sent().findIndex(b => b.id === id) + 2}`).join(' ');
-  const heading = `◇ proposal · attempt ${c.attempt} · replaces ${numbers} · "${c.instruction}"`;
-  return { id: k.nextId(), kind: 'Note', content: c.text, before: c.sources[0]!, title: `◇ proposal · ${count(c.sources.length, 'block')} · attempt ${c.attempt}`, heading, ...(c.after && { tokens: c.after.note }) };
-}
-
-export function createCompaction(k: Kernel, sel: Selection, deps: { editor: ops.Editor; instruction: () => string; compactor: () => Promise<Compactor | null> }) {
+export function createCompaction(k: Kernel, sel: View, deps: { editor: Editor; instruction: () => string; compactor: () => Promise<Compactor | null> }) {
   const { context, nextId, setStatus, backend, compacting, setCompacting, tokensOf } = k;
   const { editor, instruction } = deps;
   const update = (change: Partial<Compaction>) => setCompacting({ ...compacting()!, ...change });
@@ -98,7 +90,7 @@ export function createCompaction(k: Kernel, sel: Selection, deps: { editor: ops.
     const c = compacting()!;
     const after = fold([...k.events(), { type: 'Compact', sources: c.sources, instruction: c.instruction, noteId: nextId(), content: c.text }]);
     const counted = await backend().count(renderPrefixes(after)).catch(() => null);
-    const note = sentBlocks(after).findIndex(b => b.id === nextId());
+    const note = after.blocks.findIndex(b => b.id === nextId());
     if (counted && compacting()?.text === c.text) update({ after: { note: counted.blocks[note]!, total: counted.total } });
   }
   // Under review: tokens before → after and the Context after accept; the cache effect.

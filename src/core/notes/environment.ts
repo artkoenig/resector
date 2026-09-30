@@ -14,7 +14,7 @@ type Written = Edit | Extract<SessionEvent, { type: 'BlockAdded' }>;
 
 // A new Revision when the environment changed since the harness last wrote it; a user's edit stays until then.
 export function refreshEnvironment(events: SessionEvent[], context: Context, text: string): Edit | null {
-  const note = context.blocks.find(b => b.origin === 'environment' && !b.removed);
+  const note = context.blocks.find(b => b.origin === 'environment');
   if (!note) return null;
   // The environment Note is added by the harness, so it is always found.
   const written = events.findLast((e): e is Written => (e.type === 'BlockAdded' || 'harness' in e) && e.id === note.id)!;

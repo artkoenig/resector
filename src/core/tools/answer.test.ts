@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import type { ChatResult } from '../backend';
+import type { ChatResult } from './answer';
 import { answerBlocks } from './answer';
 
 const result = (over: Partial<ChatResult>): ChatResult => ({ thinking: '', content: '', calls: [], finish: 'stop', usage: null, cached: null, predicted: null, ...over });

@@ -3,7 +3,8 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { decodeLog, encodeEvent } from '../../core/log/codec';
-import type { SessionEvent, SessionLog } from '../../core/log/events';
+import type { SessionEvent } from '../../core/log/events';
+import type { SessionLog } from '../../gate/ports';
 import { summarize, type SessionRef, type SessionSummary } from '../../core/session/session';
 import { createSessionLog, projectSessionsDir } from './session-log';
 

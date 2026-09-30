@@ -6,14 +6,13 @@ import { discover, LOCAL_SERVERS, type DiscoveredModel, type LocalServer } from 
 import { createRunner } from '../adapters/bash/runner';
 import { createSearcher } from '../adapters/search/ddgr';
 import { createSplit } from '../adapters/bash/split';
-import type { Clipboard } from '../adapters/clipboard/clipboard';
 import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
 import { ensureWorktree, isRepository, listBranches, status, switchBranch, watchHead } from '../adapters/git/git';
 import { loadPolicies, policiesDir } from '../adapters/fs/policies';
 import { listProjectFiles, personalInstructionsDir, probeEnvironment, projectFiles, projectInstructions } from '../adapters/fs/project';
 import type { OpenSession, SessionStore } from '../adapters/store/sessions';
 import type { Split } from '../core/approval/approval';
-import type { Editor } from '../core/context/operations';
+import type { Editor } from '../gate/ports';
 import type { SessionEvent } from '../core/log/events';
 import { fold } from '../core/log/fold';
 import { environmentText } from '../core/notes/environment';
@@ -21,8 +20,8 @@ import { BUILT_IN, DEFAULT_POLICY } from '../core/policy/built-in';
 import type { Policy } from '../core/policy/policy';
 import { inWorktree, newSession, summarize, type SessionRef } from '../core/session/session';
 import { App } from './app';
-import { errorText } from './format';
-import type { AutoApprove, GateOptions, Git, Policies, Status } from './gate';
+import { errorText } from '../gate/text';
+import type { AutoApprove, Clipboard, GateOptions, Git, Policies, Status } from '../gate';
 import { Sessions } from './sessions';
 import { Setup } from './setup';
 

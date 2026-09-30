@@ -1,6 +1,6 @@
 import type { Thinking } from '../log/events';
 import type { Block, Context } from '../log/fold';
-import { callArguments } from '../toolcall/bash';
+import { callArguments } from '../tools/call';
 
 export type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
 export type AssistantMessage = { role: 'assistant'; content: string; reasoning_content?: string; tool_calls?: ToolCall[] };
@@ -12,9 +12,6 @@ export type ToolDefinition = { type: 'function'; function: { name: string; descr
 // A chat request as the backend receives it: messages plus the tools field; thinking: set at the Gate,
 // else the backend sends the Model Profile's; answerStart: the answer begins with it, the server continues it without reasoning.
 export type Request = { messages: Message[]; tools: ToolDefinition[]; thinking?: Thinking; answerStart?: string };
-
-// What goes into the next request: removed blocks are only struck through at the Gate.
-export const sentBlocks = (context: Context): Block[] => context.blocks.filter(b => !b.removed);
 
 // Call ids number the calls of one assistant message, as a server numbers those of its answer: the
 // answer and its rendering in the next request are the same tokens (prefix cache).
@@ -65,7 +62,7 @@ export function renderPrefixes(context: Context): Request[] {
   const request: Request = { messages: [], tools: [] };
   const ids = new Map<number, string>();
   const thinking = context.thinking && { thinking: context.thinking };
-  return sentBlocks(context).map(b => {
+  return context.blocks.map(b => {
     ADD[b.kind](request, ids, b);
     return { messages: [...request.messages], tools: request.tools, ...thinking };
   });

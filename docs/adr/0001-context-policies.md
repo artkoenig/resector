@@ -5,7 +5,7 @@ v1 left auto-compaction out of scope so that the user alone steers the Context. 
 ## Consequences
 
 - The policy always wins: an operation the user undoes is applied again before the next request while the policy is active. To keep a block, switch the policy off.
-- The active policy belongs to the running app, not to the Session: off after every start, switched with `/policy <name>` / `/policy off`, never recorded in the Session Log. Replay never depends on the attribution label.
+- The active policy belongs to the running app, not to the Session: switched with `/policy <name>` / `/policy off`, never recorded in the Session Log. Amended 2026-09-30: a new Session switches on the config's `defaultPolicy` (default `lean-compact`, `off` for none); a resumed one keeps the app's. Replay never depends on the attribution label.
 - Policies are TypeScript modules loaded at start only, from `~/.config/resector/policies/<name>.ts` (built-in ones are written the same way). No project-level policies: a cloned repository must not be able to run code. There is no hot reload; `/reload` is removed.
 - Policies that rewrite early blocks invalidate the backend's KV cache from that point on; that cost is part of what an experiment measures.
 
