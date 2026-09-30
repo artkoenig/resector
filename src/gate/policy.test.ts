@@ -1,5 +1,6 @@
 // Context Policy tests without a renderer (ADR 0001): passes before each request, attribution, failures, Compaction.
 import { expect, test } from 'bun:test';
+import { BUILT_IN } from '../core/policy/built-in';
 import type { Policy, PolicyOperation } from '../core/policy/policy';
 import { bash, gateWith, ofType, scriptedBackend, settled, until } from './gate.harness';
 
@@ -129,4 +130,14 @@ test('a request failing after the policy ran still says what the policy did', as
   await settled(g.gate);
   expect(g.gate.status()?.text).toContain('backend error');
   expect(g.gate.status()?.text).toContain('trim: 1 User removed');
+});
+
+test('lean-compact in the tool loop keeps the Thinking of the answer whose call ran: the follow-up sends it', async () => {
+  const g = policed({ window: 100, global: { 'bun test': 'allow' }, policies: BUILT_IN });
+  g.reply({ thinking: 'plan the fix', calls: [bash('bun test')] }, { content: 'ok' });
+  g.gate.submit('go');
+  await settled(g.gate);
+  expect(g.sent).toHaveLength(2);
+  expect(JSON.stringify(g.sent[1]!.request)).toContain('plan the fix');
+  expect(ofType(g.events, 'Remove')).toEqual([]);
 });

@@ -73,8 +73,47 @@ test('an empty Context: nothing to do', () => {
   expect(leanCompact({ window: 0, used: 0, blocks: [] })).toEqual([]);
 });
 
-test('the newest Tool Pair stays as a whole', () => {
-  expect(leanCompact({ window: 100, used: 60, blocks: blocks('User', 'Assistant', call('ls'), 'Tool Result') })).toEqual([compact(2)]);
+test('the newest answer stays as a whole: its Thinking, text and Tool Pairs', () => {
+  // Two calls of one answer, then their results: 7 ↔ 9, 8 ↔ 10.
+  const context = blocks('User', 'Thinking', call('bun test'), 'Tool Result', ['Thinking', { tokens: 50 }], 'Assistant',
+    ['Tool Call', { content: 'ls', pair: 9 }], ['Tool Call', { content: 'bun test', pair: 10 }], ['Tool Result', { pair: 7 }], ['Tool Result', { pair: 8 }]);
+  expect(leanCompact({ window: 100, used: 60, blocks: context })).toEqual([compact(2, 3, 4)]);
+});
+
+// The operations when the Context is `specs`, from half the window on.
+const lean = (...specs: Spec[]) => leanCompact({ window: 100, used: 60, blocks: blocks(...specs) });
+
+test('the answer before the newest one is compacted: its Tool Results end where the newest Thinking starts', () => {
+  expect(lean('User', 'Thinking', call('bun test'), 'Tool Result', 'Thinking', call('bun test'), 'Tool Result')).toEqual([compact(2, 3, 4)]);
+});
+
+test('an answer without calls stays, Thinking cut off too, short or not', () => {
+  expect(lean('User', 'Assistant', 'User', ['Thinking', { tokens: 50 }], 'Assistant')).toEqual([compact(2)]);
+  expect(lean('User', 'Assistant', 'User', ['Thinking', { tokens: 50 }])).toEqual([compact(2)]);
+  expect(lean('User', 'Assistant', 'User', 'Thinking')).toEqual([compact(2)]);
+});
+
+test('an answer whose Tool Call awaits approval stays, its short Thinking too', () => {
+  expect(lean('User', 'Assistant', 'User', ['Thinking', { tokens: 50 }], ['Tool Call', { pending: true }])).toEqual([compact(2)]);
+});
+
+test('an answer ending with a Question the user answered, or a call rejected, stays', () => {
+  expect(lean('User', 'Assistant', 'User', 'Thinking', call('question'), ['Tool Result', { origin: 'user' }])).toEqual([compact(2)]);
+  expect(lean('User', 'Assistant', 'User', 'Thinking', call('rm x'), ['Tool Result', { content: 'rejected by user' }])).toEqual([compact(2)]);
+});
+
+test('a read-only Tool Pair of the newest answer stays, the earlier ones go', () => {
+  expect(lean('User', call('ls'), 'Tool Result', call('cat a'), 'Tool Result')).toEqual([{ op: 'remove', id: 2 }]);
+});
+
+test('ending with a User block or a Note, only that block is newest: the answer before it is compacted', () => {
+  expect(lean('User', ['Thinking', { tokens: 50 }], call('bun test'), 'Tool Result', 'User')).toEqual([{ op: 'remove', id: 2 }, compact(3, 4)]);
+  expect(lean('User', 'Thinking', call('bun test'), 'Tool Result', ['Note', { origin: 'user' }])).toEqual([compact(2, 3, 4)]);
+});
+
+test('a Context of only the newest answer, or only an earlier Compaction Note before it: nothing to do', () => {
+  expect(lean('Thinking', call('ls'), 'Tool Result')).toEqual([]);
+  expect(lean('User', ['Note', { origin: 'compaction' }], 'Thinking', call('bun test'), 'Tool Result')).toEqual([]);
 });
 
 test('only an earlier Compaction Note left: nothing to compact again', () => {

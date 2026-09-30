@@ -1,7 +1,9 @@
 // The built-in Context Policy lean-compact (ADR 0001): from half the window on, read-only Tool Pairs and Thinking under
-// 200 tokens are removed, then the rest of the work is compacted into one Note. The newest block (Tool Pair) stays as is.
+// 200 tokens are removed, then the rest of the work is compacted into one Note. The newest answer (its Thinking, text and
+// Tool Pairs) stays as is.
 // Written like a policy module in ~/.config/resector/policies: the reference for one.
 import { DEFAULT_INSTRUCTION } from '../compaction/compaction';
+import type { Kind } from '../log/events';
 import type { PolicyBlock, PolicyContext, PolicyOperation } from './policy';
 
 const COMPACT_FROM = 1 / 2;
@@ -20,9 +22,8 @@ export const description = 'drops reads and short thinking, compacts at ½';
 
 export default function leanCompact({ window, used, blocks: all }: PolicyContext): PolicyOperation[] {
   if (used < window * COMPACT_FROM) return [];
-  // The model has not yet built on the newest block: it is left out, a Tool Pair as a whole.
-  const last = all.at(-1);
-  const newest = new Set([last?.id, last?.pair]);
+  // The model has not yet built on the newest answer: it is left out, its Tool Pairs as a whole.
+  const newest = newestAnswer(all);
   const blocks = all.filter(b => !newest.has(b.id));
   const reads = blocks.filter(b => isRead(b, blocks));
   const short = blocks.filter(b => b.kind === 'Thinking' && b.tokens < SHORT_THINKING);
@@ -32,6 +33,17 @@ export default function leanCompact({ window, used, blocks: all }: PolicyContext
   // Only the Note of an earlier Compaction left: compacting it again would not free the window.
   const worth = sources.some(b => b.origin !== 'compaction');
   return worth ? [...removals, { op: 'compact', sources: sources.map(b => b.id), instruction: DEFAULT_INSTRUCTION }] : removals;
+}
+
+const ANSWER = new Set<Kind>(['Thinking', 'Assistant', 'Tool Call']);
+// The trailing Tool Results and the model's blocks right before them: the answer the next request builds on. Ending
+// with another block (the user's), only that block.
+function newestAnswer(blocks: PolicyBlock[]): Set<number> {
+  let i = blocks.length;
+  while (i > 0 && blocks[i - 1]!.kind === 'Tool Result') i--;
+  while (i > 0 && ANSWER.has(blocks[i - 1]!.kind)) i--;
+  const tail = blocks.slice(Math.min(i, blocks.length - 1));
+  return new Set(tail.flatMap(b => (b.pair === null ? [b.id] : [b.id, b.pair])));
 }
 
 // The user's word, the project's Notes and a Tool Call awaiting approval stay.
