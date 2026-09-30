@@ -447,6 +447,15 @@ test('thinking-trail tells the model what it does: a Note right after the Tools 
   expect(JSON.stringify(fake.chatRequests[0])).toContain('Tool calls and results are removed once you have reasoned past them');
 });
 
+test('defaultPolicy: a new session starts with it on, an unknown name is reported', async () => {
+  await launch({ config: url => profileConfig(url).replace('"defaultProfile"', '"defaultPolicy": "shout", "defaultProfile"'), policies: { shout: SHOUT } });
+  expect(await frameMatching(ui, f => f.includes('/ 2k'))).toMatch(/local · thinking off · policy shout/);
+  ui.renderer.destroy();
+  fake.stop();
+  await launch({ config: url => profileConfig(url).replace('"defaultProfile"', '"defaultPolicy": "nope", "defaultProfile"') });
+  expect(await frameMatching(ui, f => f.includes('/ 2k'))).toMatch(/defaultPolicy nope – no such policy/);
+});
+
 test('the active policy belongs to the app: it stays when switching sessions and is not logged', async () => {
   const { log } = await launch({ config: url => profileConfig(url), policies: { shout: SHOUT }, sessions: { ses_a: titled('local', 'fix the build') } });
   await frameMatching(ui, f => f.includes('/ 2k'));

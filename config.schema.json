@@ -70,7 +70,7 @@
           },
           "thinking": {
             "default": "off",
-            "description": "Reasoning at session start: off, on (enable_thinking) or an effort level (reasoning_effort) the chat template accepts; `t` at the Gate switches it",
+            "description": "Reasoning at session start: off, on (enable_thinking) or an effort level (reasoning_effort) the chat template accepts; `/thinking` switches it",
             "type": "string"
           },
           "compactionProfile": {
@@ -90,6 +90,10 @@
     },
     "defaultProfile": {
       "description": "Model Profile for new sessions",
+      "type": "string"
+    },
+    "defaultPolicy": {
+      "description": "Context Policy switched on for new sessions; /policy switches it",
       "type": "string"
     },
     "permission": {

@@ -63,6 +63,7 @@ export const COMMANDS = [
   { name: '/filter', arg: '<kind>', description: 'show only blocks of one Kind' },
   { name: '/policy', arg: '<name>', description: 'switch a Context Policy on or off' },
   { name: '/auto', arg: '', description: 'switch auto-approve of Tool Calls on or off' },
+  { name: '/thinking', arg: '<mode>', description: 'set thinking for the next requests' },
 ] as const;
 // What a Kind Filter takes (FR-51), in glossary order: the Kinds each shows; a Tool Call never without its Tool Result.
 export type Filter = { name: string; kinds: readonly Kind[] };
@@ -829,12 +830,21 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   const thinking = (): Thinking => context().thinking ?? backend().thinking ?? 'off';
   // The modes of the model's chat template, as the backend read them when it connected (session opened, setup).
   const thinkingModes = () => backend().thinkingModes ?? DEFAULT_MODES;
-  function cycleThinking() {
+  // The options /thinking offers: `on` only when no efforts exist (edge case), otherwise the efforts with their labels.
+  const thinkingOptions = () => {
     const modes = thinkingModes();
-    if (!modes.length) return setStatus({ text: 'the chat template has no thinking switch', tone: 'info' });
-    const next = modes[(modes.indexOf(thinking()) + 1) % modes.length]!;
-    append({ type: 'ThinkingSet', thinking: next });
-    setStatus({ text: `thinking ${thinkingLabel(next)}`, tone: 'info' });
+    const hasEfforts = modes.some(m => m !== 'off' && m !== 'on');
+    const filtered = hasEfforts ? modes.filter(m => m !== 'on') : modes;
+    return filtered.map(m => ({ name: thinkingLabel(m), value: m }));
+  };
+  function setThinking(arg: string) {
+    const options = thinkingOptions();
+    if (!options.length) return setStatus({ text: 'the chat template has no thinking switch', tone: 'info' });
+    if (!arg) return setStatus({ text: `thinking ${thinkingLabel(thinking())} · /thinking ${options.map(o => o.name).join(' ')}`, tone: 'info' });
+    const match = options.find(o => o.name === arg);
+    if (!match) return setStatus({ text: `unknown thinking ${arg}: ${options.map(o => o.name).join(' ')}`, tone: 'error' });
+    append({ type: 'ThinkingSet', thinking: match.value });
+    setStatus({ text: `thinking ${thinkingLabel(match.value)}`, tone: 'info' });
   }
 
   function renameSession(title: string) {
@@ -862,7 +872,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   }
 
   const commands: Record<CommandName, (arg: string) => void> = {
-    '/sessions': openSessions, '/rename': renameSession, '/tools': toggleTool, '/filter': filterBy, '/policy': switchPolicy, '/auto': switchAutoApprove,
+    '/sessions': openSessions, '/rename': renameSession, '/tools': toggleTool, '/filter': filterBy, '/policy': switchPolicy, '/auto': switchAutoApprove, '/thinking': setThinking,
   };
   // Input text: a known command runs with the rest as argument; an unknown `/word` is an error; anything else becomes
   // a User block and is sent right away – if sending is blocked, the block stays and the status says why (FR-6).
@@ -930,7 +940,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     policyNames: () => policies.all.map(p => p.name),
     autoApprove: autoApprove.on,
     thinking,
-    cycleThinking,
+    thinkingOptions,
     submit,
     // Enter: the user sends, the selection follows the answer.
     send: () => {

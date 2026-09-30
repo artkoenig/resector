@@ -390,37 +390,35 @@ test('p pins nothing: pinning is gone (ADR 0002)', async () => {
   expect(events()).toHaveLength(before);
 });
 
-test('t cycles thinking off → on → on:<effort>, shown in the header, logged and sent with the next request (FR-49)', async () => {
+test('/thinking sets the thinking mode, shown in the header, logged and sent with the next request (FR-49)', async () => {
   const { events } = await withUsers('question');
   expect(line(await frameMatching(ui, f => f.includes('default')), /default/)).toContain('default · thinking off');
-  await press('t');
-  await frameMatching(ui, f => f.includes('default · thinking on '));
-  await press('t');
+  await write('/thinking on:low');
   const frame = await frameMatching(ui, f => f.includes('default · thinking on:low'));
   expect(frame).toContain('thinking on:low');
-  expect(events().slice(-2)).toEqual([{ type: 'ThinkingSet', thinking: 'on' }, { type: 'ThinkingSet', thinking: 'low' }]);
+  expect(events().slice(-1)).toEqual([{ type: 'ThinkingSet', thinking: 'low' }]);
   fake.reply({ chunks: ['ok'] });
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('answer complete'));
   expect(fake.chatRequests[0]).toMatchObject({ chat_template_kwargs: { enable_thinking: true }, reasoning_effort: 'low' });
-  for (const _ of [1, 2, 3]) await press('t');
+  await write('/thinking off');
   await frameMatching(ui, f => f.includes('default · thinking off'));
 });
 
-test('t cycles the thinking modes of the chat template (FR-49)', async () => {
+test('/thinking offers the modes of the chat template (FR-49)', async () => {
   const { events } = await start({ template: "{% if reasoning_effort not in ('xhigh', 'low') %}{% endif %}" });
-  await press('t');
+  await write('/thinking on:low');
   await frameMatching(ui, f => f.includes('default · thinking on:low'));
-  await press('t');
+  await write('/thinking on:xhigh');
   await frameMatching(ui, f => f.includes('default · thinking on:xhigh'));
-  await press('t');
+  await write('/thinking on:low');
   await frameMatching(ui, f => f.includes('default · thinking on:low'));
   expect(events().filter(e => e.type === 'ThinkingSet').map(e => e.thinking)).toEqual(['low', 'xhigh', 'low']);
 });
 
-test('a chat template without thinking: t says so and logs nothing', async () => {
+test('a chat template without thinking: /thinking says so and logs nothing', async () => {
   const { events } = await start({ template: '{{ messages }}' });
-  await press('t');
+  await write('/thinking');
   await frameMatching(ui, f => f.includes('the chat template has no thinking switch'));
   expect(events().some(e => e.type === 'ThinkingSet')).toBe(false);
 });
@@ -609,7 +607,7 @@ test('typing / suggests the commands, filtered while typing; ↑↓ choose, Ente
   await write('/sessions');
   await until(() => opened.length > 0);
   await write('/nope');
-  await frameMatching(ui, f => f.includes('✗ unknown command /nope') && f.includes('/sessions /rename /tools /filter /policy /auto'));
+  await frameMatching(ui, f => f.includes('✗ unknown command /nope') && f.includes('/sessions /rename /tools /filter /policy /auto /thinking'));
   // Config is read when a session opens: a change needs a restart (ADR 0001).
   await write('/reload');
   await frameMatching(ui, f => f.includes('✗ unknown command /reload'));
@@ -1235,7 +1233,7 @@ test('the proposal streams at the first source; Enter accepts it as one Note, u 
   expect(line(frame, /User\s+two/)).toMatch(/◇ proposed/);
   expect(frame).toMatch(/#3 · ◇ proposal · attempt 1 · replaces #4 #5 · "keep the gist"/);
   expect((fake.chatRequests[0] as Sent)).toMatchObject({
-    messages: [{ role: 'system' }, { role: 'user', content: '### User\none\n\n### User\ntwo\n\nInstruction: keep the gist' }],
+    messages: [{ role: 'system' }, { role: 'user', content: '# User\none\n\n# User\ntwo\n\nInstruction: keep the gist' }],
   });
   expect((fake.chatRequests[0] as Sent).tools).toBeUndefined();
   await escape();
@@ -1289,7 +1287,7 @@ test('x discards the proposal; i runs again from the sources with a changed inst
   fake.reply({ chunks: ['2nd'] });
   ui.mockInput.pressEnter();
   frame = await frameMatching(ui, f => f.includes('#4 · ◇ proposal · attempt 2 · replaces #5 · "shorter!"') && f.includes('cold from #4'));
-  expect((fake.chatRequests.at(-1) as Sent).messages[1]).toEqual({ role: 'user', content: '### User\ntwo\n\nInstruction: shorter!' });
+  expect((fake.chatRequests.at(-1) as Sent).messages[1]).toEqual({ role: 'user', content: '# User\ntwo\n\nInstruction: shorter!' });
   editor = async text => `${text} edited\n`;
   await press('e');
   frame = await frameMatching(ui, f => f.includes('proposal edited by hand') && f.includes('cold from #4'));

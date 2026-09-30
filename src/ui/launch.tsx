@@ -88,7 +88,12 @@ export function Launch(props: LaunchOptions) {
     // The project instructions are read once, now (FR-29).
     const events = newSession(profile.name, loaded.systemPrompt(profile), { environment: environment(), instructions: projectInstructions(root) });
     events.forEach(opened.log.append);
-    return { opened, events, notice: { text: 'new session', tone: 'ok' as const } };
+    // A new session starts with the configured policy on; without one, and when resumed, the app's stays.
+    const name = loaded.config.defaultPolicy;
+    const policy = name === undefined ? null : policies.all.find(p => p.name === name);
+    if (policy) setActive(policy);
+    const notice = policy === undefined ? { text: `new session · defaultPolicy ${name} – no such policy`, tone: 'warn' as const } : { text: 'new session', tone: 'ok' as const };
+    return { opened, events, notice };
   }
 
   // Resume = replay; a Model Profile missing from the config falls back to the default one (FR-35).
