@@ -1,6 +1,7 @@
 // Context Policy (ADR 0001) at the Gate: the active policy edits the Context before a request; /policy switches it.
 import * as compaction from '../core/compaction/compaction';
 import { applyPolicy, summary, type Policy, type Ports } from '../core/policy/policy';
+import { inContextRequest } from '../core/render/compaction';
 import { renderPrefixes, type Request } from '../core/render/native';
 import { errorText, formatTokens } from './text';
 import type { Kernel } from './kernel';
@@ -35,7 +36,7 @@ export function createPolicy(k: Kernel, sel: View, policies: Policies, compactor
     events: k.events, append: k.append, window: backend().window, aborted: () => signal.aborted,
     count: context => backend().count(renderPrefixes(context)),
     compact: (context, sources, instruction, inContext) =>
-      compact(inContext ? compaction.inContextRequest(context, instruction) : compaction.compactionRequest(context, sources, instruction), signal),
+      compact(inContext ? inContextRequest(context, instruction) : compaction.compactionRequest(context, sources, instruction), signal),
   });
   // A policy's Compaction runs like the user's, without review; its Note is the answer.
   async function compact(request: Request, signal: AbortSignal): Promise<string> {

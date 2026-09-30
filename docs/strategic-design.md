@@ -55,7 +55,7 @@ flowchart LR
 
 **F4 — Tooling has no home module.** _Resolved in step 5._ `core/toolcall/bash.ts` is named after one tool but holds the tool catalog, Tools Block content, raw-call parsing, result text and the `Runner` port. It is imported by `context/operations`, `render`, `session`, `backend.ts`, the Gate and `ui/format`.
 
-**F5 — Messages built outside the ACL.** `core/compaction/compaction.ts` (`compactionRequest`) assembles role messages itself instead of going through `core/render`.
+**F5 — Messages built outside the ACL.** _Resolved in step 7._ `core/compaction/compaction.ts` (`compactionRequest`) assembles role messages itself instead of going through `core/render`.
 
 **F6 — Glossary gaps.** _Resolved 2026-09-30: terms added, `CONTEXT.md` grouped by context; Review Gate and Context Policy definitions corrected to match the code._ Used in code and UI, missing from `CONTEXT.md`: Permission Rule, session allow rule ("allow for session"), auto-approve, `@path` reference (unread → snapshot), environment Note, project instructions, session worktree, budget / drift, prefix cache (warm blocks), opening blocks, held results / stop. `CONTEXT.md` also carries an implementation detail (key `t` under Model Profile).
 
@@ -85,7 +85,7 @@ Each step is small, keeps `bun test` green and can land alone.
 4. ~~**Extract `src/gate/`**~~ — done (ADR 0003): the workflow slices in `src/gate/`, selection, marks and Kind Filters in `ui/selection.ts`, composed in `ui/screen.ts`; the Gate drives the view through its `View` port. First plain unit tests in `src/gate/index.test.ts`. Open: move more workflow tests from frames to unit tests; narrow `View` towards focus announcements.
 5. ~~**`core/tools/`**~~ (F4) — done: `toolcall/` is `tools/`, `bash.ts` split into `catalog.ts` (definitions, Tools Block content), `call.ts` (parse, arguments, result text) and `runner.ts` (the `Runner` port); `thinking.ts` (inline `<think>` in answers) moved to `core/render/`, it is Inference.
 6. ~~**Slim the kernel**~~ (F3) — done: `fold` returns the domain Context, the blocks sent next (removed ones are gone); `gate/review.ts` derives what the Gate shows on top of it from the Session Log: blocks removed since the last request struck through in place, `moved`/`revised` since then, titles (Rename), unreadable references (`missing`, now returned beside the Context by `peekReferences`). `sentBlocks` is gone.
-7. **ACL only** (F5) — `compactionRequest` moves into `core/render`.
+7. ~~**ACL only**~~ (F5) — done: the Compaction requests (`sourcesRequest`, `inContextRequest`) are built in `core/render/compaction.ts`; `core/compaction` picks the sources and the system prompt only.
 
 ## Open questions
 
