@@ -434,31 +434,36 @@ test('a Context Policy from the config directory is loaded, switched on, and edi
   expect(JSON.stringify(fake.chatRequests[0])).toContain('HI THERE');
 });
 
-test('the built-in thinking-trail is offered and switched on without any policy file', async () => {
-  await launch({ config: url => profileConfig(url) });
-  await frameMatching(ui, f => f.includes('/ 2k'));
-  ui.mockInput.pressTab();
-  await ui.flush();
-  await ui.mockInput.typeText('/policy ');
-  expect(await frameMatching(ui, f => f.includes('thinking-trail'))).toMatch(/thinking-trail\s+drops tool pairs, summarizes reasoning/);
-  await ui.mockInput.typeText('t');
-  ui.mockInput.pressEnter();
-  await frameMatching(ui, f => f.includes('policy thinking-trail on'));
-  expect(ui.captureCharFrame()).toMatch(/local · thinking off · policy thinking-trail/);
-});
+// Adds one Note right after the Tools Block, once.
+const ANNOUNCE = `export default (context: { blocks: { origin?: string }[] }) =>
+  context.blocks.some(b => b.origin === 'policy') ? [] : [{ op: 'note', after: 2, content: 'Tool calls are removed once done.' }];
+`;
 
-test('thinking-trail tells the model what it does: a Note right after the Tools Block, titled Context Policy', async () => {
-  const { log } = await launch({ config: url => profileConfig(url) });
+test('a policy\'s Note sits where the policy put it, titled Context Policy', async () => {
+  const { log } = await launch({ config: url => profileConfig(url), policies: { announce: ANNOUNCE } });
   await frameMatching(ui, f => f.includes('/ 2k'));
-  await command('/policy thinking-trail');
-  await frameMatching(ui, f => f.includes('policy thinking-trail on'));
+  await command('/policy announce');
+  await frameMatching(ui, f => f.includes('policy announce on'));
   fake.reply({ chunks: ['ok'] });
   await command('hi');
   const answered = await frameMatching(ui, f => f.includes('answer complete'));
-  expect(answered).toContain('thinking-trail: 1 Note added · answer complete');
+  expect(answered).toContain('announce: 1 Note added · answer complete');
   expect(answered).toMatch(/3\s+Note\s+Context Policy/);
-  expect(log().find(e => e.type === 'NoteAdded')).toMatchObject({ after: 2, by: 'thinking-trail' });
-  expect(JSON.stringify(fake.chatRequests[0])).toContain('Tool calls and results are removed once you have reasoned past them');
+  expect(log().find(e => e.type === 'NoteAdded')).toMatchObject({ after: 2, by: 'announce' });
+  expect(JSON.stringify(fake.chatRequests[0])).toContain('Tool calls are removed once done.');
+});
+
+test('the built-in lean-compact is on for a new session without any policy file; defaultPolicy off switches it off', async () => {
+  await launch({ config: url => profileConfig(url) });
+  expect(await frameMatching(ui, f => f.includes('/ 2k'))).toMatch(/local · thinking off · policy lean-compact/);
+  ui.mockInput.pressTab();
+  await ui.flush();
+  await ui.mockInput.typeText('/policy ');
+  expect(await frameMatching(ui, f => f.includes('drops reads'))).toMatch(/lean-compact\s+active · drops reads and short thinking/);
+  ui.renderer.destroy();
+  fake.stop();
+  await launch({ config: url => profileConfig(url).replace('"defaultProfile"', '"defaultPolicy": "off", "defaultProfile"') });
+  expect(line(await frameMatching(ui, f => f.includes('/ 2k')), /local/)).not.toContain('policy');
 });
 
 test('defaultPolicy: a new session starts with it on, an unknown name is reported', async () => {
@@ -492,12 +497,12 @@ test('auto-approve belongs to the app: it stays when switching sessions and is n
   await frameMatching(ui, f => f.includes('Sessions ·'));
   await key('down');
   await key('enter');
-  expect(await frameMatching(ui, f => f.includes('resumed "fix the build"'))).toMatch(/local · thinking off · auto-approve/);
+  expect(await frameMatching(ui, f => f.includes('resumed "fix the build"'))).toMatch(/local · thinking off · policy lean-compact · auto-approve/);
   expect(JSON.stringify(log())).not.toContain('auto');
 });
 
 test('/git:worktree on runs the session in its own worktree on its own branch; off back in the project, the worktree kept', async () => {
-  const { log, root } = await launch({ config: url => profileConfig(url), git: true });
+  const { log, root } = await launch({ config: url => profileConfig(url).replace('"defaultProfile"', '"defaultPolicy": "off", "defaultProfile"'), git: true });
   await frameMatching(ui, f => f.includes('/ 2k'));
   expect(line(ui.captureCharFrame(), /local/)).toMatch(/local · thinking off · ⎇ main /);
   await command('/git:worktree on');

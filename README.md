@@ -1,16 +1,9 @@
 <div align="center">
 
-<pre>
-██████╗ ███████╗███████╗███████╗ ██████╗████████╗ ██████╗ ██████╗ 
-██╔══██╗██╔════╝██╔════╝██╔════╝██╔════╝╚══██╔══╝██╔═══██╗██╔══██╗
-██████╔╝█████╗  ███████╗█████╗  ██║        ██║   ██║   ██║██████╔╝
-██╔══██╗██╔══╝  ╚════██║██╔══╝  ██║        ██║   ██║   ██║██╔══██╗
-██║  ██║███████╗███████║███████╗╚██████╗   ██║   ╚██████╔╝██║  ██║
-╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝ ╚═════╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝
-</pre>
+<img width="640" alt="RESECTOR" src="docs/assets/title.svg" />
 
-**The coding agent for local LLMs that shows you its context.**<br />
-See, measure and edit every token before it reaches the model.
+**Manage your context like a pro.**<br />
+The coding agent for local LLMs.
 
 <a href="https://github.com/artkoenig/resector/releases"><img alt="Latest Release" src="https://img.shields.io/github/v/release/artkoenig/resector?style=flat-square" /></a>
 <a href="https://github.com/artkoenig/resector/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/artkoenig/resector/ci.yml?branch=main&style=flat-square" /></a>
@@ -23,29 +16,24 @@ See, measure and edit every token before it reaches the model.
 
 ---
 
-Local models get a few ten thousand tokens, not a million. Agents built for cloud models hide the context in a transcript that grows until something compacts it behind your back — and a 30B model on a laptop falls apart long before that.
-
-resector turns the context into something you work with. It is a list of blocks, each with its token count and prefix-cache state. Every request stops at a **Review Gate** where you remove, edit, move or compact blocks before anything is sent. When you know which rules work, write them down as a **Context Policy** and let resector apply them for you, in the open.
+Local models get a few ten thousand tokens, not a million. resector shows the Context as a list of blocks — each with its tokens and prefix-cache state — and stops before every request so you can trim it. By hand at the **Review Gate**, or automatically with a **Context Policy**.
 
 ## Features
 
-- **Review Gate:** a pause before every request to the model, including every follow-up inside a tool loop.
-- **Token-exact:** each Context Block shows its tokens as rendered, counted with the model's own tokenizer, against the window.
-- **Cache-aware:** each block shows whether the server's prefix cache still holds it (`●`) or has to recompute it from there (`○`).
-- **Manual Compaction:** mark any blocks and let the model rewrite them into one Note. Review, refine or discard the proposal.
-- **Context Policies:** stateless TypeScript functions that edit the Context before each request — with the same operations and rules as you.
-- **Nothing is lost:** the Session Log is append-only. Edits create Revisions; removals, moves and Compactions can be undone.
-- **Local backends:** llama.cpp, Ollama, LM Studio and oMLX. Native tool calling, or tools in the prompt for models without it.
-- **Guarded tools:** `bash` calls are parsed and checked against `allow` / `ask` / `deny` rules; the model can ask you questions instead of guessing.
+- **Review Gate:** a pause before every request, including every step of a tool loop.
+- **Token-exact, cache-aware:** each block shows its tokens (the model's own tokenizer) and whether the prefix cache still holds it (`●` / `○`).
+- **Compaction:** mark blocks and let the model rewrite them into one Note.
+- **Context Policies:** TypeScript functions that trim the Context before each request — same operations, same rules as you.
+- **Nothing is lost:** edits create Revisions; removals, moves and Compactions can be undone.
+- **Local backends:** llama.cpp, Ollama, LM Studio, oMLX.
 
 ## Installation
 
 ```bash
-# Homebrew (macOS and Linux)
 brew install artkoenig/tap/resector
 ```
 
-Or grab a binary for `darwin-arm64`, `darwin-x64`, `linux-x64` or `linux-arm64` from the [releases page](https://github.com/artkoenig/resector/releases).
+Or grab a binary from the [releases page](https://github.com/artkoenig/resector/releases).
 
 <details>
 <summary><strong>From source</strong></summary>
@@ -63,113 +51,79 @@ scripts/install-dev.sh   # `resector` in ~/.local/bin, running this checkout
 
 ## Getting Started
 
-Start a model server, then run resector in your project:
-
 ```bash
 llama-server -m your-model.gguf --jinja   # or Ollama, LM Studio, oMLX
 cd your-project
-resector
+resector                                  # -c continues the last session
 ```
 
-On first start resector looks for model servers on their default ports, lets you pick a model and writes `~/.config/resector/config.jsonc`. Window size and tokenizer are detected.
+On first start resector finds the model server, lets you pick a model and writes `~/.config/resector/config.jsonc`.
 
-```bash
-resector            # new session
-resector -c         # continue the last session
-resector -c <id>    # continue a given session
-```
+## Manual: the Review Gate
 
-## Context Management
-
-Everything the next request sends is the **Context**: an ordered list of **Context Blocks** — System, Tools, User, Thinking, Assistant, Tool Call, Tool Result and Note. Nothing is sent that is not on screen.
-
-### The Review Gate
-
-Before every request resector stops and shows the Context, one row per block with its tokens and cache state.
+The **Context** is everything the next request sends: an ordered list of **Context Blocks** — System, Tools, User, Thinking, Assistant, Tool Call, Tool Result, Note. Before every request resector stops and shows it.
 
 | Key | Action |
 | --- | --- |
 | `enter` | send |
 | `tab` | type a message (`/` for commands, `@` for files) |
-| `e` | edit the selected block (creates a new Revision) |
+| `e` | edit the selected block |
 | `⌥↑` / `⌥↓` | move the selected block |
 | `d` | remove the selected or marked blocks |
-| `space` / `c` | mark blocks / compact them |
-| `u` | undo the last operation |
+| `space` / `c` | mark blocks / compact them into a Note |
+| `u` | undo |
 | `y` / `a` / `n` | pending Tool Call: run once / allow for the session / reject |
-| `q` | quit |
 
-A few rules keep the Context valid: the Tools Block stays first and is never edited; a Tool Call and its Tool Result are removed or compacted only as a pair; moving a pair turns it into a Note. `/filter <kind>` hides whole kinds from view (Tool Calls start hidden) without touching what is sent.
+A Tool Call and its Tool Result are removed or compacted only as a pair. When compacting, the model sees only the marked blocks and writes one **Note**; accept it, discard it or retry with another instruction.
 
-### Compaction
+Mind the prefix cache: an edit early in the Context makes the server recompute everything after it. The `●` / `○` column shows that point *before* you send.
 
-Mark the blocks that have served their purpose and press `c`. The model sees only those blocks and an instruction, and writes one **Note** that takes the place of the first. Accept it, discard it, or change the instruction and try again. Undo brings the originals back.
+## Automatic: Context Policies
 
-Replace the shipped instruction with a `compaction.md` next to your config; a separate, cheaper model can do the work via `compactionProfile`.
+A **Context Policy** is a function over the Context that resector calls before every request. It returns operations — `remove`, `edit`, `move`, `compact`, `note` — each checked like yours.
 
-### Notes
+- **In the open:** every operation lands in the Session Log under the policy's name, and the Gate shows what it did.
+- **The policy wins:** undone operations are applied again. To keep something, switch the policy off.
+- **Fails loudly:** a failing policy stops the Gate instead of sending.
 
-A Note is free text without a chat role. resector adds them for the session environment (directory, OS, shell, date, git branch — refreshed when it changes), for `AGENTS.md` / `CLAUDE.md` in the project root, and for files you reference with `@path`. Personal instructions that do not belong in the repository go to `~/.config/resector/projects/<project>/AGENTS.md`.
+### Built-in: `lean-compact`
 
-### The prefix cache
+On by default. From half the window on, [`lean-compact`](src/core/policy/lean-compact.ts) removes read-only `bash` Tool Pairs (`grep`, `cat`, `git diff`, …) and short Thinking, then compacts the rest of the work into one Note. Your messages, the project's Notes and the newest Tool Pair stay.
 
-Local servers reuse the prompt up to the first token that changed. Every edit early in the Context makes the server recompute everything after it — on a laptop that can take minutes. The `●` / `○` column shows where that point is *before* you send, so you can decide whether removing a block is worth it.
+Compared with compacting everything (same instruction, 5 synthetic sessions):
 
-## Context Policies
-
-Doing the same cleanup by hand at every Gate gets old. A **Context Policy** is a function over the Context that resector calls before every request; it returns operations, and resector applies them until it returns none.
+| | lean-compact vs. compact everything |
+| --- | --- |
+| Prompt to the model | **−95 %** tokens |
+| Compaction time | **−93 %** |
+| Facts kept | 98 % vs. 95 % |
 
 ```bash
-/policy thinking-trail   # switch on
-/policy off              # switch off
+/policy off            # switch off
+/policy lean-compact   # switch on again
 ```
-
-- **Same operations, same rules.** A policy can `remove`, `edit`, `move`, `compact` and add a `note` — nothing else, and each operation is checked like yours.
-- **Transparent, not silent.** Every operation lands in the Session Log attributed to the policy, and the Gate shows what it did (`thinking-trail: 3 Tool Pairs removed, 5 Thinking → 1 Note`).
-- **The policy wins.** Undo an operation and it is applied again before the next request. To keep something, switch the policy off.
-- **Fails loudly.** A failing policy or Compaction stops the Gate instead of sending.
-- **One at a time,** off after every start unless `defaultPolicy` is set.
-
-### Built-in: `thinking-trail`
-
-Drops Tool Calls and their results once the model has reasoned past them, and compacts its reasoning and answers into a running summary once the Context takes two thirds of the window. It tells the model what it does with a Note of its own.
 
 ### Write your own
 
-Put a module into `~/.config/resector/policies/<name>.ts` — it is loaded at start and appears in `/policy`. The example [`examples/policies/lean-compact.ts`](examples/policies/lean-compact.ts) is a good start: from half the window on it removes read-only `bash` Tool Pairs (`grep`, `cat`, `git diff`, …) and short Thinking, then compacts the rest of the work into one Note — leaving your messages, the project's Notes and the newest Tool Pair alone.
-
-```bash
-cp examples/policies/lean-compact.ts ~/.config/resector/policies/
-```
+A policy is a module in `~/.config/resector/policies/<name>.ts`; one named `lean-compact.ts` replaces the built-in.
 
 ```ts
 export const description = 'drops reads and short thinking, compacts at ½';
 
-export default function leanCompact({ window, used, blocks: all }: PolicyContext): PolicyOperation[] {
-  if (used < window * COMPACT_FROM) return [];
-  // The model has not yet built on the newest block: it is left out, a Tool Pair as a whole.
-  const last = all.at(-1);
-  const newest = new Set([last?.id, last?.pair]);
-  const blocks = all.filter(b => !newest.has(b.id));
-  const reads = blocks.filter(b => isRead(b, blocks));
-  const short = blocks.filter(b => b.kind === 'Thinking' && b.tokens < SHORT_THINKING);
-  const gone = new Set([...reads.flatMap(b => [b.id, b.pair!]), ...short.map(b => b.id)]);
-  const sources = blocks.filter(b => compactable(b) && !gone.has(b.id));
-  const removals = [...reads, ...short].map(b => ({ op: 'remove' as const, id: b.id }));
-  // Only the Note of an earlier Compaction left: compacting it again would not free the window.
-  const worth = sources.some(b => b.origin !== 'compaction');
-  return worth ? [...removals, { op: 'compact', sources: sources.map(b => b.id), instruction: INSTRUCTION }] : removals;
+export default function leanCompact({ window, used, blocks }: PolicyContext): PolicyOperation[] {
+  if (used < window / 2) return [];
+  // … return remove / compact operations
 }
 ```
 
-Each block has `id`, `kind`, `origin`, `content`, `tokens`, `pair` (the other half of its Tool Pair) and `pending`. The full interface is in [`src/core/policy/policy.ts`](src/core/policy/policy.ts), the design in [ADR 0001](docs/adr/0001-context-policies.md).
+Interface: [`src/core/policy/policy.ts`](src/core/policy/policy.ts), design: [ADR 0001](docs/adr/0001-context-policies.md).
 
 > [!NOTE]
 > Policies are only loaded from your home directory, never from a project: a cloned repository cannot run code in your harness.
 
 ## Configuration
 
-resector reads `~/.config/resector/config.jsonc` (or `$RESECTOR_CONFIG`) and then `.resector/config.jsonc` in the project, which may only tighten permissions. All options are in [`config.schema.json`](config.schema.json).
+`~/.config/resector/config.jsonc`, then `.resector/config.jsonc` in the project (may only tighten permissions). All options: [`config.schema.json`](config.schema.json).
 
 ```jsonc
 {
@@ -178,55 +132,31 @@ resector reads `~/.config/resector/config.jsonc` (or `$RESECTOR_CONFIG`) and the
     "qwen": {
       "backend": "llamacpp",               // llamacpp | ollama | lmstudio | omlx
       "endpoint": "http://localhost:8080",
-      "model": "qwen3-coder",
-      "thinking": "low",                   // off | on | effort level
-      "toolProtocol": "native",            // native | text-xml
-      "sampling": { "temperature": 0.6 },
-      "compactionProfile": "qwen-small"
+      "model": "qwen3-coder"
     }
   },
   "defaultProfile": "qwen",
-  "defaultPolicy": "thinking-trail",
-  "permission": {
-    "npm test *": "allow",                 // `<command> *`: the command alone or with arguments
-    "rm *": "ask",
-    "git push *": "deny"
-  }
+  "defaultPolicy": "lean-compact",        // default; "off" for none
+  "permission": { "npm test *": "allow", "rm *": "ask", "git push *": "deny" }
 }
 ```
 
-A `system.md` next to a config file replaces the shipped system prompt.
-
-### Slash commands
-
-| Command | Description |
-| --- | --- |
-| `/policy <name>` | switch a Context Policy on or off |
-| `/filter <kind>` | show or hide blocks of a kind |
-| `/thinking <mode>` | set thinking for the next requests |
-| `/tools <tool>` | switch `bash`, `search` or `question` on or off |
-| `/auto` | auto-approve what the rules would ask for (`deny` still applies) |
-| `/sessions` | list, resume, rename, delete sessions |
-| `/rename <title>` | rename the session |
-| `/git:branch <branch>` | show or switch the git branch |
-| `/git:worktree <on\|off>` | run the session in its own git worktree |
+`compaction.md` / `system.md` next to a config file replace the shipped instructions. Slash commands: `tab`, then `/`.
 
 ## Documentation
 
-- [`CONTEXT.md`](CONTEXT.md) — the vocabulary: Context Block, Revision, Session Log, Review Gate, Compaction, Note, Context Policy, …
+- [`CONTEXT.md`](CONTEXT.md) — vocabulary
 - [`docs/adr/`](docs/adr/) — design decisions
-- [`docs/releasing.md`](docs/releasing.md) — builds and releases
 
 ## Contributing
 
 ```bash
 bun install
-bun run typecheck
-bun test            # all tests; bun test <file> for one
-bun run gate        # typecheck, coverage, dependency rules, mutation tests, duplication
+bun test
+bun run gate   # typecheck, coverage, dependency rules, mutation tests, duplication
 ```
 
-Domain logic lives in `src/core/` (no I/O), model servers and the system in `src/adapters/`, the terminal UI (OpenTUI + Solid) in `src/ui/`. Bugs and ideas: [GitHub Issues](https://github.com/artkoenig/resector/issues).
+Bugs and ideas: [GitHub Issues](https://github.com/artkoenig/resector/issues).
 
 ## License
 

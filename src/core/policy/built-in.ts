@@ -1,5 +1,7 @@
 // The Context Policies shipped with resector, offered next to those in ~/.config/resector/policies (ADR 0001).
+import leanCompact, { description } from './lean-compact';
 import type { Policy } from './policy';
-import thinkingTrail, { description } from './thinking-trail';
 
-export const BUILT_IN: Policy[] = [{ name: 'thinking-trail', run: thinkingTrail, description }];
+export const BUILT_IN: Policy[] = [{ name: 'lean-compact', run: leanCompact, description }];
+// On for new sessions unless the config's defaultPolicy says otherwise.
+export const DEFAULT_POLICY = 'lean-compact';

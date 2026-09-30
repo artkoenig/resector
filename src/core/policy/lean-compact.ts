@@ -1,12 +1,11 @@
-// Example Context Policy lean-compact (ADR 0001): from half the window on, read-only Tool Pairs and Thinking under 200
-// tokens are removed, then the rest of the work is compacted into one Note. The newest block (Tool Pair) stays as is.
-// Copy it to ~/.config/resector/policies/ and switch it on with `/policy lean-compact`; the type import is erased at load.
-import type { PolicyBlock, PolicyContext, PolicyOperation } from '../../src/core/policy/policy';
+// The built-in Context Policy lean-compact (ADR 0001): from half the window on, read-only Tool Pairs and Thinking under
+// 200 tokens are removed, then the rest of the work is compacted into one Note. The newest block (Tool Pair) stays as is.
+// Written like a policy module in ~/.config/resector/policies: the reference for one.
+import { DEFAULT_INSTRUCTION } from '../compaction/compaction';
+import type { PolicyBlock, PolicyContext, PolicyOperation } from './policy';
 
 const COMPACT_FROM = 1 / 2;
 const SHORT_THINKING = 200;
-// The shipped Compaction instruction, inlined: a value import would not resolve from ~/.config.
-const INSTRUCTION = 'Keep file paths, line numbers, decisions, errors and open todos. Drop passing output and code already fixed.';
 // Like the built-in allow list of Tool Approval (FR-22), plus a few harmless ones.
 const READ_ONLY = ['ls', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'sed -n', 'git status', 'git diff', 'git log', 'git show', 'pwd', 'cd', 'tree', 'stat', 'file', 'echo'];
 // Options that make a read-only command write or run something, by its name (as in Tool Approval).
@@ -32,7 +31,7 @@ export default function leanCompact({ window, used, blocks: all }: PolicyContext
   const removals = [...reads, ...short].map(b => ({ op: 'remove' as const, id: b.id }));
   // Only the Note of an earlier Compaction left: compacting it again would not free the window.
   const worth = sources.some(b => b.origin !== 'compaction');
-  return worth ? [...removals, { op: 'compact', sources: sources.map(b => b.id), instruction: INSTRUCTION }] : removals;
+  return worth ? [...removals, { op: 'compact', sources: sources.map(b => b.id), instruction: DEFAULT_INSTRUCTION }] : removals;
 }
 
 // The user's word, the project's Notes and a Tool Call awaiting approval stay.
@@ -41,8 +40,9 @@ const compactable = (b: PolicyBlock) =>
 
 // A bash Tool Call with its result whose every command only reads. A Question's answers (by the user) stay.
 function isRead(b: PolicyBlock, blocks: PolicyBlock[]): boolean {
-  if (b.kind !== 'Tool Call' || b.pending || b.pair === null) return false;
-  if (blocks.find(r => r.id === b.pair)?.origin === 'user') return false;
+  // A pending Tool Call has no result yet, so no pair.
+  if (b.kind !== 'Tool Call' || b.pair === null) return false;
+  if (blocks.find(r => r.id === b.pair)!.origin === 'user') return false;
   // Quoted text is an argument, not an operator (`grep "a\|b"`); double quotes still run `$(…)`. One pass, left to
   // right, so a quote inside the other kind does not pair up.
   let runs = false;
