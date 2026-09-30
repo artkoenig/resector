@@ -1,4 +1,4 @@
-// Splits a bash command line into its simple commands with tree-sitter-bash (FR-22, architecture §5).
+// Splits a bash command line into its simple commands with tree-sitter-bash.
 import { Language, Parser, type Node } from 'web-tree-sitter';
 // Embedded in the compiled binary; the import is the file's path.
 import runtime from 'web-tree-sitter/tree-sitter.wasm' with { type: 'file' };

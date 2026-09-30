@@ -45,7 +45,7 @@ test('an editor exiting with an error (e.g. :cq) is an error, the screen is take
   expect(files()).toEqual([]);
 });
 
-test('a file is opened in $EDITOR itself, the screen handed over and taken back (FR-27)', async () => {
+test('a file is opened in $EDITOR itself, the screen handed over and taken back', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'resector-editor-file-'));
   const file = join(dir, 'a.ts');
   writeFileSync(file, 'x');

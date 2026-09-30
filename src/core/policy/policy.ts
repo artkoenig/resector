@@ -79,7 +79,7 @@ function withBlock(context: Context, id: number, then: (block: Block) => Plan): 
   return block ? then(block) : { error: `no block ${id} in the Context` };
 }
 
-// Moving a Tool Pair turns it into a Note first (FR-9); the Note then moves.
+// Moving a Tool Pair turns it into a Note first; the Note then moves.
 function moveAsNote(events: SessionEvent[], context: Context, block: Block, after: number): Plan {
   const note = ops.toNote(block, context.nextId) as { event: SessionEvent };
   const converted = fold([...events, note.event]);
@@ -128,7 +128,7 @@ export function summary(name: string, changes: Change[]): string {
 }
 
 // What the policy hook needs from the Gate: the Session Log, the token count of a Context, the window, and a
-// Compaction's Note (on the Model Profile's compactionProfile, FR-17); a failing Compaction throws.
+// Compaction's Note (on the Model Profile's compactionProfile); a failing Compaction throws.
 export type Ports = {
   events: () => SessionEvent[];
   append: (event: SessionEvent) => void;

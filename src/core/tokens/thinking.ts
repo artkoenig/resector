@@ -1,4 +1,4 @@
-// Thinking blocks in the token split (FR-48): what each adds to its counted prefix and to the request,
+// Thinking blocks in the token split: what each adds to its counted prefix and to the request,
 // measured by counting both again without it.
 import { withoutThinking, type AssistantMessage, type Request } from '../render/native';
 import type { ThinkingShare } from './split';

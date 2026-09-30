@@ -15,7 +15,7 @@ test('a new session holds its Model Profile, the System prompt and the Tools Blo
   expect(summarize(start)).toEqual({ title: '(new session)', renamed: false, profile: 'qwen', blocks: 2, tokens: null });
 });
 
-test('the title is the first line of the first User message, shortened (FR-34)', () => {
+test('the title is the first line of the first User message, shortened', () => {
   const long = 'x'.repeat(70);
   expect(summarize([...start, user(2, '  \n  Fix the build \nplease'), user(3, 'other')]).title).toBe('Fix the build');
   expect(summarize([...start, user(2, ' \n ')]).title).toBe('(new session)');
@@ -42,7 +42,7 @@ test('the summary counts the Context blocks and takes the tokens of the last req
   expect(summarize(events)).toEqual({ title: 'a', renamed: false, profile: 'gemma', blocks: 2, tokens: 14 });
 });
 
-test('a new session starts with the environment Note and the project instructions right after the Tools Block (FR-28, FR-29)', () => {
+test('a new session starts with the environment Note and the project instructions right after the Tools Block', () => {
   const events = newSession('qwen', 'sys', { environment: 'cwd: /p', instructions: [{ file: 'AGENTS.md', content: '# Rules\n' }] });
   expect(events.slice(3)).toEqual([
     { type: 'BlockAdded', id: 3, kind: 'Note', origin: 'environment', content: 'cwd: /p' },

@@ -1,4 +1,4 @@
-// Sessions (FR-32–FR-35): a new Session Log, how a session is referred to, and its summary in /sessions.
+// Sessions: a new Session Log, how a session is referred to, and its summary in /sessions.
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
 import { fileNote } from '../notes/files';
@@ -6,15 +6,15 @@ import { TOOLS } from '../toolcall/bash';
 
 export type SessionSummary = { title: string; renamed: boolean; profile: string; blocks: number; tokens: number | null };
 
-// A session to resume or export: its id, or true = the newest one of the project (FR-32).
+// A session to resume or export: its id, or true = the newest one of the project.
 export type SessionRef = true | string;
 
 const TITLE_LENGTH = 60;
 type BlockAdded = Extract<SessionEvent, { type: 'BlockAdded' }>;
 type RequestSent = Extract<SessionEvent, { type: 'RequestSent' }>;
 
-// What a new session starts with besides System prompt and Tools Block: the environment Note (FR-28) and the
-// project instructions (`AGENTS.md` and `CLAUDE.md` of the project, then the user's own for it), read once now (FR-29).
+// What a new session starts with besides System prompt and Tools Block: the environment Note and the
+// project instructions (`AGENTS.md` and `CLAUDE.md` of the project, then the user's own for it), read once now.
 // All are ordinary Notes right after the Tools Block, one per file.
 export type Instructions = { file: string; content: string };
 export type SessionNotes = { environment?: string; instructions?: Instructions[] };
@@ -23,7 +23,7 @@ export function newSession(profile: string, systemPrompt: string, { environment,
   const events: SessionEvent[] = [
     { type: 'SessionCreated', profile, protocol: 'native' },
     { type: 'BlockAdded', id: 1, kind: 'System', origin: 'config', content: systemPrompt },
-    // Always sent, never edited (FR-12).
+    // Always sent, never edited.
     { type: 'BlockAdded', id: 2, kind: 'Tools', origin: 'config', content: TOOLS },
   ];
   if (environment !== undefined) events.push({ type: 'BlockAdded', id: events.length, kind: 'Note', origin: 'environment', content: environment });
@@ -47,7 +47,7 @@ export function openingBlocks(events: SessionEvent[]): Set<number> {
 // Whether the session runs in its own git worktree: the last switch wins, a new session runs in the project.
 export const inWorktree = (events: SessionEvent[]): boolean => events.findLast(e => e.type === 'WorktreeSet')?.on === true;
 
-// Title = the last session rename, else the first line of the first User message (FR-34).
+// Title = the last session rename, else the first line of the first User message.
 function sessionTitle(events: SessionEvent[]): Pick<SessionSummary, 'title' | 'renamed'> {
   const renamed = events.findLast(e => e.type === 'SessionRenamed')?.title;
   if (renamed) return { title: renamed, renamed: true };

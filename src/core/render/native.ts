@@ -10,7 +10,7 @@ export type Message =
   | { role: 'tool'; tool_call_id: string; content: string };
 export type ToolDefinition = { type: 'function'; function: { name: string; description: string; parameters: unknown } };
 // A chat request as the backend receives it: messages plus the tools field; thinking: set at the Gate,
-// else the backend sends the Model Profile's (FR-49); answerStart: the answer begins with it, the server continues it without reasoning.
+// else the backend sends the Model Profile's; answerStart: the answer begins with it, the server continues it without reasoning.
 export type Request = { messages: Message[]; tools: ToolDefinition[]; thinking?: Thinking; answerStart?: string };
 
 // What goes into the next request: removed blocks are only struck through at the Gate.
@@ -51,7 +51,7 @@ const ADD: Record<Block['kind'], Add> = {
   System: (r, _, b) => void r.messages.push({ role: 'system', content: b.content }),
   User: user,
   Note: user,
-  // Sent with every request; the chat template decides whether it reaches the model (FR-47, FR-48).
+  // Sent with every request; the chat template decides whether it reaches the model.
   Thinking: (r, _, b) => void r.messages.push({ role: 'assistant', content: '', reasoning_content: b.content }),
   Assistant: addText,
   Tools: (r, _, b) => void (r.tools = (JSON.parse(b.content) as ToolDefinition['function'][]).map(f => ({ type: 'function', function: f }))),
@@ -71,7 +71,7 @@ export function renderPrefixes(context: Context): Request[] {
   });
 }
 
-// native Tool Protocol (architecture §4 "Rendering"): Tools Block → tools field; Thinking, Assistant text
+// native Tool Protocol: Tools Block → tools field; Thinking, Assistant text
 // and its Tool Calls → one assistant message with reasoning_content and tool_calls; each Tool Result → a tool message; a Note is a
-// user-role message (FR-9).
+// user-role message.
 export const renderNative = (context: Context): Request => renderPrefixes(context).at(-1) ?? EMPTY_REQUEST;

@@ -17,7 +17,7 @@ test('without arguments Resector starts a new session', () => {
   expect(main([])).toEqual({ start: {} });
 });
 
-test('-c resumes the last session, -c <id> a given one (FR-32)', () => {
+test('-c resumes the last session, -c <id> a given one', () => {
   expect(main(['-c'])).toEqual({ start: { resume: true } });
   expect(main(['-c', 'ses_a'])).toEqual({ start: { resume: 'ses_a' } });
   expect(main(['--continue', 'ses_a'])).toEqual({ start: { resume: 'ses_a' } });

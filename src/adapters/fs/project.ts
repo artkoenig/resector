@@ -1,4 +1,4 @@
-// The project on disk: @path reads (FR-27), the environment probe (FR-28), project instructions (FR-29).
+// The project on disk: @path reads, the environment probe, project instructions.
 import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -18,7 +18,7 @@ export const projectFiles = (root: string): ReadFile => path => {
   }
 };
 
-// The project's files for @path completion (FR-27), relative to the root: in a git repository the tracked and
+// The project's files for @path completion, relative to the root: in a git repository the tracked and
 // untracked ones not ignored, else a walk skipping dot directories and node_modules. At most `limit`.
 export function listProjectFiles(root: string, limit = 20000): string[] {
   const git = spawnSync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -67,7 +67,7 @@ const pad = (n: number) => String(n).padStart(2, '0');
 // The local date, no time: it changes once a day.
 const localDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-// Tool Calls run in bash (FR-21), whatever the user's shell.
+// Tool Calls run in bash, whatever the user's shell.
 export function probeEnvironment(root: string, now = new Date()): Environment {
   const git = spawnSync('git', ['branch', '--show-current'], { cwd: root, encoding: 'utf8' });
   const branch = git.status === 0 ? git.stdout.trim() : '';

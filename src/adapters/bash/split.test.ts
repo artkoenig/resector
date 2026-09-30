@@ -13,7 +13,7 @@ test('a simple command is one sub-command with its literal arguments', () => {
   expect(split('grep -n "a b" \'c\' d\\ e src/x.ts')).toEqual([{ text: 'grep -n "a b" \'c\' d\\ e src/x.ts', args: ['-n', 'a b', 'c', 'd e', 'src/x.ts'], writes: [] }]);
 });
 
-test('lists, pipelines, subshells and loops are split into their simple commands (FR-22)', () => {
+test('lists, pipelines, subshells and loops are split into their simple commands', () => {
   expect(texts('ls -la && cat x | grep y; echo done || true')).toEqual(['ls -la', 'cat x', 'grep y', 'echo done', 'true']);
   expect(texts('(cd src && ls) & wait')).toEqual(['cd src', 'ls', 'wait']);
   expect(texts('for f in *; do rm $f; done')).toEqual(['rm $f']);

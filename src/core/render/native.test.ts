@@ -59,7 +59,7 @@ const loop = [
 // Call ids number the calls of their assistant message.
 const call = (index: number, command: string) => ({ id: `call_${index}`, type: 'function' as const, function: { name: 'bash', arguments: JSON.stringify({ command }) } });
 
-test('the Tools Block goes into the tools field; Assistant text and its Tool Calls merge into one message (FR-12)', () => {
+test('the Tools Block goes into the tools field; Assistant text and its Tool Calls merge into one message', () => {
   expect(renderNative(fold(loop))).toEqual({
     messages: [
       { role: 'system', content: 'sys' },
@@ -121,7 +121,7 @@ test('a Note from a Tool Pair is a user message, never tool syntax; the other ca
   ]);
 });
 
-test('a Thinking block is the reasoning_content of its answer: text and Tool Calls join its message (FR-47)', () => {
+test('a Thinking block is the reasoning_content of its answer: text and Tool Calls join its message', () => {
   const context = fold([
     created,
     add(1, 'User', 'hi'),
@@ -171,7 +171,7 @@ test('an Assistant block after anything but its Thinking block starts its own me
   ]);
 });
 
-test('thinking set at the Gate goes into every prefix; without it the backend sends the profile thinking (FR-49)', () => {
+test('thinking set at the Gate goes into every prefix; without it the backend sends the profile thinking', () => {
   const events: SessionEvent[] = [created, add(1, 'System', 'sys'), add(2, 'User', 'hi')];
   expect(renderPrefixes(fold(events)).map(r => r.thinking)).toEqual([undefined, undefined]);
   const set = renderPrefixes(fold([...events, { type: 'ThinkingSet', thinking: 'medium' }]));

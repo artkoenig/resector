@@ -109,7 +109,7 @@ test('permission rules, keybindings and the bash timeout are read from config', 
   );
 });
 
-test('permission rules: built-in, then global, then project; project allow entries are ignored (FR-25)', () => {
+test('permission rules: built-in, then global, then project; project allow entries are ignored', () => {
   const { permissions } = readConfig([
     { source: 'global', text: '{ "permission": { "git push *": "ask", "make *": "allow" } }' },
     { source: 'project', project: true, text: '{ "permission": { "make *": "deny", "git commit *": "allow" } }' },

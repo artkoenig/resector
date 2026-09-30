@@ -1,4 +1,4 @@
-// First start (FR-45): pick one of the models found on the local ports; it becomes the default Model Profile.
+// First start: pick one of the models found on the local ports; it becomes the default Model Profile.
 import { useKeyboard, useTerminalDimensions } from '@opentui/solid';
 import { createSignal, For } from 'solid-js';
 import { isSupported } from '../adapters/backend/connect';

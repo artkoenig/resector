@@ -7,7 +7,7 @@ import type { SessionRef } from './core/session/session';
 
 export type Result = { code: number; out: string };
 export type Start = { resume?: SessionRef };
-// --export-fixture: the Session Log as JSONL on stdout, for golden tests (architecture §7).
+// --export-fixture: the Session Log as JSONL on stdout, for golden tests.
 type ExportLog = (ref: SessionRef) => string;
 
 const USAGE = 'usage: resector [-c [id]] | resector --export-fixture [id] | resector --version\n';

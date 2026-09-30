@@ -1,4 +1,4 @@
-// Context operations at the Review Gate (FR-4, NFR-3): each yields the event to append, or why not.
+// Context operations at the Review Gate: each yields the event to append, or why not.
 import type { SessionEvent, Tool } from '../log/events';
 import { undone, type Block, type Context } from '../log/fold';
 import * as bash from '../toolcall/bash';
@@ -9,7 +9,7 @@ type Undo = Extract<SessionEvent, { type: 'Undo' }>;
 
 type BlockAdded = Extract<SessionEvent, { type: 'BlockAdded' }>;
 
-// System and Tools Block stay first: never moved, removed or marked (FR-12).
+// System and Tools Block stay first: never moved, removed or marked.
 export const isFixed = (block: Block) => block.kind === 'System' || block.kind === 'Tools';
 const NAME = { System: 'System prompt', Tools: 'Tools Block' } as Record<string, string>;
 const fixed = (block: Block) => ({ error: `${NAME[block.kind]} is fixed` });
@@ -20,7 +20,7 @@ export const untouchable = (block: Block) => (isFixed(block) ? fixed(block) : bl
 const UNDOABLE = new Set<SessionEvent['type']>(['Move', 'Remove', 'Rename', 'Edit', 'PairToNote', 'Compact', 'NoteAdded']);
 
 const isTool = (block: Block | undefined) => block?.kind === 'Tool Call' || block?.kind === 'Tool Result';
-// Tool Call and Tool Result behave as a unit once the call has run (FR-9).
+// Tool Call and Tool Result behave as a unit once the call has run.
 export const inPair = (block: Block) => block.kind === 'Tool Result' || (block.kind === 'Tool Call' && !block.pending);
 
 export function move({ blocks }: Context, block: Block, dir: -1 | 1): Outcome {
@@ -55,7 +55,7 @@ function misplaced(others: Block[], after: number): string | null {
   return isTool(others[at]) && isTool(others[at + 1]) ? 'not between the Tool Calls and Tool Results of an answer' : null;
 }
 
-// A Context Policy's Note (FR-52): `content` as Note `id` right after `after`, a block sent next.
+// A Context Policy's Note: `content` as Note `id` right after `after`, a block sent next.
 export function addNote({ blocks }: Context, id: number, after: number, content: string): Outcome {
   if (!content.trim()) return { error: 'empty Note' };
   const error = misplaced(blocks.filter(b => !b.removed), after);
@@ -84,14 +84,14 @@ export type Editor = (text: string) => Promise<string>;
 // The content a block is added with.
 const FIRST_REVISION = 1;
 
-// Why the block cannot be edited, or null: all kinds but the Tools Block, executed Tool Calls and Questions (FR-8).
+// Why the block cannot be edited, or null: all kinds but the Tools Block, executed Tool Calls and Questions.
 export function editable(block: Block): string | null {
   if (block.kind === 'Tools') return 'Tools Block is not editable';
   if (block.tool === 'question' && block.pending) return 'a Question is answered in the dock, not edited';
   return block.kind === 'Tool Call' && !block.pending ? 'executed Tool Calls are immutable' : null;
 }
 
-// Moving a Tool Pair turns it into Note `id` first (FR-9).
+// Moving a Tool Pair turns it into Note `id` first.
 export function toNote(block: Block, id: number): Outcome {
   const blocked = untouchable(block);
   if (blocked) return blocked;
@@ -128,7 +128,7 @@ export function toggleTool(events: SessionEvent[], { blocks }: Context, name: st
   return { event: { type: 'Edit', id: tools.id, revision: nextRevision(events, tools.id), content: toggled.content } };
 }
 
-// The harness takes the tools denied by rule out of the Tools Block, not undoable (FR-21).
+// The harness takes the tools denied by rule out of the Tools Block, not undoable.
 export function withoutDenied(events: SessionEvent[], { blocks }: Context, denied: Tool[]): Extract<SessionEvent, { type: 'Edit' }> | null {
   const tools = blocks.find(b => b.kind === 'Tools');
   if (!tools) return null;
@@ -148,7 +148,7 @@ export function undo(events: SessionEvent[]): Outcome<Undo> {
   return eventId === -1 ? { error: 'nothing to undo' } : { event: { type: 'Undo', eventId } };
 }
 
-// The Tool Call to decide on next: calls are approved one by one in Context order (FR-24).
+// The Tool Call to decide on next: calls are approved one by one in Context order.
 export const nextCall = (context: Context): Block | undefined => context.blocks.find(b => b.pending && !b.removed);
 
 // Why the block cannot be run or rejected now, or null.
@@ -167,9 +167,9 @@ const notRun = (content: string) => (context: Context, call: Block, id: number):
   const error = approvable(context, call);
   return error ? { error } : { event: { type: 'BlockAdded', id, kind: 'Tool Result', origin: 'tool', content, call: call.id } };
 };
-// n: the user rejects the call (FR-23).
+// n: the user rejects the call.
 export const reject = notRun('rejected by user');
-// A deny rule matches the call (FR-23).
+// A deny rule matches the call.
 export const deny = notRun('denied by rule');
-// Esc in the dock: the user declines to answer the Question (FR-21).
+// Esc in the dock: the user declines to answer the Question.
 export const decline = notRun('declined');

@@ -7,17 +7,17 @@ import { questionTitle } from '../core/toolcall/question';
 export const formatTokens = (t: number): string =>
   t >= 1024 && t % 1024 === 0 ? `${t / 1024}k` : t >= 1000 ? `${(t / 1000).toFixed(1)}k` : String(t);
 
-// FR-49: `off`, `on`, or `on:<effort>`.
+// `off`, `on`, or `on:<effort>`.
 export const thinkingLabel = (thinking: Thinking) => (thinking === 'off' || thinking === 'on' ? thinking : `on:${thinking}`);
 
 type Titled = Pick<Block, 'kind' | 'content'> & Partial<Pick<Block, 'title' | 'call' | 'source' | 'compacted' | 'file' | 'origin' | 'tool'>>;
 type Called = Pick<Block, 'id' | 'content'> & Partial<Pick<Block, 'tool'>>;
 const firstLine = (text: string) => (text.split('\n').find(l => l.trim()) ?? '').trim();
 
-// FR-4: display label only, never sent. A rename wins; default = first non-empty line of the content;
+// Display label only, never sent. A rename wins; default = first non-empty line of the content;
 // origin titles: `System prompt`, the tool names, `→ <call>` (the call from `blocks`), `⇄ <call>` (a Note from a Tool Pair),
-// `◇ N blocks compacted` (a Note from a Compaction, FR-16), `@<path>` (FR-27, FR-29), `Environment` (FR-28),
-// `Context Policy` (a policy's Note, FR-52).
+// `◇ N blocks compacted` (a Note from a Compaction), `@<path>`, `Environment`,
+// `Context Policy` (a policy's Note).
 export function titleOf(block: Titled, blocks: readonly Called[] = []): string {
   if (block.title) return block.title;
   if (block.kind === 'System') return 'System prompt';
@@ -44,10 +44,10 @@ function originTitle(block: Titled, blocks: readonly Called[]): string | null {
   return block.compacted ? `◇ ${count(block.compacted.sources.length, 'block')} compacted` : null;
 }
 
-// FR-5: changes since the last request: new Revision, moved.
+// Changes since the last request: new Revision, moved.
 const changesOf = (block: Block): string => (block.revised ? `✎${block.revision}` : '') + (block.moved ? '⇄' : '');
 
-// A pending call: decided now (a Question is answered), or queued (FR-24).
+// A pending call: decided now (a Question is answered), or queued.
 const pendingFlag = (block: Block, next?: number): string => {
   if (!block.pending) return '';
   if (block.id !== next) return ' · queued';
@@ -55,8 +55,8 @@ const pendingFlag = (block: Block, next?: number): string => {
 };
 
 // Changes since the last request, then persistent status flags.
-// next: the Tool Call to decide on now; later pending calls are queued (FR-24); dropped: a Thinking
-// block the chat template drops (FR-48).
+// next: the Tool Call to decide on now; later pending calls are queued; dropped: a Thinking
+// block the chat template drops.
 export const flagsOf = (block: Block, next?: number, dropped = false): string =>
   [
     changesOf(block),
@@ -88,7 +88,7 @@ export const linesOf = (text: string, width: number) => Math.max(1, Math.ceil(te
 
 export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-// Age of a session for /sessions (FR-33).
+// Age of a session for /sessions.
 export function ago(then: Date, now = Date.now()): string {
   const minutes = (now - then.getTime()) / 60_000;
   if (minutes < 1) return 'now';

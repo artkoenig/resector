@@ -1,10 +1,10 @@
-// Tokens a Thinking block adds to its counted prefix and to the whole request (FR-48); joined: the next
+// Tokens a Thinking block adds to its counted prefix and to the whole request; joined: the next
 // block is part of the same message.
 export type ThinkingShare = { step: number; prefix: number; request: number; joined: boolean };
 export type PrefixCounts = { empty: number; prefixes: number[]; total: number; thinking?: ThinkingShare[] };
 export type TokenSplit = { blocks: number[]; template: number; total: number };
 
-// Per-block tokens via prefix differences (architecture §4 "Token counting"): a block owns the tokens
+// Per-block tokens via prefix differences: a block owns the tokens
 // its message adds to the rendered prompt, role markers included. The Template row takes the rest
 // (BOS, generation prompt), so the rows always sum to the exact request size.
 export function splitTokens({ empty, prefixes, total, thinking = [] }: PrefixCounts): TokenSplit {

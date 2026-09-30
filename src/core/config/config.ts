@@ -1,4 +1,4 @@
-// Configuration (PRD §Configuration, architecture §6): JSONC files, deep merged, validated, Model Profiles resolved.
+// Configuration: JSONC files, deep merged, validated, Model Profiles resolved.
 import { dirname, isAbsolute, join } from 'node:path';
 import { parse, printParseErrorCode, type ParseError } from 'jsonc-parser';
 import { z } from 'zod';
@@ -8,7 +8,7 @@ import { permissionRules, type Permissions } from '../approval/approval';
 const BackendKindSchema = z.enum(['llamacpp', 'ollama', 'lmstudio', 'omlx']);
 export type BackendKind = z.infer<typeof BackendKindSchema>;
 
-// Where each backend listens by default; also the ports scanned at first start (FR-45). LM Studio and oMLX share 1234.
+// Where each backend listens by default; also the ports scanned at first start. LM Studio and oMLX share 1234.
 export const DEFAULT_ENDPOINTS: Record<BackendKind, string> = {
   llamacpp: 'http://localhost:8080',
   ollama: 'http://localhost:11434',
@@ -50,7 +50,7 @@ export const configJsonSchema = () => z.toJSONSchema(ConfigSchema, { io: 'input'
 
 export type Config = z.infer<typeof ConfigSchema>;
 export type ModelProfile = z.infer<typeof ProfileSchema> & { name: string; endpoint: string };
-// project: the project config, which may only tighten permissions (FR-25).
+// project: the project config, which may only tighten permissions.
 export type ConfigFile = { source: string; text: string; project?: boolean };
 
 export function readConfig(files: ConfigFile[]) {
@@ -58,7 +58,7 @@ export function readConfig(files: ConfigFile[]) {
   const result = ConfigSchema.safeParse(parsed.map(f => f.json).reduce(merge, {}));
   if (!result.success) throw new Error(`invalid config: ${result.error.issues.map(describe).join('; ')}`);
   const config = result.data;
-  // Rules keep their file: global ones first, then the project's without its allows (FR-25).
+  // Rules keep their file: global ones first, then the project's without its allows.
   const permissions = (project: boolean) =>
     parsed.filter(f => (f.project ?? false) === project).reduce<Permissions>((all, f) => ({ ...all, ...permissionOf(f.source, f.json) }), {});
   return {
@@ -73,7 +73,7 @@ export function readConfig(files: ConfigFile[]) {
   };
 }
 
-// FR-45: the model chosen at first start becomes the default Model Profile, named after the model file.
+// The model chosen at first start becomes the default Model Profile, named after the model file.
 export function initialConfig({ backend, endpoint, model }: { backend: BackendKind; endpoint: string; model: string }): string {
   const name = model.replace(/.*\//, '').replace(/\.gguf$/, '').replace(/:/g, '-');
   const config = { $schema: SCHEMA_URL, profiles: { [name]: { backend, endpoint, model } }, defaultProfile: name };
@@ -115,7 +115,7 @@ const describe = (issue: z.core.$ZodIssue) => (issue.path.length ? `${issue.path
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 // Objects merge key by key; anything else (arrays included) is replaced by the later file.
-// Permission rules are read per file, so project loosening can be ignored (FR-25).
+// Permission rules are read per file, so project loosening can be ignored.
 function merge(base: Json, override: Json): Json {
   const result = { ...base };
   for (const [key, value] of Object.entries(override)) {

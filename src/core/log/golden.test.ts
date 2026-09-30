@@ -1,4 +1,4 @@
-// Golden tests (architecture §7): Session Log fixtures (`resector --export-fixture`) → Context + request payload.
+// Golden tests: Session Log fixtures (`resector --export-fixture`) → Context + request payload.
 import { expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';

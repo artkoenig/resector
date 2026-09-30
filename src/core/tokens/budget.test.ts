@@ -23,7 +23,7 @@ test('the last measured drift counts: an answer without usage (aborted) keeps th
   expect(lastDrift([sent(100), received(null)])).toBeNull();
 });
 
-test('a Model Profile fallback forgets the drift: the new profile counts differently (FR-35)', () => {
+test('a Model Profile fallback forgets the drift: the new profile counts differently', () => {
   const fallback: SessionEvent = { type: 'ProfileFallback', profile: 'other' };
   expect(lastDrift([sent(100), received(112), fallback])).toBeNull();
   expect(lastDrift([sent(100), received(112), fallback, sent(50), received(53)])).toBe(3);
@@ -36,18 +36,18 @@ test('a response without its own request before it measures nothing', () => {
 
 const exact = { window: 1000, exact: true, drift: null };
 
-test('max_tokens is the window minus the Context: no answer reserve (FR-18)', () => {
+test('max_tokens is the window minus the Context: no answer reserve', () => {
   expect(budget({ ...exact, total: 400 }).maxTokens).toBe(600);
   expect(budget({ ...exact, total: 999 }).maxTokens).toBe(1);
 });
 
-test('below 90 % of the window all is fine; from 90 % on a warning (FR-2)', () => {
+test('below 90 % of the window all is fine; from 90 % on a warning', () => {
   expect(budget({ ...exact, total: 899 })).toMatchObject({ tone: 'ok', over: 0 });
   expect(budget({ ...exact, total: 900 })).toMatchObject({ tone: 'warn', over: 0 });
   expect(budget({ ...exact, total: 999 })).toMatchObject({ tone: 'warn', over: 0 });
 });
 
-test('sending is blocked from a Context as big as the window on: over by what has to go (FR-18)', () => {
+test('sending is blocked from a Context as big as the window on: over by what has to go', () => {
   expect(budget({ ...exact, total: 1000 })).toMatchObject({ tone: 'over', over: 1 });
   expect(budget({ ...exact, total: 1250 })).toMatchObject({ tone: 'over', over: 251 });
 });
@@ -56,7 +56,7 @@ test('an exact tokenizer ignores drift and shows none', () => {
   expect(budget({ ...exact, drift: 30, total: 980 })).toMatchObject({ tone: 'warn', over: 0, driftLabel: null });
 });
 
-test('an inexact tokenizer subtracts the last drift, either sign, from the window; ±? before the first answer (FR-2, FR-18)', () => {
+test('an inexact tokenizer subtracts the last drift, either sign, from the window; ±? before the first answer', () => {
   const inexact = { window: 1000, exact: false };
   expect(budget({ ...inexact, drift: null, total: 999 })).toMatchObject({ tone: 'warn', over: 0, driftLabel: '±?' });
   expect(budget({ ...inexact, drift: 30, total: 969 })).toMatchObject({ tone: 'warn', over: 0, driftLabel: '±30' });

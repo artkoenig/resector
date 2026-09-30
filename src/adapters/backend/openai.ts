@@ -55,7 +55,7 @@ function reason(body: string): string {
 // Without the content type fetch sends text/plain, which FastAPI servers (oMLX) reject.
 const jsonPost = (body: unknown): RequestInit => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
-// Request fields for the thinking (FR-49): on/off through the chat template; an effort also as reasoning_effort,
+// Request fields for the thinking: on/off through the chat template; an effort also as reasoning_effort,
 // as a field and for the chat template, since servers pass either one on.
 export function thinkingParams(thinking: Thinking | undefined): Record<string, unknown> {
   if (thinking === undefined) return {};

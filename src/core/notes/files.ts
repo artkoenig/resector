@@ -1,4 +1,4 @@
-// File Notes (FR-27, FR-29): `@<path>[:a-b]` references in the input, and the snapshot a reference becomes on send.
+// File Notes: `@<path>[:a-b]` references in the input, and the snapshot a reference becomes on send.
 import type { SessionEvent } from '../log/events';
 import type { Context } from '../log/fold';
 
@@ -17,7 +17,7 @@ export function references(input: string): { files: string[]; text: string } {
 }
 
 // The @path reference being typed at the end of the input: where its path starts and the project files matching
-// it, best first – the file name starting with it, then the path, then containing it anywhere (FR-27).
+// it, best first – the file name starting with it, then the path, then containing it anywhere.
 export function fileCompletions(input: string, files: readonly string[], limit = 8): { at: number; paths: string[] } | null {
   const typed = /(?<=^|\s)@(\S*)$/.exec(input);
   if (!typed) return null;
@@ -47,7 +47,7 @@ export function parseReference(file: string): Reference {
 // The content of a Note taken from a file: its reference first, so the model knows where it comes from.
 export const fileNote = (file: string, text: string) => `[${file}]\n${text}`;
 
-// A reference read now: the whole file, or the lines of its range, numbered. From then on a plain snapshot (FR-27).
+// A reference read now: the whole file, or the lines of its range, numbered. From then on a plain snapshot.
 export function snapshot(file: string, read: ReadFile): { content: string } | { error: string } {
   const { path, from, to } = parseReference(file);
   const text = read(path);

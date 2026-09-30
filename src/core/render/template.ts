@@ -1,4 +1,4 @@
-// Thinking modes a chat template offers (FR-49), read from its Jinja source: off and on when it reads
+// Thinking modes a chat template offers, read from its Jinja source: off and on when it reads
 // enable_thinking, then the effort levels it accepts for reasoning_effort, lowest first.
 import type { Thinking } from '../log/events';
 

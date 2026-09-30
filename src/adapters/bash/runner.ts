@@ -1,4 +1,4 @@
-// bash runner (architecture §5): `bash -c` in the project root, stdin /dev/null, output streamed,
+// bash runner: `bash -c` in the project root, stdin /dev/null, output streamed,
 // killed with everything it started on abort (Esc) or timeout.
 import { spawn } from 'node:child_process';
 import type { Runner, RunResult } from '../../core/toolcall/bash';

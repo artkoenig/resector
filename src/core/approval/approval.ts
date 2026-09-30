@@ -1,10 +1,10 @@
-// Tool Approval (FR-22–FR-25, architecture §5): permission rules decide each sub-command of a bash call.
+// Tool Approval: permission rules decide each sub-command of a bash call.
 import { posix } from 'node:path';
 import type { SessionEvent, Tool } from '../log/events';
 import type { Block } from '../log/fold';
 
 export type Action = 'allow' | 'ask' | 'deny';
-// Where a rule comes from; project config may only tighten (FR-25), session rules come from `a` (FR-23).
+// Where a rule comes from; project config may only tighten, session rules come from `a`.
 export type Source = 'built-in' | 'global' | 'project' | 'session';
 export type Rule = { pattern: string; action: Action; source: Source };
 
@@ -18,7 +18,7 @@ export type Split = (command: string) => Command[] | null;
 export type Check = { text: string; action: Action; why: string; unallowable: boolean };
 export type Verdict = { action: Action; checks: Check[] };
 
-// FR-22: read-only commands run without asking.
+// Read-only commands run without asking.
 const READ_ONLY = ['ls', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'sed -n', 'git status', 'git diff', 'git log', 'git show'];
 export const BUILTIN_ALLOW: Rule[] = READ_ONLY.map(command => ({ pattern: `${command} *`, action: 'allow', source: 'built-in' }));
 // Options that make a read-only command of the built-in list write files or run commands, by its name.
@@ -77,7 +77,7 @@ function check(command: Command, { rules, root }: ApprovalInput): Check {
   return write ? { text, action: 'ask', why: write, unallowable: false } : decided;
 }
 
-// Every sub-command must be allowed: one deny denies the call, one ask asks (FR-22).
+// Every sub-command must be allowed: one deny denies the call, one ask asks.
 export function evaluate(command: string, input: ApprovalInput): Verdict {
   const commands = input.split(command);
   if (!commands?.length) return { action: 'ask', checks: [{ text: command, action: 'ask', why: commands ? 'no command' : 'unparseable', unallowable: true }] };
@@ -88,21 +88,21 @@ export function evaluate(command: string, input: ApprovalInput): Verdict {
 
 const ALLOWED: Verdict = { action: 'allow', checks: [] };
 // A Question never needs Tool Approval, but the last rule for `question` switches it off when it denies; `ask` never
-// applies to it, so a project `ask` cannot loosen a global deny (FR-21, FR-25).
+// applies to it, so a project `ask` cannot loosen a global deny.
 function questionVerdict(rules: Rule[]): Verdict {
   const rule = rules.findLast(r => r.pattern === 'question' && r.action !== 'ask');
   if (rule?.action !== 'deny') return ALLOWED;
   return { action: 'deny', checks: [{ text: 'question', action: 'deny', why: `${rule.source} rule "question"`, unallowable: false }] };
 }
-// search only reads the web: always allowed, no rule decides it (FR-21).
+// search only reads the web: always allowed, no rule decides it.
 export function verdictOf(call: Pick<Block, 'tool' | 'content'>, input: ApprovalInput): Verdict {
   if (call.tool === 'search') return ALLOWED;
   return call.tool === 'question' ? questionVerdict(input.rules) : evaluate(call.content, input);
 }
-// The tools rules switch off: kept out of the Tools Block, calls denied (FR-21).
+// The tools rules switch off: kept out of the Tools Block, calls denied.
 export const deniedTools = (rules: Rule[]): Tool[] => (questionVerdict(rules).action === 'deny' ? ['question'] : []);
 
-// Words of a command's prefix for "allow for session", by its first words (architecture §5).
+// Words of a command's prefix for "allow for session", by its first words.
 const ARITY: Record<string, number> = {
   git: 2, npm: 2, 'npm run': 3, pnpm: 2, 'pnpm run': 3, yarn: 2, 'yarn run': 3, bun: 2, 'bun run': 3, npx: 2, bunx: 2,
   cargo: 2, go: 2, docker: 2, 'docker compose': 3, kubectl: 2, make: 2,
@@ -118,7 +118,7 @@ export function prefixRule(text: string): string {
   return `${words.slice(0, name + arity).join(' ')} *`;
 }
 
-// The rules `a` adds for a call: one per sub-command asked for; none when a rule cannot help (FR-23).
+// The rules `a` adds for a call: one per sub-command asked for; none when a rule cannot help.
 export function sessionRules({ checks }: Verdict): { patterns: string[] } | { error: string } {
   const asked = checks.filter(c => c.action === 'ask');
   const blocked = asked.find(c => c.unallowable);
@@ -129,13 +129,13 @@ export function sessionRules({ checks }: Verdict): { patterns: string[] } | { er
 // Patterns as the Gate shows them: quoted, comma-separated.
 export const quoted = (patterns: string[]) => patterns.map(p => `"${p}"`).join(', ');
 
-// The session's allow rules, in the order they were added (FR-25).
+// The session's allow rules, in the order they were added.
 export const sessionAllowed = (events: SessionEvent[]): Rule[] =>
   events.flatMap(e => (e.type === 'AllowRuleAdded' ? [{ pattern: e.pattern, action: 'allow' as const, source: 'session' as const }] : []));
 
 export type Permissions = Record<string, Action>;
 
-// The rules in order: built-in, global config, project config without `allow` (FR-25); ignored: the project's allows.
+// The rules in order: built-in, global config, project config without `allow`; ignored: the project's allows.
 export function permissionRules(global: Permissions | undefined, project: Permissions | undefined): { rules: Rule[]; ignored: string[] } {
   const own = (permissions: Permissions | undefined, source: Source) =>
     Object.entries(permissions ?? {}).map(([pattern, action]): Rule => ({ pattern, action, source }));

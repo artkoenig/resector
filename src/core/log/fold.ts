@@ -13,25 +13,25 @@ export type Block = {
   stopped?: Stopped;
   // Note from a Tool Pair only: the pair's call (callText), for its title.
   source?: string;
-  // Note from a Compaction only: the blocks it replaced and the instruction (FR-16).
+  // Note from a Compaction only: the blocks it replaced and the instruction.
   compacted?: { sources: number[]; instruction: string };
-  // Note from a file only: the file (FR-27, FR-29); unread: an @path reference not read yet.
+  // Note from a file only: the file; unread: an @path reference not read yet.
   file?: string;
   unread?: true;
   // An unread reference whose file cannot be read now (set at the Gate, never logged).
   missing?: string;
-  // Tool Call only: no Tool Result yet, so it awaits approval (FR-23).
+  // Tool Call only: no Tool Result yet, so it awaits approval.
   pending?: boolean;
   title: string | null;
   // Struck through until the next request, then hidden.
   removed: boolean;
-  // Flags since the last request (FR-5).
+  // Flags since the last request.
   moved: boolean;
-  // Current Revision (FR-8); revised: another one than at the last request (`✎n`, FR-5).
+  // Current Revision; revised: another one than at the last request (`✎n`).
   revision: number;
   revised: boolean;
 };
-// thinking: set at the Gate (FR-49); null = the Model Profile's.
+// thinking: set at the Gate; null = the Model Profile's.
 export type Context = { profile: string; protocol: ToolProtocol; thinking: Thinking | null; blocks: Block[]; nextId: number };
 
 type Entry = Omit<Block, 'revised'> & { hidden: boolean; sentRevision: number };
@@ -42,7 +42,7 @@ type Apply<T extends SessionEvent['type']> = (state: State, event: Extract<Sessi
 const entry = (state: State, id: number) => state.entries.get(id)!;
 const take = (state: State, id: number) => state.order.splice(state.order.indexOf(id), 1);
 const insert = (state: State, at: number, id: number) => state.order.splice(at, 0, id);
-// Where a Tool Result goes: after its Tool Call and the calls and results following it (FR-24), so
+// Where a Tool Result goes: after its Tool Call and the calls and results following it, so
 // all calls of one answer precede their results, as the request sends them.
 export function afterCalls(blocks: Pick<Block, 'id' | 'kind'>[], call: number): number {
   let at = blocks.findIndex(b => b.id === call) + 1;
@@ -115,7 +115,7 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
     for (const e of state.entries.values()) Object.assign(e, { hidden: e.removed, moved: false, sentRevision: e.revision });
     state.unsent.clear();
   },
-  // Undoing an operation that was already sent changes the Context since the last request (FR-5).
+  // Undoing an operation that was already sent changes the Context since the last request.
   Undo: (state, e) => {
     const target = state.events[e.eventId]!;
     if (state.unsent.has(e.eventId)) return;

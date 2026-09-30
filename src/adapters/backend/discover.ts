@@ -1,4 +1,4 @@
-// First start (FR-45): look for model servers on their default local ports and list the models they offer.
+// First start: look for model servers on their default local ports and list the models they offer.
 import { DEFAULT_ENDPOINTS, type BackendKind } from '../../core/config/config';
 
 export type LocalServer = { backend: BackendKind; endpoint: string };

@@ -1,4 +1,4 @@
-// An answer of the model as Context Blocks: its reasoning, its text, then one Tool Call per tool call (architecture §3).
+// An answer of the model as Context Blocks: its reasoning, its text, then one Tool Call per tool call.
 import type { ChatResult } from '../backend';
 import type { SessionEvent } from '../log/events';
 import { parseCall, type RawCall } from './bash';
@@ -20,7 +20,7 @@ function textBlocks(thinking: string, content: string, cutOff: boolean, calls: b
   return [...reasoning, ...(answered ? [block('Assistant', first + reasoning.length, content, cutOff)] : [])];
 }
 
-// Blocks from id `first` on. A cut-off answer runs no call (FR-19); cut off while thinking, there is only
+// Blocks from id `first` on. A cut-off answer runs no call; cut off while thinking, there is only
 // the Thinking block. Calls that cannot run stay in the text, not run – `notRun` says why.
 // `tools`: the names in the Tools Block.
 export function answerBlocks(result: ChatResult, first: number, tools: string[]): { events: BlockAdded[]; notRun: string | null } {
@@ -32,7 +32,7 @@ export function answerBlocks(result: ChatResult, first: number, tools: string[])
   const text = textBlocks(result.thinking, content, cutOff, runnable.length > 0, first);
   const toolCalls = runnable.map(({ tool, content }, i): BlockAdded =>
     ({ type: 'BlockAdded', id: first + text.length + i, kind: 'Tool Call', origin: 'model', content, ...(tool !== 'bash' && { tool }) }));
-  // A rejected Question is answered with the error right away (never shown to the user), after all calls (architecture §3).
+  // A rejected Question is answered with the error right away (never shown to the user), after all calls.
   const rejections = runnable.flatMap(({ rejected }, i) => (rejected === undefined ? [] : [{ call: toolCalls[i]!.id, rejected }]));
   const results = rejections.map(({ call, rejected }, i): BlockAdded =>
     ({ type: 'BlockAdded', id: first + text.length + toolCalls.length + i, kind: 'Tool Result', origin: 'tool', content: `error: ${rejected}`, call }));

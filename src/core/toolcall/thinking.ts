@@ -1,4 +1,4 @@
-// Reasoning inline in the answer text (architecture §4 "Thinking"): a backend without reasoning parser
+// Reasoning inline in the answer text: a backend without reasoning parser
 // streams `<think>…</think>` before the answer.
 const OPEN = '<think>';
 const CLOSE = '</think>';

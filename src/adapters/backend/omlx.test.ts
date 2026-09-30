@@ -95,7 +95,7 @@ test('an answer streams in deltas and ends with finish reason, usage and cached 
   ]);
 });
 
-test('max_tokens goes into the request: the window minus the Context (FR-18); oMLX counts exactly', async () => {
+test('max_tokens goes into the request: the window minus the Context; oMLX counts exactly', async () => {
   const backend = await open();
   expect(backend.exact).toBe(true);
   fake.reply({ chunks: ['ok'] });
@@ -228,14 +228,14 @@ test('without the probe, blocks the last answer already rendered count as cached
   expect(counted.cached).toEqual({ tokens: counted.blocks.slice(0, 6).reduce((a, b) => a + b, 0), exact: false });
 });
 
-test('the profile thinking goes into every request (FR-49)', async () => {
+test('the profile thinking goes into every request', async () => {
   const backend = await open({ thinking: 'on' });
   fake.reply({ chunks: ['ok'] });
   await chatOnce(backend);
   expect(fake.chatRequests[0]).toMatchObject({ chat_template_kwargs: { enable_thinking: true } });
 });
 
-test('the thinking modes come from the chat template in the model directory the admin API names (FR-49)', async () => {
+test('the thinking modes come from the chat template in the model directory the admin API names', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'resector-model-'));
   writeFileSync(join(dir, 'tokenizer_config.json'), JSON.stringify({ chat_template: "{% if enable_thinking %}{% endif %}{% if reasoning_effort == 'max' %}{% endif %}" }));
   expect((await open({}, { models: [{ id: MODEL, maxModelLen: 57344, path: dir }] })).thinkingModes).toEqual(['off', 'on', 'max']);
@@ -246,12 +246,12 @@ test('the thinking modes come from the chat template in the model directory the 
   expect((await open()).thinkingModes).toBeNull();
 });
 
-test('without the admin API the thinking modes come from the prompts the server renders per effort (splash, FR-49)', async () => {
+test('without the admin API the thinking modes come from the prompts the server renders per effort (splash)', async () => {
   const efforts = { none: '<think></think>', low: 'effort low', medium: '<think>', high: 'effort xhigh', xhigh: 'effort xhigh' };
   expect((await open({}, { efforts })).thinkingModes).toEqual(['off', 'on', 'low', 'medium', 'xhigh']);
 });
 
-test('off is sent as reasoning_effort none only where the server rendered none as off (splash, FR-49)', async () => {
+test('off is sent as reasoning_effort none only where the server rendered none as off (splash)', async () => {
   const efforts = { none: '<think></think>', low: 'effort low' };
   fake = startFakeOmlx({ efforts });
   fake.reply({ chunks: ['ok'] });
@@ -264,7 +264,7 @@ test('off is sent as reasoning_effort none only where the server rendered none a
   expect(fake.chatRequests[0]).not.toHaveProperty('reasoning_effort');
 });
 
-test('a request with its own thinking overrides the profile (FR-49)', async () => {
+test('a request with its own thinking overrides the profile', async () => {
   const backend = await open({ thinking: 'off' });
   fake.reply({ chunks: ['ok'] });
   await backend.chat({ messages: [{ role: 'user', content: 'hi' }], tools: [], thinking: 'high' }, { signal: new AbortController().signal, onDelta: () => {} });
@@ -285,7 +285,7 @@ test('a request the server answers 503 goes again, after Retry-After', async () 
   expect((await backend.count([{ messages, tools: [] }])).blocks).toHaveLength(1);
 });
 
-test('counts render the thinking as the chat request does: the profile, else the request its own (FR-49)', async () => {
+test('counts render the thinking as the chat request does: the profile, else the request its own', async () => {
   const backend = await open({ thinking: 'low' });
   const messages: Message[] = [{ role: 'user', content: 'hi' }];
   await backend.count([{ messages, tools: [] }]);
@@ -305,7 +305,7 @@ test("a request's answer start is sent as a partial assistant message for oMLX t
   expect(result.content).toBe('rest');
 });
 
-test('reasoning is counted inline; before the last user message the chat template drops it (FR-48)', async () => {
+test('reasoning is counted inline; before the last user message the chat template drops it', async () => {
   const thought = { role: 'assistant', content: '', reasoning_content: 'plan it' } as const;
   const kept: Message[] = [{ role: 'user', content: 'hi there' }, { ...thought, tool_calls: [{ id: 'call_0', type: 'function', function: { name: 'bash', arguments: '{"command":"ls"}' } }] }, { role: 'tool', tool_call_id: 'call_0', content: 'a' }];
   const dropped: Message[] = [{ role: 'user', content: 'hi there' }, { ...thought, content: 'hello' }, { role: 'user', content: 'more' }];

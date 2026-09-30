@@ -21,7 +21,7 @@ test('a Thinking block owns the reasoning as the request renders it, not as its 
   expect(split).toEqual({ blocks: [10, 11, 14], template: 6, total: 41 });
 });
 
-test('reasoning the template drops: the Thinking block owns nothing; its role markers go to its message (FR-48)', () => {
+test('reasoning the template drops: the Thinking block owns nothing; its role markers go to its message', () => {
   expect(splitTokens({ empty: 1, prefixes: [11, 16, 30], total: 33, thinking: [{ step: 1, prefix: 3, request: 0, joined: true }] })).toEqual({
     blocks: [10, 0, 16],
     template: 7,

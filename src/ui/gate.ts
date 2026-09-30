@@ -23,7 +23,7 @@ import { count, errorText, formatTokens, thinkingLabel, titleOf } from './format
 
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
 // events: the Session Log so far (new or resumed); openSessions: shows /sessions; notice: initial status line.
-// runner: runs approved bash calls, searcher: search calls (FR-21); approval: decides which may run (FR-22); editor: $EDITOR for `e` (FR-8);
+// runner: runs approved bash calls, searcher: search calls; approval: decides which may run; editor: $EDITOR for `e`;
 // clipboard: copy on select.
 export type GateOptions = {
   backend: Backend;
@@ -37,12 +37,12 @@ export type GateOptions = {
   project: Project;
   openSessions: () => void;
   notice?: Status;
-  // Default Compaction instruction (FR-13); the Model Profile Compaction runs on, null = the session's own (FR-17).
+  // Default Compaction instruction; the Model Profile Compaction runs on, null = the session's own.
   instruction?: () => string;
   compactor?: () => Promise<Compactor | null>;
   policies?: Policies;
   autoApprove?: AutoApprove;
-  // The Kind Filters off at start (FR-51).
+  // The Kind Filters off at start.
   hidden?: readonly string[];
   // Absent outside a git repository: the /git: commands are then not offered.
   git?: Git | null;
@@ -50,13 +50,13 @@ export type GateOptions = {
 // Context Policies (ADR 0001): the ones loaded at start, and the active one, which belongs to the app, not the session.
 export type Policies = { all: Policy[]; active: () => Policy | null; set: (policy: Policy | null) => void };
 const NO_POLICIES: Policies = { all: [], active: () => null, set: () => {} };
-// Auto-approve (FR-23): every call a rule asks for runs without asking; like the active policy it belongs to the app.
+// Auto-approve: every call a rule asks for runs without asking; like the active policy it belongs to the app.
 export type AutoApprove = { on: () => boolean; set: (on: boolean) => void };
 export type Compactor = { profile: string; backend: Backend };
-// The project on disk: files for @path references and their completion (FR-27), the environment Note's text now
-// (FR-28), and $EDITOR on a file of the project (`e` on a reference).
+// The project on disk: files for @path references and their completion, the environment Note's text now,
+// and $EDITOR on a file of the project (`e` on a reference).
 export type Project = { read: ReadFile; list: () => string[]; environment: () => string; open: (path: string) => Promise<void> };
-// Tool Approval (FR-22, FR-25): the splitter, the project root arguments must stay in, and the config's rules as read
+// Tool Approval: the splitter, the project root arguments must stay in, and the config's rules as read
 // when the session opened (ignored: project allow patterns).
 export type Approval = { split: Split; root: string; permissions: () => { rules: Rule[]; ignored: string[] } };
 
@@ -70,7 +70,7 @@ export type Git = {
   reopen: (notice: Status) => void;
 };
 
-// Slash commands (FR-6), in suggestion order.
+// Slash commands, in suggestion order.
 export const COMMANDS = [
   { name: '/sessions', arg: '', description: 'list, resume, rename, delete sessions' },
   { name: '/rename', arg: '<title>', description: 'rename session' },
@@ -82,7 +82,7 @@ export const COMMANDS = [
   { name: '/git:branch', arg: '<branch>', description: 'show or switch the git branch' },
   { name: '/git:worktree', arg: '<on|off>', description: 'run the session in its own git worktree' },
 ] as const;
-// The Kind Filters (FR-51), in glossary order: the Kinds each shows; a Tool Call never without its Tool Result.
+// The Kind Filters, in glossary order: the Kinds each shows; a Tool Call never without its Tool Result.
 // Additive: each is on or off on its own; the blocks shown are those of the ones on.
 export type Filter = { name: string; kinds: readonly Kind[] };
 export const FILTERS: readonly Filter[] = [
@@ -94,7 +94,7 @@ export const FILTERS: readonly Filter[] = [
   { name: 'note', kinds: ['Note'] },
 ];
 type CommandName = (typeof COMMANDS)[number]['name'];
-// In-flight answer, its reasoning apart; never persisted until complete or aborted (FR-37).
+// In-flight answer, its reasoning apart; never persisted until complete or aborted.
 export type Streaming = { thinking: string; text: string; abort: AbortController };
 // Approved Tool Call running; its output so far is shown, the result is logged when it ends. timeout: its tool's.
 export type Running = { call: Block; output: string; started: number; timeout: number; abort: AbortController };
@@ -105,7 +105,7 @@ export type Asked = { call: Block; questions: Question[] };
 export type Live = { id: number; kind: Kind; content: string; before: number | null; title?: string; heading?: string; tokens?: number };
 // What accepting the proposal changes: tokens and Context (over: not below the window), and the cache.
 export type Review = { tokens: string; over: boolean; cache: string; cold: boolean };
-// Compaction under way (FR-13–FR-17): the instruction being written, the proposal streaming, or under review.
+// Compaction under way: the instruction being written, the proposal streaming, or under review.
 export type Compaction = Compactor & {
   sources: number[];
   // Runs on the session's backend (same model/slot), which leaves the session cache cold.
@@ -134,7 +134,7 @@ function asksForAnswer(blocks: Block[], opening: Set<number>): boolean {
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const APPROVE = 'y run once · a allow for session · n reject · e edit';
 const QUESTION_HINT = 'the model asks – answer in the dock';
-// The prediction checked against the server (FR-41); a server reusing more than predicted is harmless.
+// The prediction checked against the server; a server reusing more than predicted is harmless.
 const cacheMiss = ({ predicted, cached }: ChatResult) =>
   predicted !== null && cached !== null && cached < predicted ? `cache: predicted ${predicted} · server reused ${cached}` : null;
 
@@ -153,11 +153,11 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   const [selected, setSelected] = createSignal(1);
   // Marked blocks (Space) for Compaction; UI state, not logged.
   const [marked, setMarked] = createSignal<ReadonlySet<number>>(new Set());
-  // Kind Filters switched off (FR-51): what the block table hides; UI state, not logged. Tool Calls are off at first.
+  // Kind Filters switched off: what the block table hides; UI state, not logged. Tool Calls are off at first.
   const [hidden, setHidden] = createSignal<readonly Filter[]>(FILTERS.filter(f => hiddenAtStart.includes(f.name)));
   const hides = (kind: Kind) => hidden().some(f => f.kinds.includes(kind));
   const backend = () => options.backend;
-  // Moving a Tool Pair asks first: the operation and block awaiting the same key again (FR-9).
+  // Moving a Tool Pair asks first: the operation and block awaiting the same key again.
   const [confirming, setConfirming] = createSignal<string | null>(null);
   const [compacting, setCompacting] = createSignal<Compaction | null>(null);
   // Bumped when the server's cache changed without a new request to count (a Compaction on its slot).
@@ -171,7 +171,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     log.append(event);
     setEvents([...events(), event]);
   };
-  // Unread @path references show the file as it would be read now; only sending reads them (FR-27).
+  // Unread @path references show the file as it would be read now; only sending reads them.
   const context = createMemo(() => {
     reread();
     return peekReferences(fold(events()), project.read);
@@ -182,10 +182,10 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   const request = () => prefixes().at(-1)!;
   // Token split of the current request only; a stale split would misalign rows after a move.
   const split = () => (counted()?.prefixes === prefixes() ? counted()!.split : null);
-  // Per sent block, in Context order: still in the server's prefix cache (FR-3).
+  // Per sent block, in Context order: still in the server's prefix cache.
   const warm = createMemo(() => (split() ? warmRows(split()!.blocks, split()!.cached.tokens) : null));
   const nextId = () => context().nextId;
-  // The budget of a Context of `total` tokens: max_tokens, and whether it may be sent (FR-18).
+  // The budget of a Context of `total` tokens: max_tokens, and whether it may be sent.
   const budgetOf = (total: number): Budget =>
     budget({ total, window: backend().window, exact: backend().exact, drift: lastDrift(events()) });
   // Messages right after the last answer; a Context changed since then may be sent again as is.
@@ -203,7 +203,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     const blocks = context().blocks;
     return r ? [{ id: nextId(), kind: 'Tool Result', content: r.output, before: blocks[afterCalls(blocks, r.call.id)]?.id ?? null }] : [];
   });
-  // The ids the answer's blocks get: a Thinking block first (FR-46).
+  // The ids the answer's blocks get: a Thinking block first.
   function streamingRows({ thinking, text }: Streaming): Live[] {
     const reasoning: Live[] = thinking ? [{ id: nextId(), kind: 'Thinking', content: thinking, before: null }] : [];
     const answer: Live[] = text || !thinking ? [{ id: nextId() + reasoning.length, kind: 'Assistant', content: text, before: null }] : [];
@@ -218,7 +218,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     }
     return ids;
   });
-  // Whether the Kind Filters let a row through (FR-51). Always passing: a Compaction's proposal, and Tool Calls awaiting
+  // Whether the Kind Filters let a row through. Always passing: a Compaction's proposal, and Tool Calls awaiting
   // approval or running with their output, since they are decided or stopped at their row.
   const proposing = () => compacting()?.phase === 'running' || compacting()?.phase === 'review';
   const unfiltered = createMemo(() => new Set([
@@ -276,7 +276,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   // Switched outside the Gate too (another terminal): the header follows.
   const unwatch = git?.watch(() => setBranch(branchNow()));
   if (unwatch) onCleanup(unwatch);
-  // The environment Note, refreshed when the environment changed (FR-28).
+  // The environment Note, refreshed when the environment changed.
   function refresh() {
     setBranch(branchNow());
     const edit = refreshEnvironment(events(), context(), project.environment());
@@ -284,7 +284,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   }
   refresh();
 
-  // On send: the references are read into snapshots, a missing file aborts (FR-27); the environment is refreshed.
+  // On send: the references are read into snapshots, a missing file aborts; the environment is refreshed.
   function prepare(): boolean {
     const read = readReferences(context(), project.read);
     if ('error' in read) {
@@ -304,7 +304,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     setSelected(id);
   }
 
-  // Appends the operation's event, or shows why not (NFR-3). Returns whether it was applied.
+  // Appends the operation's event, or shows why not. Returns whether it was applied.
   function apply(result: ops.Outcome): boolean {
     if ('error' in result) setStatus({ text: result.error, tone: 'info' });
     else append(ops.attributed(result.event, 'user'));
@@ -319,7 +319,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   }
 
   // A Tool Pair is moved as a Note: the first press asks, the same key again converts it,
-  // then the operation acts on the Note (FR-9). `action` names the operation, `key` its key.
+  // then the operation acts on the Note. `action` names the operation, `key` its key.
   function viaNote(action: string, key: string, then: () => void) {
     const block = selectedBlock();
     if (!block || !ops.inPair(block)) return then();
@@ -334,7 +334,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     setSelected(id);
     then();
   }
-  // Not while a Kind Filter hides neighbours the block would move past (FR-51).
+  // Not while a Kind Filter hides neighbours the block would move past.
   const hiding = () => shown().length < rows().length;
   function move(dir: -1 | 1) {
     if (hiding()) return;
@@ -366,7 +366,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     setStatus({ text: `undone: ${UNDONE[type] ?? type.toLowerCase()} (counter-event in Session Log)`, tone: 'info' });
   }
   const edited = (b: Block) => `edited → revision ${b.revision} · u = undo`;
-  // e: the selected block in $EDITOR; a changed save becomes a new Revision (FR-8). Checked first: a
+  // e: the selected block in $EDITOR; a changed save becomes a new Revision. Checked first: a
   // block that cannot be edited is not opened.
   async function editBlock() {
     const block = selectedBlock();
@@ -375,13 +375,13 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     try {
       const text = await editor(block.content);
       operate(b => ops.edit(events(), b, text), b => edited(blockOf(b.id)));
-      // A pending call edited is decided again by the rules (FR-23).
+      // A pending call edited is decided again by the rules.
       if (block.pending && blockOf(block.id).revision !== block.revision) advance([edited(blockOf(block.id))]);
     } catch (e) {
       setStatus({ text: `editor failed: ${errorText(e)} – unchanged`, tone: 'error' });
     }
   }
-  // On an unread @path reference, e opens the file itself (FR-27).
+  // On an unread @path reference, e opens the file itself.
   const edit = () => (selectedBlock()?.unread ? openReference(selectedBlock()!) : editBlock());
   // The file of an unread @path reference in $EDITOR; it is read on send.
   async function openReference(block: Block) {
@@ -396,7 +396,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   }
   // Text selected with the mouse, copied on release.
   const copy = (text: string) => clipboard(text).then(() => setStatus({ text: `copied ${text.length} chars`, tone: 'info' }));
-  // A Tool Pair is marked as a whole: it is compacted only as a whole (FR-9); a pending Tool Call not at all.
+  // A Tool Pair is marked as a whole: it is compacted only as a whole; a pending Tool Call not at all.
   // Like d, the selection then moves on to the next row.
   function toggleMark() {
     const block = selectedBlock();
@@ -419,7 +419,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   // The answer's text and Tool Calls become blocks; its calls are decided by the rules.
   // `policy`: what the active policy did before the request.
   function finish(result: ChatResult, policy: string | null) {
-    // Calls to a tool denied by rule are parsed too: they are answered "denied by rule" (FR-21).
+    // Calls to a tool denied by rule are parsed too: they are answered "denied by rule".
     const { events, notRun } = answerBlocks(result, nextId(), [...toolsOn(), ...deniedTools(rules())]);
     // At once: a rejected Question is never pending without its Tool Result.
     batch(() => {
@@ -435,13 +435,13 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     setStatus({ text, tone: miss ? 'warn' : status.tone });
   }
 
-  // Tool Approval (FR-22–FR-25) ----------------------------------------------------------------------------
+  // Tool Approval ----------------------------------------------------------------------------
   // The rules for a call: built-in, global and project rules, then the ones allowed for this session; last match wins.
   const rules = () => [...approval.permissions().rules, ...sessionAllowed(events())];
   const verdictOf = (call: Block): Verdict => decide(call, { rules: rules(), split: approval.split, root: approval.root });
 
   // Whether the answer's calls leave the results for review at the Gate: one was not run (rejected, denied, not a
-  // bash call) or was stopped (killed, timeout). Otherwise, once every call ran, the results are sent (FR-23).
+  // bash call) or was stopped (killed, timeout). Otherwise, once every call ran, the results are sent.
   let held = false;
 
   // What happens to a call: it runs (allow), waits for the user (ask) or is denied. Auto-approve runs what a rule
@@ -472,7 +472,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     setStatus({ text: [...notes, 'stopped – make your changes, Enter goes on'].join(' · '), tone: 'info' });
   }
 
-  // Decides the pending calls in order (FR-24): an allowed one runs, a denied one is answered "denied by rule", the
+  // Decides the pending calls in order: an allowed one runs, a denied one is answered "denied by rule", the
   // first to ask for is selected. Then the results are sent, or held at the Gate. notes: what happened so far.
   function advance(notes: string[] = []) {
     for (let call = ops.nextCall(context()); call; call = ops.nextCall(context())) {
@@ -494,7 +494,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     setStatus({ text: [...notes, call.tool === 'question' ? `? ${QUESTION_HINT}` : `? approve – ${APPROVE}`].join(' · '), tone: 'warn' });
   }
 
-  // Runs the call with its tool's runner (FR-21); its output streams into a live Tool Result row, then the next call is decided.
+  // Runs the call with its tool's runner; its output streams into a live Tool Result row, then the next call is decided.
   async function run(call: Block, notes: string[]) {
     const abort = new AbortController();
     const tool = call.tool === 'search' ? searcher : runner;
@@ -555,7 +555,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     if (call) void run(call, []);
   }
 
-  // a: allow the call's command prefixes for the session (FR-23, FR-25) – the preview shows them beforehand; they
+  // a: allow the call's command prefixes for the session – the preview shows them beforehand; they
   // are saved as Session Log events, then the call runs as allowed.
   function allowForSession() {
     const call = decidable();
@@ -566,7 +566,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     advance([`allowed for session: ${quoted(found.patterns)}`]);
   }
 
-  // n: not run; the result says "rejected by user" (FR-23).
+  // n: not run; the result says "rejected by user".
   function reject() {
     const call = decidable();
     if (!call) return;
@@ -592,7 +592,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     return changed || asksForAnswer(sent(), openingBlocks(events())) ? null : { text: 'nothing to send – Tab to write', tone: 'info' };
   }
 
-  // A Context as big as the window is not sent; the user makes room (FR-18, FR-20).
+  // A Context as big as the window is not sent; the user makes room.
   function overBudget(total: number): boolean {
     const { over } = budgetOf(total);
     if (over) setStatus({ text: `over by ${formatTokens(over)} – sending blocked · d remove · e edit · c compact`, tone: 'error' });
@@ -600,13 +600,13 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   }
 
   // Whether the Context may go: nothing blocks it, it fits, and its references are read. The window is checked
-  // first on the Gate's count, so a Context known to be too big reads no references (FR-27); the count right
+  // first on the Gate's count, so a Context known to be too big reads no references; the count right
   // before sending checks again (halted).
   function ready(): boolean {
     return !blocked() && !(split() && overBudget(split()!.total)) && prepare();
   }
   // With an active policy the references are read first, then the policy edits the Context; the count right before
-  // sending checks it (FR-54).
+  // sending checks it.
   async function readyWith(policy: Policy): Promise<boolean> {
     return !blocked() && prepare() && (await runPolicy(policy));
   }
@@ -670,7 +670,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     keepSelection();
   }
 
-  // Context Policy (ADR 0001, FR-52–FR-54) ---------------------------------------------------------------
+  // Context Policy (ADR 0001) ---------------------------------------------------------------
   // What the policy did before the request being sent, for its status line.
   let ran: string | null = null;
   // A request not sent after the policy ran still says what the policy did.
@@ -700,7 +700,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     compact: (context, sources, instruction, inContext) =>
       policyCompaction(inContext ? compaction.inContextRequest(context, instruction) : compaction.compactionRequest(context, sources, instruction), signal),
   });
-  // A policy's Compaction runs like the user's (FR-14, FR-17), without review; its Note is the answer.
+  // A policy's Compaction runs like the user's, without review; its Note is the answer.
   async function policyCompaction(request: Request, signal: AbortSignal): Promise<string> {
     const own = await compactor();
     const on = own?.backend ?? backend();
@@ -711,12 +711,12 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
       if (result.finish === 'aborted' || result.finish === 'length') throw new Error(result.finish === 'length' ? 'cut off at max_tokens' : 'aborted');
       return (request.answerStart ?? '') + result.content;
     } finally {
-      // The session's server cache now holds the compaction request (FR-17).
+      // The session's server cache now holds the compaction request.
       if (!own) setRecount(recount() + 1);
     }
   }
 
-  // /policy <name> switches a policy on (FR-53), /policy off off; alone it shows the active one and the names.
+  // /policy <name> switches a policy on, /policy off off; alone it shows the active one and the names.
   function switchPolicy(name: string) {
     const values = ['off', ...policies.all.map(p => p.name)].join(' ');
     if (!name) return setStatus({ text: `policy ${policies.active()?.name ?? 'off'} · /policy ${values}`, tone: 'info' });
@@ -726,7 +726,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     setStatus({ text: chosen ? `policy ${chosen.name} on – edits the Context before every request` : 'policy off', tone: 'info' });
   }
 
-  // /auto switches auto-approve on or off (FR-23); a call awaiting approval then runs at once.
+  // /auto switches auto-approve on or off; a call awaiting approval then runs at once.
   function switchAutoApprove() {
     autoApprove.set(!autoApprove.on());
     const text = autoApprove.on() ? 'auto-approve on – Tool Calls run without asking, deny rules still apply' : 'auto-approve off';
@@ -735,7 +735,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     setStatus({ text, tone: 'info' });
   }
 
-  // Compaction (FR-13–FR-17) ------------------------------------------------------------------------------
+  // Compaction ------------------------------------------------------------------------------
   const tokensOf = (ids: number[]) => (split() ? ids.reduce((sum, id) => sum + split()!.blocks[sent().findIndex(b => b.id === id)]!, 0) : null);
   const update = (change: Partial<Compaction>) => setCompacting({ ...compacting()!, ...change });
   // The proposal row goes before the first source, so each source's row number is one more than its place.
@@ -760,7 +760,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   }
   const instructionOf = (draft: string) => draft.trim() || instruction();
   const requestOf = (c: Compaction, draft: string) => compaction.compactionRequest(context(), c.sources, instructionOf(draft));
-  // The request with the instruction being written, counted for the header (FR-13); only the latest counts.
+  // The request with the instruction being written, counted for the header; only the latest counts.
   let measuring = '';
   async function measure(draft: string) {
     const c = compacting();
@@ -770,7 +770,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     if (measuring === draft && compacting()) update({ request: total });
   }
 
-  // Enter on the instruction: a new run from the sources, unless the request does not fit the window (FR-14).
+  // Enter on the instruction: a new run from the sources, unless the request does not fit the window.
   // The instruction line closes at once: the run starts with counting.
   async function runCompaction(draft: string) {
     const c = compacting()!;
@@ -784,12 +784,12 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     } catch (e) {
       endCompaction({ text: `compaction failed: ${errorText(e)}`, tone: 'error' });
     } finally {
-      // The server's cache now holds the compaction request (FR-17).
+      // The server's cache now holds the compaction request.
       if (c.same) setRecount(recount() + 1);
     }
   }
   // The request's tokens; too big for the window of the Compaction's Model Profile: null, back to the
-  // instruction, no chunking (FR-14).
+  // instruction, no chunking.
   async function fits(c: Compaction, request: Request): Promise<number | null> {
     const { total } = await c.backend.count([request]);
     if (total < c.backend.window) return total;
@@ -797,7 +797,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     setStatus({ text: `compaction request ${formatTokens(total)} ≥ window ${formatTokens(c.backend.window)} of ${c.profile} – shrink the selection (Esc, then d / e)`, tone: 'error' });
     return null;
   }
-  // The proposal streams into its row, with the rest of the window as max_tokens (FR-18); Esc aborts, also while
+  // The proposal streams into its row, with the rest of the window as max_tokens; Esc aborts, also while
   // the request is still counted.
   async function propose(c: Compaction, request: Request, draft: string, abort: AbortController, maxTokens: number) {
     const aborted = () => endCompaction({ text: 'compaction aborted – Context unchanged', tone: 'info' });
@@ -818,7 +818,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     keepSelection();
     setStatus(status);
   }
-  // The Context as it would be after accept, counted: the Note's tokens and the Context total (FR-15).
+  // The Context as it would be after accept, counted: the Note's tokens and the Context total.
   async function countProposal() {
     const c = compacting()!;
     const after = fold([...events(), { type: 'Compact', sources: c.sources, instruction: c.instruction, noteId: nextId(), content: c.text }]);
@@ -826,7 +826,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     const note = sentBlocks(after).findIndex(b => b.id === nextId());
     if (counted && compacting()?.text === c.text) update({ after: { note: counted.blocks[note]!, total: counted.total } });
   }
-  // Under review: tokens before → after and the Context after accept; the cache effect (FR-15, FR-17).
+  // Under review: tokens before → after and the Context after accept; the cache effect.
   function review(c: Compaction): Review | null {
     const before = tokensOf(c.sources);
     if (!c.after || before === null) return null;
@@ -869,7 +869,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     }
   }
 
-  // Thinking for the following requests (FR-49): the one set at the Gate, else the Model Profile's.
+  // Thinking for the following requests: the one set at the Gate, else the Model Profile's.
   const thinking = (): Thinking => context().thinking ?? backend().thinking ?? 'off';
   // The modes of the model's chat template, as the backend read them when it connected (session opened, setup).
   const thinkingModes = () => backend().thinkingModes ?? DEFAULT_MODES;
@@ -903,7 +903,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     setStatus({ text: `${name} ${toolsOn().includes(name) ? 'on' : 'off'} · u = undo`, tone: 'info' });
   }
 
-  // /filter <kind> switches that Kind Filter on or off, /filter all shows every block; alone it lists them (FR-51).
+  // /filter <kind> switches that Kind Filter on or off, /filter all shows every block; alone it lists them.
   // Marks on blocks now hidden are cleared: none stay hidden.
   function filterBy(name: string) {
     const values = `all ${FILTERS.map(f => f.name).join(' ')}`;
@@ -960,14 +960,14 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   // The commands offered: the /git: ones only in a git repository.
   const offered = COMMANDS.filter(c => git || !c.name.startsWith('/git:'));
   // Input text: a known command runs with the rest as argument; an unknown `/word` is an error; anything else becomes
-  // a User block and is sent right away – if sending is blocked, the block stays and the status says why (FR-6).
+  // a User block and is sent right away – if sending is blocked, the block stays and the status says why.
   function submit(text: string) {
     const name = text.trim().split(/\s/)[0]!;
     if (offered.some(c => c.name === name)) commands[name as CommandName](text.trim().slice(name.length).trim());
     else if (/^\/[\w:]+$/.test(name)) setStatus({ text: `unknown command ${name}: ${offered.map(c => c.name).join(' ')}`, tone: 'error' });
     else if (text.trim()) addInput(text);
   }
-  // `@path` references become rows of their own before the text; only a text is sent right away (FR-27).
+  // `@path` references become rows of their own before the text; only a text is sent right away.
   function addInput(input: string) {
     const { files, text } = references(input);
     for (const file of files) {
@@ -981,7 +981,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     } else setStatus({ text: `${count(files.length, 'file reference')} added – read at send · e opens the file · Enter sends`, tone: 'info' });
   }
 
-  // Tools denied by rule leave the Tools Block (FR-21), at open.
+  // Tools denied by rule leave the Tools Block, at open.
   function dropDenied() {
     const edit = ops.withoutDenied(events(), context(), deniedTools(rules()));
     if (edit) append(edit);
@@ -1009,14 +1009,14 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     hidden,
     hiding,
     passes,
-    // The Kind Filters' share of the Context: the sent blocks shown, their tokens (null while counting) (FR-51).
+    // The Kind Filters' share of the Context: the sent blocks shown, their tokens (null while counting).
     filterShare: () => {
       const indexes = sent().flatMap((b, i) => (hides(b.kind) ? [] : [i]));
       const s = split();
       return { blocks: indexes.length, all: sent().length, tokens: s && indexes.reduce((sum, i) => sum + s.blocks[i]!, 0), total: s && s.total };
     },
     window: () => backend().window,
-    // The Context's budget (FR-2, FR-18); null while counting.
+    // The Context's budget; null while counting.
     budget: () => (split() ? budgetOf(split()!.total) : null),
     // Whether a sent block is still cached; null while counting.
     warm: (id: number) => warm()?.[sent().findIndex(b => b.id === id)] ?? null,
@@ -1061,7 +1061,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     decline,
     allowForSession,
     reject,
-    // Why the rules ask for a pending call, per sub-command (FR-22); null for any other block.
+    // Why the rules ask for a pending call, per sub-command; null for any other block.
     verdict: (block: Block): Verdict | null => (block.pending && block.tool !== 'question' ? verdictOf(block) : null),
     asked,
     answer,
@@ -1085,7 +1085,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
 
 export type Gate = ReturnType<typeof createGate>;
 
-// Project config may only tighten: its allow entries are ignored, and the Gate says so (FR-25).
+// Project config may only tighten: its allow entries are ignored, and the Gate says so.
 function ignoredHint(approval: Approval): string | null {
   const { ignored } = approval.permissions();
   return ignored.length ? `project config: allow ${quoted(ignored)} ignored (project config may only tighten)` : null;
