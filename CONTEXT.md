@@ -52,7 +52,7 @@ Context Block holding the model's reasoning for one answer, placed before that a
 _Avoid_: reasoning, chain of thought
 
 **Kind Filter**:
-View restriction at the Review Gate to Context Blocks of one Kind: User, Thinking, Assistant, Note, or Tool Calls with their Tool Results (never one without the other). Changes nothing about the Context and is not recorded in the Session Log.
+View restriction at the Review Gate by Kind: System (with the Tools Block), User, Thinking, Assistant, Note, or Tool Calls with their Tool Results (never one without the other). Each is switched on or off on its own; the blocks shown are those of the Kinds on. Tool Calls are off at start; a Tool Call awaiting approval or running is shown regardless. Changes nothing about the Context and is not recorded in the Session Log.
 _Avoid_: search, hide
 
 **Context Policy**:
