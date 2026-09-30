@@ -1,7 +1,7 @@
 // An answer of the model as Context Blocks: its reasoning, its text, then one Tool Call per tool call.
 import type { ChatResult } from '../backend';
 import type { SessionEvent } from '../log/events';
-import { parseCall, type RawCall } from './bash';
+import { parseCall, type RawCall } from './call';
 
 type BlockAdded = Extract<SessionEvent, { type: 'BlockAdded' }>;
 type Parsed = { raw: RawCall; parsed: ReturnType<typeof parseCall> };

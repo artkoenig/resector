@@ -1,6 +1,6 @@
 import type { Thinking } from '../log/events';
 import type { Block, Context } from '../log/fold';
-import { callArguments } from '../toolcall/bash';
+import { callArguments } from '../tools/call';
 
 export type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
 export type AssistantMessage = { role: 'assistant'; content: string; reasoning_content?: string; tool_calls?: ToolCall[] };

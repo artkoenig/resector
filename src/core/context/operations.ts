@@ -1,8 +1,9 @@
 // Context operations at the Review Gate: each yields the event to append, or why not.
 import type { SessionEvent, Tool } from '../log/events';
 import { undone, type Block, type Context } from '../log/fold';
-import * as bash from '../toolcall/bash';
-import { resultText, type RunResult } from '../toolcall/bash';
+import * as catalog from '../tools/catalog';
+import { resultText } from '../tools/call';
+import type { RunResult } from '../tools/runner';
 
 export type Outcome<E extends SessionEvent = SessionEvent> = { event: E } | { error: string };
 type Undo = Extract<SessionEvent, { type: 'Undo' }>;
@@ -122,8 +123,8 @@ export const attributed = (event: SessionEvent, by: string): SessionEvent =>
 export function toggleTool(events: SessionEvent[], { blocks }: Context, name: string, denied: Tool[]): Outcome {
   const tools = blocks.find(b => b.kind === 'Tools');
   if (!tools) return { error: 'no Tools Block' };
-  if (denied.includes(name as Tool) && !bash.toolsIn(tools.content).includes(name)) return { error: `${name} is denied by rule` };
-  const toggled = bash.toggleTool(tools.content, name);
+  if (denied.includes(name as Tool) && !catalog.toolsIn(tools.content).includes(name)) return { error: `${name} is denied by rule` };
+  const toggled = catalog.toggleTool(tools.content, name);
   if ('error' in toggled) return toggled;
   return { event: { type: 'Edit', id: tools.id, revision: nextRevision(events, tools.id), content: toggled.content } };
 }
@@ -132,9 +133,9 @@ export function toggleTool(events: SessionEvent[], { blocks }: Context, name: st
 export function withoutDenied(events: SessionEvent[], { blocks }: Context, denied: Tool[]): Extract<SessionEvent, { type: 'Edit' }> | null {
   const tools = blocks.find(b => b.kind === 'Tools');
   if (!tools) return null;
-  const on = bash.toolsIn(tools.content);
+  const on = catalog.toolsIn(tools.content);
   if (!denied.some(name => on.includes(name))) return null;
-  const content = bash.toolsWith(on.filter(name => !denied.includes(name as Tool)));
+  const content = catalog.toolsWith(on.filter(name => !denied.includes(name as Tool)));
   return { type: 'Edit', id: tools.id, revision: nextRevision(events, tools.id), content, harness: true };
 }
 

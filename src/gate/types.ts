@@ -6,8 +6,8 @@ import type { Kind, SessionEvent, SessionLog } from '../core/log/events';
 import type { Block } from '../core/log/fold';
 import type { ReadFile } from '../core/notes/files';
 import type { Policy } from '../core/policy/policy';
-import type { Runner } from '../core/toolcall/bash';
-import type { Question } from '../core/toolcall/question';
+import type { Runner } from '../core/tools/runner';
+import type { Question } from '../core/tools/question';
 
 // The view's selection and marks, which the Gate acts on and moves (ADR 0003): the rows shown, the selected block,
 // the marked ones. follow moves the selection unless the user reads an older row; release makes it follow again;

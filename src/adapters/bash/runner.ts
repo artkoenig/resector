@@ -1,7 +1,7 @@
 // bash runner: `bash -c` in the project root, stdin /dev/null, output streamed,
 // killed with everything it started on abort (Esc) or timeout.
 import { spawn } from 'node:child_process';
-import type { Runner, RunResult } from '../../core/toolcall/bash';
+import type { Runner, RunResult } from '../../core/tools/runner';
 import type { Stopped } from '../../core/log/events';
 
 // timeout: seconds.

@@ -7,7 +7,8 @@ import type { Backend, ChatResult } from '../core/backend';
 import type { SessionEvent } from '../core/log/events';
 import type { Request } from '../core/render/native';
 import { newSession } from '../core/session/session';
-import type { RawCall, Runner } from '../core/toolcall/bash';
+import type { RawCall } from '../core/tools/call';
+import type { Runner } from '../core/tools/runner';
 import { createGate, type Kernel, type View } from '.';
 
 const answer = (content: string, calls: RawCall[] = []): ChatResult =>

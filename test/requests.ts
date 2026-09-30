@@ -3,7 +3,7 @@ import type { SessionEvent } from '../src/core/log/events';
 import { fold } from '../src/core/log/fold';
 import { renderPrefixes, type Message, type Request } from '../src/core/render/native';
 import { newSession } from '../src/core/session/session';
-import { toggleTool, TOOLS } from '../src/core/toolcall/bash';
+import { toggleTool, TOOLS } from '../src/core/tools/catalog';
 
 // A Tools Block of bash only: fixtures whose token counts do not follow the default tools.
 export const BASH_TOOLS = (toggleTool(TOOLS, 'question') as { content: string }).content;

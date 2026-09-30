@@ -2,7 +2,7 @@
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
 import { fileNote } from '../notes/files';
-import { TOOLS } from '../toolcall/bash';
+import { TOOLS } from '../tools/catalog';
 
 export type SessionSummary = { title: string; renamed: boolean; profile: string; blocks: number; tokens: number | null };
 

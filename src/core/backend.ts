@@ -1,7 +1,7 @@
 // Backend port: what the Review Gate needs from a model server. Adapters implement it.
 import type { Thinking, Usage } from './log/events';
 import type { Request } from './render/native';
-import type { RawCall } from './toolcall/bash';
+import type { RawCall } from './tools/call';
 import type { TokenSplit } from './tokens/split';
 
 export type Finish = 'stop' | 'tool_calls' | 'length' | 'aborted';

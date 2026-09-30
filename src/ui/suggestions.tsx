@@ -2,7 +2,7 @@
 import { createMemo, createSignal, For } from 'solid-js';
 import { basename } from 'node:path';
 import { fileCompletions } from '../core/notes/files';
-import { TOOL_NAMES } from '../core/toolcall/bash';
+import { TOOL_NAMES } from '../core/tools/catalog';
 import type { Screen } from './screen';
 import { FILTERS } from './selection';
 import type { Mode } from './prompt';

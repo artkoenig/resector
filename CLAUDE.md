@@ -10,7 +10,7 @@ TUI harness for local LLMs (Bun + TypeScript, UI with OpenTUI/Solid). No build s
 
 ## Layout
 
-- `src/core/` — domain logic, no I/O. One folder per concept (`approval`, `cache`, `compaction`, `config`, `context`, `log`, `notes`, `policy`, `render`, `session`, `tokens`, `toolcall`), `backend.ts` is the backend port.
+- `src/core/` — domain logic, no I/O. One folder per concept (`approval`, `cache`, `compaction`, `config`, `context`, `log`, `notes`, `policy`, `render`, `session`, `tokens`, `tools`), `backend.ts` is the backend port. `tools/`: `catalog.ts` (tool definitions, Tools Block content), `call.ts` (parse a Tool Call, its arguments, result text), `runner.ts` (the `Runner` port), `question.ts`, `answer.ts`.
 - `src/adapters/` — I/O: model servers (`backend/`), bash runner, file system, git, session store, clipboard, editor, search.
 - `src/gate/` — the Review Gate (ADR 0003): the request cycle as feature slices over a shared `kernel.ts`, composed in `index.ts`; slash commands in `commands.ts`; its ports (incl. `View`, the view's selection it acts on) in `types.ts`, its texts (titles, token numbers, errors) in `text.ts`. Imports neither adapters nor `ui/` (`bun run depcruise`). Unit tests against fake ports and a stub view: `index.test.ts`.
 - `src/ui/` — the terminal UI:

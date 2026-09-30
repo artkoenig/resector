@@ -1,6 +1,6 @@
 // Question dock (#33, #34): its state and keys while the model's Question is next, and its rendering.
 import { createEffect, createSignal, For, type JSX, on, Show } from 'solid-js';
-import { isRecommended, shownAnswer } from '../core/toolcall/question';
+import { isRecommended, shownAnswer } from '../core/tools/question';
 import * as dock from './dock';
 import type { DockState } from './dock';
 import type { Screen } from './screen';
