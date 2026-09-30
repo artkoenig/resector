@@ -41,10 +41,9 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   onCleanup(() => clearInterval(timer));
 
   const rows = (): Row[] => {
-    const split = gate.split();
     const n = (id: number) => String(gate.rows().indexOf(id) + 1);
-    const tokensOf = (id: number) => split?.blocks[gate.sent().findIndex(b => b.id === id)];
-    const tokens = (id: number) => (split ? formatTokens(tokensOf(id)!) : '…');
+    const tokensOf = gate.blockTokens;
+    const tokens = (id: number) => (tokensOf(id) === null ? '…' : formatTokens(tokensOf(id)!));
     const cache = (id: number) => ({ true: '●', false: '○', null: '' })[`${gate.warm(id)}`]!;
     const blocks = gate.context().blocks;
     // Sources of a proposal are shown as such until it is accepted or discarded.

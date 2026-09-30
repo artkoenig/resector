@@ -4,7 +4,7 @@ import type { Clipboard } from '../adapters/clipboard/clipboard';
 import type { Branches } from '../adapters/git/git';
 import type { Backend, ChatResult, Counted } from '../core/backend';
 import { deniedTools, quoted, sessionAllowed, sessionRules, verdictOf as decide, type Rule, type Split, type Verdict } from '../core/approval/approval';
-import { warmRows } from '../core/cache/cache';
+import { commonPrefix, warmRows } from '../core/cache/cache';
 import * as compaction from '../core/compaction/compaction';
 import * as ops from '../core/context/operations';
 import type { Kind, SessionEvent, SessionLog, Thinking } from '../core/log/events';
@@ -182,8 +182,16 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   const request = () => prefixes().at(-1)!;
   // Token split of the current request only; a stale split would misalign rows after a move.
   const split = () => (counted()?.prefixes === prefixes() ? counted()!.split : null);
+  // Per sent block while the request is recounted: the last count's tokens of the blocks before the first changed
+  // prefix, so the table does not blank out on every change; the rest are unknown until the count arrives.
+  const known = createMemo(() => {
+    const c = counted();
+    if (!c) return null;
+    if (c.prefixes === prefixes()) return c.split;
+    return { ...c.split, blocks: c.split.blocks.slice(0, commonPrefix(c.prefixes, prefixes(), same)) };
+  });
   // Per sent block, in Context order: still in the server's prefix cache.
-  const warm = createMemo(() => (split() ? warmRows(split()!.blocks, split()!.cached.tokens) : null));
+  const warm = createMemo(() => (known() ? warmRows(known()!.blocks, known()!.cached.tokens) : null));
   const nextId = () => context().nextId;
   // The budget of a Context of `total` tokens: max_tokens, and whether it may be sent.
   const budgetOf = (total: number): Budget =>
@@ -1018,7 +1026,9 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     window: () => backend().window,
     // The Context's budget; null while counting.
     budget: () => (split() ? budgetOf(split()!.total) : null),
-    // Whether a sent block is still cached; null while counting.
+    // A sent block's tokens; null while it is counted.
+    blockTokens: (id: number) => known()?.blocks[sent().findIndex(b => b.id === id)] ?? null,
+    // Whether a sent block is still cached; null while it is counted.
     warm: (id: number) => warm()?.[sent().findIndex(b => b.id === id)] ?? null,
     profile: () => context().profile,
     // The active Context Policy and the ones to switch on (ADR 0001).

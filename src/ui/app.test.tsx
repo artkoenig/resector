@@ -444,6 +444,19 @@ test('with marks only d and c are offered; d removes every marked block, u bring
   expect(frame).not.toMatch(/removed\s*$/m);
 });
 
+test('while a changed Context is counted, blocks before the change keep their tokens and cache', async () => {
+  await withUsers('keep', 'drop');
+  const before = line(ui.captureCharFrame(), /keep/)!;
+  const release = fake.holdCounts();
+  await press('d');
+  let frame = await frameMatching(ui, f => f.includes('removed ·'));
+  expect(line(frame, /keep/)!.slice(1)).toBe(before.slice(1));
+  expect(line(frame, /System prompt/)).toMatch(/System prompt\s+12\b/);
+  release();
+  frame = await frameMatching(ui, f => f.includes('58 / 4k'));
+  expect(line(frame, /keep/)!.slice(1)).toBe(before.slice(1));
+});
+
 test('d strikes the block through until sent; u brings it back as a counter-event', async () => {
   const { events } = await withUsers('keep', 'drop');
   await press('d');
