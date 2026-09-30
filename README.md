@@ -129,24 +129,36 @@ Drops Tool Calls and their results once the model has reasoned past them, and co
 
 ### Write your own
 
-Put a module into `~/.config/resector/policies/<name>.ts` — it is loaded at start and appears in `/policy`:
+Put a module into `~/.config/resector/policies/<name>.ts` — it is loaded at start and appears in `/policy`. The example [`examples/policies/lean.ts`](examples/policies/lean.ts) is a good start:
+
+```bash
+cp examples/policies/lean.ts ~/.config/resector/policies/
+```
 
 ```ts
-// ~/.config/resector/policies/lean.ts
+// Example Context Policy lean (ADR 0001): keeps the last 3 Tool Pairs, compacts the Thinking from half the window on.
+// Copy it to ~/.config/resector/policies/ and switch it on with `/policy lean`; the type import is erased at load.
+import type { PolicyContext, PolicyOperation } from '../../src/core/policy/policy';
+
+const KEEP = 3;
+const INSTRUCTION = 'Summarize the reasoning; keep decisions and open questions.';
+
 export const description = 'keeps the last 3 Tool Pairs, compacts Thinking past half the window';
 
-export default function lean({ window, used, blocks }) {
+export default function lean({ window, used, blocks }: PolicyContext): PolicyOperation[] {
+  // A call awaiting approval or without result is not a Tool Pair yet: it stays.
   const calls = blocks.filter(b => b.kind === 'Tool Call' && b.pair !== null && !b.pending);
-  const stale = calls.slice(0, -3).map(b => ({ op: 'remove', id: b.id }));
+  const stale = calls.slice(0, -KEEP).map(b => ({ op: 'remove' as const, id: b.id }));
   if (stale.length) return stale;
 
+  // Compacted into one Note, the Thinking is gone: the next pass returns nothing.
   const thinking = blocks.filter(b => b.kind === 'Thinking');
   if (used < window / 2 || thinking.length < 2) return [];
-  return [{ op: 'compact', sources: thinking.map(b => b.id), instruction: 'Summarize the reasoning; keep decisions and open questions.' }];
+  return [{ op: 'compact', sources: thinking.map(b => b.id), instruction: INSTRUCTION }];
 }
 ```
 
-Each block has `id`, `kind`, `origin`, `content`, `tokens`, `pair` (the other half of its Tool Pair) and `pending`. The full interface is in [`src/core/policy/policy.ts`](src/core/policy/policy.ts), a real example in [`thinking-trail.ts`](src/core/policy/thinking-trail.ts), the design in [ADR 0001](docs/adr/0001-context-policies.md).
+Each block has `id`, `kind`, `origin`, `content`, `tokens`, `pair` (the other half of its Tool Pair) and `pending`. The full interface is in [`src/core/policy/policy.ts`](src/core/policy/policy.ts), the design in [ADR 0001](docs/adr/0001-context-policies.md).
 
 > [!NOTE]
 > Policies are only loaded from your home directory, never from a project: a cloned repository cannot run code in your harness.
