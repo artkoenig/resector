@@ -40,8 +40,9 @@ const compactable = (b: PolicyBlock) =>
 
 // A bash Tool Call with its result whose every command only reads. A Question's answers (by the user) stay.
 function isRead(b: PolicyBlock, blocks: PolicyBlock[]): boolean {
-  if (b.kind !== 'Tool Call' || b.pending || b.pair === null) return false;
-  if (blocks.find(r => r.id === b.pair)?.origin === 'user') return false;
+  // A pending Tool Call has no result yet, so no pair.
+  if (b.kind !== 'Tool Call' || b.pair === null) return false;
+  if (blocks.find(r => r.id === b.pair)!.origin === 'user') return false;
   // Quoted text is an argument, not an operator (`grep "a\|b"`); double quotes still run `$(…)`. One pass, left to
   // right, so a quote inside the other kind does not pair up.
   let runs = false;

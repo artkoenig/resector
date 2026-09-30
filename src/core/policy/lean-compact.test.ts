@@ -36,16 +36,41 @@ test('read-only Tool Pairs and short Thinking are removed, the rest compacted', 
   ]);
 });
 
-test('a command that writes or runs something is not a read', () => {
-  for (const command of ['sed -i s/a/b/ x', 'find . -delete', 'cat x > y', 'echo "$(rm x)"', 'ls && rm x']) {
-    const ops = leanCompact({ window: 100, used: 60, blocks: blocks('User', call(command), 'Tool Result', 'User') });
-    expect(ops).toEqual([compact(2, 3)]);
-  }
+// The operations for one Tool Pair between two User blocks.
+const opsFor = (command: string) => leanCompact({ window: 100, used: 60, blocks: blocks('User', call(command), 'Tool Result', 'User') });
+
+test('read-only commands, alone or chained, with quoted arguments and output sent to stderr or /dev/null, are reads', () => {
+  const commands = ['ls', 'tree', 'cat a', 'head a', 'tail a', 'wc a', 'grep x a', 'rg x', 'find .', 'sed -n 1p a', 'git status', 'git diff', 'git log',
+    'git show HEAD', 'pwd', 'cd src', 'stat a', 'file a', 'echo hi', 'ls | wc -l', 'ls; pwd', 'ls\npwd', 'ls || pwd', "grep 'a|b' x", 'grep "ab|c" x',
+    'grep "a b" x', "grep '$(x)' x", 'ls>&2', 'ls >&2', 'ls 2>&1', 'ls>/dev/null', 'ls > /dev/null', 'ls 2>/dev/null'];
+  for (const command of commands) expect(opsFor(command), command).toEqual([{ op: 'remove', id: 2 }]);
 });
 
-test('quoted operators are arguments', () => {
-  const ops = leanCompact({ window: 100, used: 60, blocks: blocks('User', call("grep 'a|b' x"), 'Tool Result', 'User') });
-  expect(ops).toEqual([{ op: 'remove', id: 2 }]);
+test('a command that writes or runs something is not a read', () => {
+  const commands = ['sed -i s/a/b/ x', 'sed -n -i s/a/b/ x', 'sed -n -nEi p x', 'sed -n --in-place p x', 'find . -delete', 'find . -delete -name x',
+    'find . -exec rm {} +', 'git diff --output=x', 'git diff --output x', 'git log --output', 'rg --pre=cat x', 'rg --pre cat x', 'rg x --pre',
+    'cat x > y', 'echo "$(rm x)"', 'echo "`rm x`"', 'echo `rm x`', 'ls && rm x', "'x'cat f"];
+  for (const command of commands) expect(opsFor(command), command).toEqual([compact(2, 3)]);
+});
+
+test('a Tool Pair the user answered (a Question) or a Tool Call without result is not a read', () => {
+  expect(leanCompact({ window: 100, used: 60, blocks: blocks('User', call('ls'), ['Tool Result', { origin: 'user' }], 'User') })).toEqual([compact(2, 3)]);
+  expect(leanCompact({ window: 100, used: 60, blocks: blocks('User', call('ls'), 'Assistant', 'User') })).toEqual([compact(2, 3)]);
+  expect(leanCompact({ window: 100, used: 60, blocks: blocks('User', ['Assistant', { content: 'ls' }], call('x'), ['Tool Result', { content: 'ls' }], 'User') })).toEqual([compact(2, 3, 4)]);
+});
+
+test('short means Thinking under 200 tokens; other short blocks are compacted', () => {
+  const context = blocks('User', ['Thinking', { tokens: 199 }], ['Thinking', { tokens: 200 }], ['Assistant', { tokens: 10 }], 'User');
+  expect(leanCompact({ window: 100, used: 60, blocks: context })).toEqual([{ op: 'remove', id: 2 }, compact(3, 4)]);
+});
+
+test('System, Tools, pending Tool Calls and the Notes of the environment and of files are not compacted', () => {
+  const context = blocks('System', 'Tools', ['Note', { origin: 'environment' }], ['Note', { origin: 'file' }], 'User', 'Assistant', ['Tool Call', { pending: true }], 'User');
+  expect(leanCompact({ window: 100, used: 60, blocks: context })).toEqual([compact(6)]);
+});
+
+test('an empty Context: nothing to do', () => {
+  expect(leanCompact({ window: 0, used: 0, blocks: [] })).toEqual([]);
 });
 
 test('the newest Tool Pair stays as a whole', () => {
