@@ -129,32 +129,29 @@ Drops Tool Calls and their results once the model has reasoned past them, and co
 
 ### Write your own
 
-Put a module into `~/.config/resector/policies/<name>.ts` — it is loaded at start and appears in `/policy`. The example [`examples/policies/lean.ts`](examples/policies/lean.ts) is a good start:
+Put a module into `~/.config/resector/policies/<name>.ts` — it is loaded at start and appears in `/policy`. The example [`examples/policies/lean-compact.ts`](examples/policies/lean-compact.ts) is a good start: from half the window on it removes read-only `bash` Tool Pairs (`grep`, `cat`, `git diff`, …) and short Thinking, then compacts the rest of the work into one Note — leaving your messages, the project's Notes and the newest Tool Pair alone.
 
 ```bash
-cp examples/policies/lean.ts ~/.config/resector/policies/
+cp examples/policies/lean-compact.ts ~/.config/resector/policies/
 ```
 
 ```ts
-// Example Context Policy lean (ADR 0001): keeps the last 3 Tool Pairs, compacts the Thinking from half the window on.
-// Copy it to ~/.config/resector/policies/ and switch it on with `/policy lean`; the type import is erased at load.
-import type { PolicyContext, PolicyOperation } from '../../src/core/policy/policy';
+export const description = 'drops reads and short thinking, compacts at ½';
 
-const KEEP = 3;
-const INSTRUCTION = 'Summarize the reasoning; keep decisions and open questions.';
-
-export const description = 'keeps the last 3 Tool Pairs, compacts Thinking past half the window';
-
-export default function lean({ window, used, blocks }: PolicyContext): PolicyOperation[] {
-  // A call awaiting approval or without result is not a Tool Pair yet: it stays.
-  const calls = blocks.filter(b => b.kind === 'Tool Call' && b.pair !== null && !b.pending);
-  const stale = calls.slice(0, -KEEP).map(b => ({ op: 'remove' as const, id: b.id }));
-  if (stale.length) return stale;
-
-  // Compacted into one Note, the Thinking is gone: the next pass returns nothing.
-  const thinking = blocks.filter(b => b.kind === 'Thinking');
-  if (used < window / 2 || thinking.length < 2) return [];
-  return [{ op: 'compact', sources: thinking.map(b => b.id), instruction: INSTRUCTION }];
+export default function leanCompact({ window, used, blocks: all }: PolicyContext): PolicyOperation[] {
+  if (used < window * COMPACT_FROM) return [];
+  // The model has not yet built on the newest block: it is left out, a Tool Pair as a whole.
+  const last = all.at(-1);
+  const newest = new Set([last?.id, last?.pair]);
+  const blocks = all.filter(b => !newest.has(b.id));
+  const reads = blocks.filter(b => isRead(b, blocks));
+  const short = blocks.filter(b => b.kind === 'Thinking' && b.tokens < SHORT_THINKING);
+  const gone = new Set([...reads.flatMap(b => [b.id, b.pair!]), ...short.map(b => b.id)]);
+  const sources = blocks.filter(b => compactable(b) && !gone.has(b.id));
+  const removals = [...reads, ...short].map(b => ({ op: 'remove' as const, id: b.id }));
+  // Only the Note of an earlier Compaction left: compacting it again would not free the window.
+  const worth = sources.some(b => b.origin !== 'compaction');
+  return worth ? [...removals, { op: 'compact', sources: sources.map(b => b.id), instruction: INSTRUCTION }] : removals;
 }
 ```
 
