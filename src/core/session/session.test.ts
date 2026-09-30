@@ -66,6 +66,6 @@ test('the blocks a session starts with are those newSession added, not file refe
 test('a session runs in its worktree after the last switch on; a new one in the project', () => {
   const events = newSession('p', 'sys');
   expect(inWorktree(events)).toBe(false);
-  expect(inWorktree([...events, { type: 'WorktreeSet', on: true }])).toBe(true);
+  expect(inWorktree([...events, { type: 'WorktreeSet', on: true }, { type: 'SessionRenamed', title: 't' }])).toBe(true);
   expect(inWorktree([...events, { type: 'WorktreeSet', on: true }, { type: 'WorktreeSet', on: false }])).toBe(false);
 });

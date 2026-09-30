@@ -90,7 +90,10 @@ for await (const file of new Glob(`${values.src}/**/*.{ts,tsx}`).scan()) {
       const from = lineOf(sf, n.getStart()), to = lineOf(sf, n.getEnd());
       const nested = nestedLines(n, sf);
       const lines = [...lineHits].filter(([ln]) => ln >= from && ln <= to && !nested.has(ln));
-      const coverage = lines.length ? lines.filter(([, h]) => h > 0).length / lines.length : 0;
+      // A loaded file whose function has no lines in LCOV: Bun's source map dropped them (seen for one-line arrows
+      // in .tsx), not uncovered – an uncovered line is listed with 0 hits.
+      const unmapped = !lines.length && lineHits.size > 0;
+      const coverage = lines.length ? lines.filter(([, h]) => h > 0).length / lines.length : unmapped ? 1 : 0;
       const c = complexity(n);
       rows.push({ location: `${norm(file)}:${from} ${nameOf(n)}`, complexity: c, coverage,
         crap: c * c * (1 - coverage) ** 3 + c });

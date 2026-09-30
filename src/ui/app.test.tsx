@@ -2058,7 +2058,11 @@ function fakeGit() {
       current = name;
     },
     watch: onChange => ((switched = onChange), () => (switched = () => {})),
-    worktree: on => (calls.push(`worktree ${on}`), on ? '/p/.resector/worktrees/ses_test' : '/p'),
+    worktree: on => {
+      if (current === 'locked') throw new Error("fatal: '/p/.resector/worktrees/ses_test' is a missing but locked worktree");
+      calls.push(`worktree ${on}`);
+      return on ? '/p/.resector/worktrees/ses_test' : '/p';
+    },
     reopen: notice => void calls.push(`reopen ${notice.text}`),
   };
   return { git, calls, switchOutside };
@@ -2117,4 +2121,14 @@ test('/git:worktree on prepares the worktree, logs the switch and reopens the Ga
   expect(events().at(-1)).toEqual({ type: 'WorktreeSet', on: true });
   await write('/git:worktree on');
   await frameMatching(ui, f => f.includes('worktree already on'));
+});
+
+test('/git:worktree on that git refuses shows the git message and stays in the project', async () => {
+  const { git, calls, switchOutside } = fakeGit();
+  const { events } = await start({ git });
+  switchOutside('locked');
+  await write('/git:worktree on');
+  await frameMatching(ui, f => f.includes('missing but locked worktree'));
+  expect(calls).toEqual([]);
+  expect(events().some(e => e.type === 'WorktreeSet')).toBe(false);
 });

@@ -918,11 +918,8 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   // /git:worktree on runs the session in its own worktree, off in the project again; the worktree stays for the
   // next on. Alone it says where the session runs.
   function switchWorktree(value: string) {
-    const on = inWorktree(events());
-    if (!value) return setStatus({ text: `worktree ${on ? 'on' : 'off'} · runs in ${approval.root} · /git:worktree ${on ? 'off' : 'on'}`, tone: 'info' });
-    if (value !== 'on' && value !== 'off') return setStatus({ text: `unknown value ${value}: /git:worktree on off`, tone: 'error' });
-    if ((value === 'on') === on) return setStatus({ text: `worktree already ${value}`, tone: 'info' });
-    if (!idle()) return setStatus({ text: 'busy – switch the worktree at the Gate', tone: 'info' });
+    const refusal = worktreeRefusal(value);
+    if (refusal) return setStatus(refusal);
     try {
       const dir = git!.worktree(value === 'on');
       append({ type: 'WorktreeSet', on: value === 'on' });
@@ -930,6 +927,15 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     } catch (e) {
       setStatus({ text: `git: ${errorText(e)}`, tone: 'error' });
     }
+  }
+  // Why /git:worktree <value> does not switch: no value, an unknown one, already so, or busy; null when it switches.
+  function worktreeRefusal(value: string): Status | null {
+    const now = inWorktree(events()) ? 'on' : 'off';
+    if (!value) return { text: `worktree ${now} · runs in ${approval.root} · /git:worktree ${now === 'on' ? 'off' : 'on'}`, tone: 'info' };
+    if (!['on', 'off'].includes(value)) return { text: `unknown value ${value}: /git:worktree on off`, tone: 'error' };
+    if (value === now) return { text: `worktree already ${value}`, tone: 'info' };
+    if (!idle()) return { text: 'busy – switch the worktree at the Gate', tone: 'info' };
+    return null;
   }
 
   const commands: Record<CommandName, (arg: string) => void> = {
