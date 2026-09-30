@@ -2,8 +2,8 @@
 
 <img width="640" alt="RESECTOR" src="docs/assets/title.svg" />
 
-**The coding agent for local LLMs that shows you its context.**<br />
-See, measure and edit every token before it reaches the model.
+**Manage your context like a pro.**<br />
+The coding agent for local LLMs.
 
 <a href="https://github.com/artkoenig/resector/releases"><img alt="Latest Release" src="https://img.shields.io/github/v/release/artkoenig/resector?style=flat-square" /></a>
 <a href="https://github.com/artkoenig/resector/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/artkoenig/resector/ci.yml?branch=main&style=flat-square" /></a>
