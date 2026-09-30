@@ -1897,13 +1897,13 @@ async function policyOn(name: string) {
   await frameMatching(ui, f => f.includes(`policy ${name} on`));
 }
 
-test('/policy suggests the policies, switches one on and off; the header shows the active one (ADR 0001)', async () => {
-  await start({ policies: [scripted('trail', []), scripted('tidy', [])] });
+test('/policy suggests the policies with their description, switches one on and off; the header shows the active one (ADR 0001)', async () => {
+  await start({ policies: [{ ...scripted('trail', []), description: 'keeps a trail' }, scripted('tidy', [])] });
   ui.mockInput.pressTab();
   await ui.flush();
   await ui.mockInput.typeText('/policy ');
   let frame = await frameMatching(ui, f => f.includes('switch on'));
-  expect(line(frame, /trail/)).toMatch(/trail +switch on/);
+  expect(line(frame, /trail/)).toMatch(/trail +keeps a trail/);
   expect(line(frame, /tidy/)).toMatch(/tidy +switch on/);
   expect(frame).not.toMatch(/off +no policy/);
   ui.mockInput.pressEnter();
@@ -1913,7 +1913,7 @@ test('/policy suggests the policies, switches one on and off; the header shows t
   await ui.flush();
   await ui.mockInput.typeText('/policy ');
   frame = await frameMatching(ui, f => f.includes('no policy'));
-  expect(frame).toMatch(/trail +active/);
+  expect(frame).toMatch(/trail +active · keeps a trail/);
   await escape();
   await escape();
   await write('/policy');

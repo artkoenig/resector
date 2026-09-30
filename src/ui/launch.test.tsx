@@ -426,7 +426,7 @@ test('the built-in thinking-trail is offered and switched on without any policy 
   ui.mockInput.pressTab();
   await ui.flush();
   await ui.mockInput.typeText('/policy ');
-  expect(await frameMatching(ui, f => f.includes('switch on'))).toMatch(/thinking-trail\s+switch on/);
+  expect(await frameMatching(ui, f => f.includes('thinking-trail'))).toMatch(/thinking-trail\s+drops tool pairs, summarizes reasoning/);
   await ui.mockInput.typeText('t');
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('policy thinking-trail on'));

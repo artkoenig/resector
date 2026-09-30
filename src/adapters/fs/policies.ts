@@ -19,12 +19,14 @@ export async function loadPolicies(dir: string, builtIn: Policy[] = []): Promise
   return { policies, failed: loaded.filter((p): p is string => typeof p === 'string') };
 }
 
-// The module's default export is the policy function; its file name is the policy's name.
+// The module's default export is the policy function; its file name is the policy's name; a string export
+// `description` says in a few words what it does.
 async function loadPolicy(path: string): Promise<Policy | string> {
   const name = basename(path, '.ts');
   try {
-    const run = (await import(path)).default;
-    return typeof run === 'function' ? { name, run } : `${name}: no default export function`;
+    const { default: run, description } = await import(path);
+    if (typeof run !== 'function') return `${name}: no default export function`;
+    return typeof description === 'string' ? { name, run, description } : { name, run };
   } catch (e) {
     return `${name}: ${e instanceof Error ? e.message : String(e)}`;
   }

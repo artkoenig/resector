@@ -1,5 +1,5 @@
 // The Context Policies shipped with resector, offered next to those in ~/.config/resector/policies (ADR 0001).
 import type { Policy } from './policy';
-import thinkingTrail from './thinking-trail';
+import thinkingTrail, { description } from './thinking-trail';
 
-export const BUILT_IN: Policy[] = [{ name: 'thinking-trail', run: thinkingTrail }];
+export const BUILT_IN: Policy[] = [{ name: 'thinking-trail', run: thinkingTrail, description }];

@@ -15,10 +15,11 @@ test('policies live in policies/ next to the global config, also when RESECTOR_C
 test('each .ts file with a default export function is a policy named after the file', async () => {
   const root = dir();
   writeFileSync(join(root, 'trim.ts'), `export default (context: { blocks: { id: number }[] }) => context.blocks.slice(0, 1).map(b => ({ op: 'remove', id: b.id }));\n`);
-  writeFileSync(join(root, 'none.ts'), 'export default () => [];\n');
+  writeFileSync(join(root, 'none.ts'), "export const description = 'does nothing';\nexport default () => [];\n");
   writeFileSync(join(root, 'notes.md'), 'not a policy');
   const { policies, failed } = await loadPolicies(root);
   expect(policies.map(p => p.name)).toEqual(['none', 'trim']);
+  expect(policies.map(p => p.description)).toEqual(['does nothing', undefined]);
   expect(await policies[1]!.run({ window: 1, used: 0, blocks: [{ id: 4 } as never] })).toEqual([{ op: 'remove', id: 4 }]);
   expect(failed).toEqual([]);
 });

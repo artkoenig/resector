@@ -104,7 +104,10 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   const filterValues = () => [...(gate.filter() ? [{ name: 'off', description: 'show all blocks' }] : []), ...FILTERS.map(f => ({ name: f.name, description: f.kinds.join(' + ') }))];
   const policyValues = () => [
     ...(gate.policy() ? [{ name: 'off', description: 'no policy' }] : []),
-    ...gate.policyNames().map(name => ({ name, description: name === gate.policy() ? 'active' : 'switch on' })),
+    ...gate.policyNames().map(name => {
+      const about = gate.policyDescription(name);
+      return { name, description: name === gate.policy() ? (about ? `active · ${about}` : 'active') : (about ?? 'switch on') };
+    }),
   ];
   const thinkingValues = () => gate.thinkingOptions().map(o => ({ name: o.name, description: o.value === gate.thinking() ? 'active' : 'switch on' }));
   const chosen = () => Math.min(suggested(), suggestions().length - 1);

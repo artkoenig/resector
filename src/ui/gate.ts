@@ -938,6 +938,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     // The active Context Policy and the ones to switch on (ADR 0001).
     policy: () => policies.active()?.name ?? null,
     policyNames: () => policies.all.map(p => p.name),
+    policyDescription: (name: string) => policies.all.find(p => p.name === name)?.description ?? null,
     autoApprove: autoApprove.on,
     thinking,
     thinkingOptions,
