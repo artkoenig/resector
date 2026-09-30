@@ -15,5 +15,5 @@
     "jsx": "preserve",
     "jsxImportSource": "@opentui/solid"
   },
-  "include": ["src", "scripts", "test"]
+  "include": ["src", "scripts", "test", "examples"]
 }
