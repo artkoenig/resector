@@ -86,20 +86,26 @@ A **Context Policy** is a function over the Context that resector calls before e
 - **The policy wins:** undone operations are applied again. To keep something, switch the policy off.
 - **Fails loudly:** a failing policy stops the Gate instead of sending.
 
-### Example: `lean-compact`
+### Built-in: `lean-compact`
 
-From half the window on, [`lean-compact`](examples/policies/lean-compact.ts) removes read-only `bash` Tool Pairs (`grep`, `cat`, `git diff`, …) and short Thinking, then compacts the rest of the work into one Note. Your messages, the project's Notes and the newest Tool Pair stay.
+On by default. From half the window on, [`lean-compact`](src/core/policy/lean-compact.ts) removes read-only `bash` Tool Pairs (`grep`, `cat`, `git diff`, …) and short Thinking, then compacts the rest of the work into one Note. Your messages, the project's Notes and the newest Tool Pair stay.
+
+Compared with compacting everything (same instruction, 5 synthetic sessions, 21–35k tokens each):
+
+| | lean-compact | compact everything |
+| --- | --- | --- |
+| Prompt to the model | 1.0–1.6k tokens | 21–35k tokens |
+| Compaction time | **9–14 s** | 134–222 s |
+| Facts kept | 39/40 | 38/40 |
 
 ```bash
-cp examples/policies/lean-compact.ts ~/.config/resector/policies/
-```
-
-```bash
-/policy lean-compact   # switch on
 /policy off            # switch off
+/policy lean-compact   # switch on again
 ```
 
-A policy is a module in `~/.config/resector/policies/<name>.ts`:
+### Write your own
+
+A policy is a module in `~/.config/resector/policies/<name>.ts`; one named `lean-compact.ts` replaces the built-in.
 
 ```ts
 export const description = 'drops reads and short thinking, compacts at ½';
@@ -130,7 +136,7 @@ Interface: [`src/core/policy/policy.ts`](src/core/policy/policy.ts), design: [AD
     }
   },
   "defaultProfile": "qwen",
-  "defaultPolicy": "lean-compact",
+  "defaultPolicy": "lean-compact",        // default; "off" for none
   "permission": { "npm test *": "allow", "rm *": "ask", "git push *": "deny" }
 }
 ```

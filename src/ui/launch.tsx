@@ -17,7 +17,7 @@ import type { Editor } from '../core/context/operations';
 import type { SessionEvent } from '../core/log/events';
 import { fold } from '../core/log/fold';
 import { environmentText } from '../core/notes/environment';
-import { BUILT_IN } from '../core/policy/built-in';
+import { BUILT_IN, DEFAULT_POLICY } from '../core/policy/built-in';
 import type { Policy } from '../core/policy/policy';
 import { inWorktree, newSession, summarize, type SessionRef } from '../core/session/session';
 import { App } from './app';
@@ -92,9 +92,9 @@ export function Launch(props: LaunchOptions) {
     // The project instructions are read once, now.
     const events = newSession(profile.name, loaded.systemPrompt(profile), { environment: projectAt(root).environment(), instructions: projectInstructions(root, personalInstructionsDir(props.paths, root)) });
     events.forEach(opened.log.append);
-    // A new session starts with the configured policy on; without one, and when resumed, the app's stays.
-    const name = loaded.config.defaultPolicy;
-    const policy = name === undefined ? null : policies.all.find(p => p.name === name);
+    // A new session starts with the configured policy on (lean-compact unless set, none with `off`); when resumed, the app's stays.
+    const name = loaded.config.defaultPolicy ?? DEFAULT_POLICY;
+    const policy = name === 'off' ? null : policies.all.find(p => p.name === name);
     if (policy) setActive(policy);
     const notice = policy === undefined ? { text: `new session · defaultPolicy ${name} – no such policy`, tone: 'warn' as const } : { text: 'new session', tone: 'ok' as const };
     return { opened, events, notice };

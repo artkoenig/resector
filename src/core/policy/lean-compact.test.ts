@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
-import { DEFAULT_INSTRUCTION } from '../../src/core/compaction/compaction';
-import type { Kind } from '../../src/core/log/events';
-import type { PolicyBlock } from '../../src/core/policy/policy';
+import { DEFAULT_INSTRUCTION } from '../compaction/compaction';
+import type { Kind } from '../log/events';
+import type { PolicyBlock } from './policy';
 import leanCompact from './lean-compact';
 
 type Spec = Kind | [Kind, Partial<PolicyBlock>];

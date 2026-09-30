@@ -93,7 +93,7 @@
       "type": "string"
     },
     "defaultPolicy": {
-      "description": "Context Policy switched on for new sessions; /policy switches it",
+      "description": "Context Policy switched on for new sessions (default lean-compact, `off` for none); /policy switches it",
       "type": "string"
     },
     "permission": {

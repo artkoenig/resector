@@ -37,7 +37,7 @@ const ConfigSchema = z.strictObject({
   $schema: z.string().optional(),
   profiles: z.record(z.string(), ProfileSchema).default({}),
   defaultProfile: z.string().optional().describe('Model Profile for new sessions'),
-  defaultPolicy: z.string().optional().describe('Context Policy switched on for new sessions; /policy switches it'),
+  defaultPolicy: z.string().optional().describe('Context Policy switched on for new sessions (default lean-compact, `off` for none); /policy switches it'),
   permission: PermissionSchema.optional().describe('bash command pattern → decision; project config may only tighten'),
   keybindings: z.record(z.string(), z.string()).optional().describe('Action → key'),
   bash: z.strictObject({ timeout: z.number().positive().optional().describe('Seconds (default 120)') }).optional(),
