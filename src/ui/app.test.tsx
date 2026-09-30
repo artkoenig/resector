@@ -2046,7 +2046,7 @@ test('a policy Compaction runs on compactionProfile; too big for its window, cut
     await frameMatching(ui, f => f.includes('compaction failed: cut off at max_tokens – not sent'));
     small.reply({ chunks: ['wait'], hang: true });
     ui.mockInput.pressEnter();
-    await frameMatching(ui, f => f.includes('policy squash4 running'));
+    await frameMatching(ui, f => /[\u2800-\u28ff] policy squash4 running/.test(f));
     await escape();
     await frameMatching(ui, f => f.includes('compaction failed: aborted – not sent'));
     small.reply({ chunks: ['brief'] });

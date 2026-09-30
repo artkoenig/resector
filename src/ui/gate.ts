@@ -165,7 +165,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   // Bumped when a referenced file may have changed (edited via `e`): the Gate shows it as it is now.
   const [reread, setReread] = createSignal(0);
   // The active policy editing the Context before a request; Esc aborts its Compaction.
-  const [policing, setPolicing] = createSignal<AbortController | null>(null);
+  const [policing, setPolicing] = createSignal<{ name: string; abort: AbortController } | null>(null);
 
   const append = (event: SessionEvent) => {
     log.append(event);
@@ -469,7 +469,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     const step = streaming() ?? running();
     if (step && !stopping()) return void setStopping(true);
     setStopping(false);
-    (policing() ?? (step ?? compacting())?.abort)?.abort();
+    (policing() ?? step ?? compacting())?.abort?.abort();
   }
   // The loop goes on after a step, unless Esc asked to stop: then the next call waits, its results are held.
   function goOn(notes: string[]) {
@@ -686,8 +686,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   // The active policy edits the Context; an error, its Compaction's too, stops the Gate: nothing is sent.
   async function runPolicy(policy: Policy): Promise<boolean> {
     const abort = new AbortController();
-    setPolicing(abort);
-    setStatus({ text: `policy ${policy.name} running`, tone: 'warn' });
+    setPolicing({ name: policy.name, abort });
     try {
       const { changes, error } = await applyPolicy(policy, policyPorts(abort.signal));
       const did = changes.length ? summary(policy.name, changes) : null;
@@ -1005,6 +1004,8 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     split,
     streaming,
     running,
+    // The name of the policy editing the Context before a request.
+    policing: () => policing()?.name ?? null,
     live,
     // Streaming or running: only Esc (abort, kill) acts.
     nextCall: () => ops.nextCall(context()),
