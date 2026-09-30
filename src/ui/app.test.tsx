@@ -1403,13 +1403,13 @@ test('the environment Note follows the Tools Block; a changed environment is a n
 });
 
 test('the project instructions are a Note after the environment (FR-29)', async () => {
-  await start({ notes: { environment: 'cwd: /p', instructions: { file: 'AGENTS.md', content: '# Rules' } } });
+  await start({ notes: { environment: 'cwd: /p', instructions: [{ file: 'AGENTS.md', content: '# Rules' }] } });
   const frame = ui.captureCharFrame();
   expect(line(frame, /AGENTS/)).toMatch(/4\s+Note\s+@AGENTS\.md\s+\d+/);
 });
 
 test('the Notes a new session starts with ask for no answer', async () => {
-  await start({ notes: { environment: 'cwd: /p', instructions: { file: 'AGENTS.md', content: '# Rules' } } });
+  await start({ notes: { environment: 'cwd: /p', instructions: [{ file: 'AGENTS.md', content: '# Rules' }] } });
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('nothing to send'));
   expect(fake.chatRequests).toEqual([]);

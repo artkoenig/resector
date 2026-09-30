@@ -8,6 +8,7 @@ import { frameMatching } from '../../test/frames';
 import { startFakeOmlx } from '../../test/fake-omlx';
 import type { LocalServer } from '../adapters/backend/discover';
 import { configPaths } from '../adapters/fs/config';
+import { personalInstructionsDir } from '../adapters/fs/project';
 import { openSessionStore } from '../adapters/store/sessions';
 import type { SessionEvent } from '../core/log/events';
 import { newSession } from '../core/session/session';
@@ -28,9 +29,9 @@ function put(path: string, text: string) {
 }
 
 // policies: Context Policy modules by name, in policies/ next to the global config.
-type Setup = { config?: (url: string) => string; systemMd?: string; compactionMd?: string; policies?: Record<string, string>; servers?: (url: string) => LocalServer[]; sessions?: Record<string, SessionEvent[]>; locks?: Record<string, number>; resume?: true | string; files?: Record<string, string>; git?: true };
+type Setup = { config?: (url: string) => string; systemMd?: string; compactionMd?: string; policies?: Record<string, string>; servers?: (url: string) => LocalServer[]; sessions?: Record<string, SessionEvent[]>; locks?: Record<string, number>; resume?: true | string; files?: Record<string, string>; personal?: Record<string, string>; git?: true };
 
-async function launch({ config, systemMd, compactionMd, policies = {}, servers, sessions = {}, locks = {}, resume, files = {}, git }: Setup = {}) {
+async function launch({ config, systemMd, compactionMd, policies = {}, servers, sessions = {}, locks = {}, resume, files = {}, personal = {}, git }: Setup = {}) {
   fake = startFakeLlamaCpp({ nCtx: 4096, model: 'qwen3-8b.gguf' });
   const root = mkdtempSync(join(tmpdir(), 'resector-launch-'));
   const project = join(root, 'project');
@@ -43,6 +44,7 @@ async function launch({ config, systemMd, compactionMd, policies = {}, servers, 
   }
   const paths = configPaths({ home: join(root, 'home'), cwd: project, env: {} });
   if (config) put(paths.global, config(fake.url));
+  for (const [name, text] of Object.entries(personal)) put(join(personalInstructionsDir(paths, project), name), text);
   if (systemMd) put(join(dirname(paths.global), 'system.md'), systemMd);
   if (compactionMd) put(join(dirname(paths.global), 'compaction.md'), compactionMd);
   for (const [name, text] of Object.entries(policies)) put(join(dirname(paths.global), 'policies', `${name}.ts`), text);
@@ -76,7 +78,7 @@ async function launch({ config, systemMd, compactionMd, policies = {}, servers, 
     { width: 80, height: 16 },
   );
   const log = () => readFileSync(join(root, 'sessions', 'ses_test.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
-  return { paths, fatal, log, store, quit, root };
+  return { paths, fatal, log, store, quit, root, project };
 }
 
 const profileConfig = (url: string, extra = '') => `{
@@ -388,7 +390,7 @@ test('/sessions with more sessions than fit: rows never overlap, the list follow
   expect(frame.split('\n')[2]).toMatch(/^ {5}Title/);
 });
 
-test('a new session starts with the environment Note and AGENTS.md, else CLAUDE.md, right after the Tools Block (FR-28, FR-29)', async () => {
+test('a new session starts with the environment Note, AGENTS.md and CLAUDE.md right after the Tools Block (FR-28, FR-29)', async () => {
   const { log } = await launch({ config: url => profileConfig(url), files: { 'AGENTS.md': '# Agents', 'CLAUDE.md': '# Claude' } });
   const frame = await frameMatching(ui, f => f.includes('/ 2k') && !f.includes('… / 2k'));
   expect(frame).toMatch(/3\s+Note\s+Environment/);
@@ -396,7 +398,15 @@ test('a new session starts with the environment Note and AGENTS.md, else CLAUDE.
   expect(log().slice(3)).toEqual([
     { type: 'BlockAdded', id: 3, kind: 'Note', origin: 'environment', content: expect.stringMatching(/^\[environment\]\ncwd: .*\nos: .* · shell: bash\ndate: \d{4}-\d\d-\d\d\ngit branch: /) },
     { type: 'BlockAdded', id: 4, kind: 'Note', origin: 'file', file: 'AGENTS.md', content: '[AGENTS.md]\n# Agents' },
+    { type: 'BlockAdded', id: 5, kind: 'Note', origin: 'file', file: 'CLAUDE.md', content: '[CLAUDE.md]\n# Claude' },
   ]);
+});
+
+test('the personal instructions for the project from the config directory follow those of the project (FR-29)', async () => {
+  const { log, paths, project } = await launch({ config: url => profileConfig(url), files: { 'AGENTS.md': '# Agents' }, personal: { 'AGENTS.md': '# Mine' } });
+  await frameMatching(ui, f => f.includes('/ 2k') && !f.includes('… / 2k'));
+  const file = join(personalInstructionsDir(paths, project), 'AGENTS.md');
+  expect(log().slice(5)).toEqual([{ type: 'BlockAdded', id: 5, kind: 'Note', origin: 'file', file, content: `[${file}]\n# Mine` }]);
 });
 
 test('resuming does not read the project instructions again (FR-29)', async () => {
