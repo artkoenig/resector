@@ -128,6 +128,10 @@ export async function connectOmlx(endpoint: string, { window, model, sampling, t
   if (!size) throw new Error(`oMLX reports no max_model_len for ${model}: set window in the Model Profile`);
   const template = await chatTemplate(request, model);
   const modes = template === null ? await renderedModes(post, model) : thinkingModes(template);
+  // Rendered with reasoning_effort none as off: the server (splash) takes the thinking from reasoning_effort only,
+  // not from chat_template_kwargs.
+  const noneIsOff = template === null && !!modes?.includes('off');
+  const thinkingFields = (t: Thinking | undefined) => ({ ...thinkingParams(t), ...(noneIsOff && t === 'off' && { reasoning_effort: 'none' }) });
 
   // Every count includes the generation prompt. Counted prefixes end in an empty user turn, since
   // some templates (Qwen3-2507) cannot render a prompt without user message and oMLX then silently
@@ -192,7 +196,7 @@ export async function connectOmlx(endpoint: string, { window, model, sampling, t
 
     async chat(chat, options) {
       const predicted = last?.key === JSON.stringify(chat) && last.cached.exact ? last.cached.tokens : null;
-      const result = await streamChat({ name: 'oMLX', request }, { model, ...sampling, ...thinkingParams(chat.thinking ?? thinking) }, chat, options);
+      const result = await streamChat({ name: 'oMLX', request }, { model, ...sampling, ...thinkingFields(chat.thinking ?? thinking) }, chat, options);
       lastRequest = chat;
       lastExchange = { ...chat, messages: [...chat.messages, answerMessage(result)] };
       return { ...result, predicted };
