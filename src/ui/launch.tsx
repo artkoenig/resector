@@ -10,7 +10,7 @@ import type { Clipboard } from '../adapters/clipboard/clipboard';
 import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
 import { ensureWorktree, isRepository, listBranches, switchBranch, watchHead } from '../adapters/git/git';
 import { loadPolicies, policiesDir } from '../adapters/fs/policies';
-import { listProjectFiles, probeEnvironment, projectFiles, projectInstructions } from '../adapters/fs/project';
+import { listProjectFiles, personalInstructionsDir, probeEnvironment, projectFiles, projectInstructions } from '../adapters/fs/project';
 import type { OpenSession, SessionStore } from '../adapters/store/sessions';
 import type { Split } from '../core/approval/approval';
 import type { Editor } from '../core/context/operations';
@@ -90,7 +90,7 @@ export function Launch(props: LaunchOptions) {
     const opened = props.store.create();
     const profile = loaded.profile();
     // The project instructions are read once, now.
-    const events = newSession(profile.name, loaded.systemPrompt(profile), { environment: projectAt(root).environment(), instructions: projectInstructions(root) });
+    const events = newSession(profile.name, loaded.systemPrompt(profile), { environment: projectAt(root).environment(), instructions: projectInstructions(root, personalInstructionsDir(props.paths, root)) });
     events.forEach(opened.log.append);
     // A new session starts with the configured policy on; without one, and when resumed, the app's stays.
     const name = loaded.config.defaultPolicy;

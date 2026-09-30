@@ -43,18 +43,18 @@ test('the summary counts the Context blocks and takes the tokens of the last req
 });
 
 test('a new session starts with the environment Note and the project instructions right after the Tools Block', () => {
-  const events = newSession('qwen', 'sys', { environment: 'cwd: /p', instructions: { file: 'AGENTS.md', content: '# Rules\n' } });
+  const events = newSession('qwen', 'sys', { environment: 'cwd: /p', instructions: [{ file: 'AGENTS.md', content: '# Rules\n' }] });
   expect(events.slice(3)).toEqual([
     { type: 'BlockAdded', id: 3, kind: 'Note', origin: 'environment', content: 'cwd: /p' },
     { type: 'BlockAdded', id: 4, kind: 'Note', origin: 'file', file: 'AGENTS.md', content: '[AGENTS.md]\n# Rules\n' },
   ]);
   expect(summarize(events).blocks).toBe(4);
-  expect(newSession('qwen', 'sys', { environment: 'cwd: /p', instructions: null })).toHaveLength(4);
+  expect(newSession('qwen', 'sys', { environment: 'cwd: /p', instructions: [] })).toHaveLength(4);
 });
 
 test('the blocks a session starts with are those newSession added, not file references added later', () => {
   const events: SessionEvent[] = [
-    ...newSession('qwen', 'sys', { environment: 'cwd: /p', instructions: { file: 'AGENTS.md', content: '# Rules\n' } }),
+    ...newSession('qwen', 'sys', { environment: 'cwd: /p', instructions: [{ file: 'AGENTS.md', content: '# Rules\n' }] }),
     { type: 'FileReferenced', id: 5, file: 'a.txt' },
     user(6, 'hi'),
   ];

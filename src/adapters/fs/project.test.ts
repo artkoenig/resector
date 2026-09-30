@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { listProjectFiles, probeEnvironment, projectFiles, projectInstructions } from './project';
+import { listProjectFiles, personalInstructionsDir, probeEnvironment, projectFiles, projectInstructions } from './project';
 
 const dir = () => realpathSync(mkdtempSync(join(tmpdir(), 'resector-project-')));
 
@@ -28,13 +28,27 @@ test('the project files for @path completion: git ignores apply in a repository,
   expect(listProjectFiles(root, 2)).toHaveLength(2);
 });
 
-test('AGENTS.md wins over CLAUDE.md; neither is no instructions', () => {
+test('AGENTS.md and CLAUDE.md of the project, then those of the personal directory; same content once', () => {
   const root = dir();
-  expect(projectInstructions(root)).toBeNull();
+  const home = dir();
+  const personal = join(home, 'projects', 'p');
+  expect(projectInstructions(root, personal, home)).toEqual([]);
   writeFileSync(join(root, 'CLAUDE.md'), 'claude');
-  expect(projectInstructions(root)).toEqual({ file: 'CLAUDE.md', content: 'claude' });
+  expect(projectInstructions(root, personal, home)).toEqual([{ file: 'CLAUDE.md', content: 'claude' }]);
   writeFileSync(join(root, 'AGENTS.md'), 'agents');
-  expect(projectInstructions(root)).toEqual({ file: 'AGENTS.md', content: 'agents' });
+  mkdirSync(personal, { recursive: true });
+  writeFileSync(join(personal, 'CLAUDE.md'), 'mine');
+  writeFileSync(join(personal, 'AGENTS.md'), 'agents');
+  expect(projectInstructions(root, personal, home)).toEqual([
+    { file: 'AGENTS.md', content: 'agents' },
+    { file: 'CLAUDE.md', content: 'claude' },
+    { file: '~/projects/p/CLAUDE.md', content: 'mine' },
+  ]);
+  expect(projectInstructions(root, personal, '/elsewhere').at(-1)!.file).toBe(join(personal, 'CLAUDE.md'));
+});
+
+test('the personal instructions of a project lie next to the global config, named after the project path', () => {
+  expect(personalInstructionsDir({ global: '/h/.config/resector/config.jsonc', project: '' }, '/Users/a/my.app')).toBe('/h/.config/resector/projects/-Users-a-my-app');
 });
 
 const at = new Date(2026, 8, 26, 23, 30);
