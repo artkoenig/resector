@@ -26,7 +26,7 @@ const ProfileSchema = z.strictObject({
   toolProtocol: z.enum(['native', 'text-xml']).default('native'),
   resultFormat: z.enum(['native', 'toon']).default('native'),
   sampling: z.record(z.string(), z.number()).default({}).describe('Sampling parameters sent with every request, e.g. temperature'),
-  thinking: z.string().default('off').describe('Reasoning at session start: off, on (enable_thinking) or an effort level (reasoning_effort) the chat template accepts; `t` at the Gate switches it'),
+  thinking: z.string().default('off').describe('Reasoning at session start: off, on (enable_thinking) or an effort level (reasoning_effort) the chat template accepts; `/thinking` switches it'),
   compactionProfile: z.string().optional().describe('Model Profile used for Compaction; default: this one'),
   systemPrompt: z.string().optional().describe('System prompt file, relative to this config file'),
 });
@@ -37,6 +37,7 @@ const ConfigSchema = z.strictObject({
   $schema: z.string().optional(),
   profiles: z.record(z.string(), ProfileSchema).default({}),
   defaultProfile: z.string().optional().describe('Model Profile for new sessions'),
+  defaultPolicy: z.string().optional().describe('Context Policy switched on for new sessions; /policy switches it'),
   permission: PermissionSchema.optional().describe('bash command pattern → decision; project config may only tighten'),
   keybindings: z.record(z.string(), z.string()).optional().describe('Action → key'),
   bash: z.strictObject({ timeout: z.number().positive().optional().describe('Seconds (default 120)') }).optional(),

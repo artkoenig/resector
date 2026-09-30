@@ -48,7 +48,7 @@ test('the request holds only the sources and the instruction (FR-14)', () => {
   expect(compactionRequest(context, [4, 5, 6], 'keep errors')).toEqual({
     messages: [
       { role: 'system', content: COMPACTION_SYSTEM },
-      { role: 'user', content: '### Tool Call\nls\n\n### Tool Result\na b\n[exit 0]\n\n### Assistant\nfound it\n\nInstruction: keep errors' },
+      { role: 'user', content: '# Tool Call\nls\n\n# Tool Result\na b\n[exit 0]\n\n# Assistant\nfound it\n\nInstruction: keep errors' },
     ],
     tools: [],
   });

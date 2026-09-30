@@ -246,6 +246,24 @@ test('the thinking modes come from the chat template in the model directory the 
   expect((await open()).thinkingModes).toBeNull();
 });
 
+test('without the admin API the thinking modes come from the prompts the server renders per effort (splash, FR-49)', async () => {
+  const efforts = { none: '<think></think>', low: 'effort low', medium: '<think>', high: 'effort xhigh', xhigh: 'effort xhigh' };
+  expect((await open({}, { efforts })).thinkingModes).toEqual(['off', 'on', 'low', 'medium', 'xhigh']);
+});
+
+test('off is sent as reasoning_effort none only where the server rendered none as off (splash, FR-49)', async () => {
+  const efforts = { none: '<think></think>', low: 'effort low' };
+  fake = startFakeOmlx({ efforts });
+  fake.reply({ chunks: ['ok'] });
+  await chatOnce(await connectOmlx(fake.url, { model: MODEL, thinking: 'off' }));
+  expect(fake.chatRequests[0]).toMatchObject({ chat_template_kwargs: { enable_thinking: false }, reasoning_effort: 'none' });
+  fake.stop();
+  const backend = await open({ thinking: 'off' });
+  fake.reply({ chunks: ['ok'] });
+  await chatOnce(backend);
+  expect(fake.chatRequests[0]).not.toHaveProperty('reasoning_effort');
+});
+
 test('a request with its own thinking overrides the profile (FR-49)', async () => {
   const backend = await open({ thinking: 'off' });
   fake.reply({ chunks: ['ok'] });

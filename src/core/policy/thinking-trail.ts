@@ -17,6 +17,8 @@ export const LEAD =
 export const ABOUT =
   'Tool calls and results are removed once you have reasoned past them; your reasoning and answers are later replaced by summaries, shown as user messages, which are merged over time without dropping insights.';
 
+export const description = 'drops tool pairs, summarizes reasoning';
+
 export default function thinkingTrail({ window, used, blocks }: PolicyContext): PolicyOperation[] {
   // Right after the Tools Block: early and unchanged, so the prefix cache keeps it.
   const described = blocks.some(b => b.origin === 'policy' && b.content === ABOUT);

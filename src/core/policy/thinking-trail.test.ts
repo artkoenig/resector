@@ -217,6 +217,6 @@ test('applied by the hook: the Thinking and the Notes of earlier Compactions bec
   ]);
 });
 
-test('shipped built-in as thinking-trail', () => {
-  expect(BUILT_IN).toEqual([{ name: 'thinking-trail', run: thinkingTrail }]);
+test('shipped built-in as thinking-trail, with its description', () => {
+  expect(BUILT_IN).toEqual([{ name: 'thinking-trail', run: thinkingTrail, description: 'drops tool pairs, summarizes reasoning' }]);
 });

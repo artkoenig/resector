@@ -9,8 +9,9 @@ import { answer, chatml, stream, tokenize, type ChatMessage, type ChatTool, type
 export type FakeModel = { id: string; maxModelLen?: number; path?: string };
 // probe: whether the admin cache probe answers; lagging: it does not see the last request yet (blocks
 // are written to the SSD cache after the answer); blockSize: cache block size in fake tokens; busy: the next
-// POST requests are refused with 503 and Retry-After: 0, as splash refuses requests beyond its slots.
-export type FakeOmlxOptions = { models?: FakeModel[]; probe?: boolean; lagging?: boolean; blockSize?: number; busy?: number };
+// POST requests are refused with 503 and Retry-After: 0, as splash refuses requests beyond its slots; efforts: like
+// splash, /apply-template renders these prompts per reasoning_effort and refuses the others (without: no such endpoint).
+export type FakeOmlxOptions = { models?: FakeModel[]; probe?: boolean; lagging?: boolean; blockSize?: number; busy?: number; efforts?: Record<string, string> };
 
 type Block = { type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: unknown } | { type: 'tool_result'; tool_use_id: string; content: string };
 type AnthropicTool = { name: string; description: string; input_schema: unknown };
@@ -37,7 +38,7 @@ function chatMessages({ system, messages }: AnthropicCount): ChatMessage[] {
 const chatTools = (tools: AnthropicTool[] = []): ChatTool[] =>
   tools.map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } }));
 
-export function startFakeOmlx({ models = [{ id: 'Qwen3-8B-4bit', maxModelLen: 57344 }], probe = true, lagging = false, blockSize = 4, busy = 0 }: FakeOmlxOptions = {}) {
+export function startFakeOmlx({ models = [{ id: 'Qwen3-8B-4bit', maxModelLen: 57344 }], probe = true, lagging = false, blockSize = 4, busy = 0, efforts }: FakeOmlxOptions = {}) {
   const replies: Reply[] = [];
   // Paged prefix cache: the last chat prompt and its answer, hit in whole blocks.
   let cache: number[] = [];
@@ -76,6 +77,10 @@ export function startFakeOmlx({ models = [{ id: 'Qwen3-8B-4bit', maxModelLen: 57
         return Response.json({ model_id: body.model_id, block_size: blockSize, ssd_hit_tokens: hit(body.messages) });
       }
       if (!known(body.model)) return error(404, `Model '${body.model}' not found`);
+      if (url.pathname === '/apply-template' && efforts) {
+        const prompt = efforts[body.reasoning_effort];
+        return prompt === undefined ? error(400, 'invalid reasoning_effort') : Response.json({ prompt });
+      }
       if (url.pathname === '/v1/messages/count_tokens') {
         counts.active++;
         counts.most = Math.max(counts.most, counts.active);

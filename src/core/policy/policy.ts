@@ -23,8 +23,8 @@ const OPERATION = z.discriminatedUnion('op', [
 export type PolicyOperation = z.infer<typeof OPERATION>;
 // A policy module's default export; built-in policies are written the same way.
 export type PolicyFunction = (context: PolicyContext) => PolicyOperation[] | Promise<PolicyOperation[]>;
-// name: the module's file name.
-export type Policy = { name: string; run: PolicyFunction };
+// name: the module's file name; description: its `description` export, shown when choosing a policy.
+export type Policy = { name: string; run: PolicyFunction; description?: string };
 
 // Passes applying operations per request: a call after them still returning operations stops the Gate.
 export const MAX_PASSES = 8;

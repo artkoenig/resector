@@ -25,7 +25,7 @@ export function sourcesOf(context: Context, marked: ReadonlySet<number>, selecte
 
 // Only the sources and the instruction, no tools (FR-14). Titles are display only, never sent.
 export function compactionRequest(context: Context, sources: number[], instruction: string): Request {
-  const text = context.blocks.filter(b => sources.includes(b.id)).map(b => `### ${b.kind}\n${b.content}`).join('\n\n');
+  const text = context.blocks.filter(b => sources.includes(b.id)).map(b => `# ${b.kind}\n${b.content}`).join('\n\n');
   return { messages: [{ role: 'system', content: COMPACTION_SYSTEM }, { role: 'user', content: `${text}\n\nInstruction: ${instruction}` }], tools: [] };
 }
 

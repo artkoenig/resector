@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { DEFAULT_MODES, thinkingModes } from './template';
+import { DEFAULT_MODES, probedModes, thinkingModes } from './template';
 
 test('a template with enable_thinking and a checked effort list offers off, on and its efforts, lowest first (FR-49)', () => {
   const template = `{%- if enable_thinking is defined and enable_thinking is false %}…{%- endif %}
@@ -25,6 +25,19 @@ test('effort lists and comparisons are found however they are spaced; unknown ef
   expect(thinkingModes(`{% if reasoning_effort=='low' %}`)).toEqual(['low']);
 });
 
-test('an unknown chat template: every mode the backends map (architecture §4)', () => {
-  expect(DEFAULT_MODES).toEqual(['off', 'on', 'low', 'medium', 'high']);
+test('an unknown chat template: only off and on, no guessed efforts', () => {
+  expect(DEFAULT_MODES).toEqual(['off', 'on']);
+});
+
+// Prompts in RANK order: none, minimal, low, medium, high, xhigh, max.
+test('probed: efforts rendering alike are one mode, named as the prompt names it; none apart is off and on', () => {
+  const think = (effort: string) => `system: Reasoning effort is set to ${effort}.\n<think>`;
+  const prompts = ['<think></think>', think('low'), think('low'), '<think>', think('xhigh'), think('xhigh'), think('xhigh')];
+  expect(probedModes(prompts)).toEqual(['off', 'on', 'low', 'medium', 'xhigh']);
+});
+
+test('probed: refused efforts are left out; all alike or none rendered: no mode', () => {
+  expect(probedModes([null, null, 'a', null, 'b', null, null])).toEqual(['low', 'high']);
+  expect(probedModes(Array(7).fill('same'))).toEqual([]);
+  expect(probedModes(Array(7).fill(null))).toEqual([]);
 });

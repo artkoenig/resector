@@ -94,9 +94,9 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   });
   // The values after `/filter ` (FR-51) and `/policy `, `off` first while one is on; null for any other draft.
   function valueSuggestions(text: string): Suggestion[] | null {
-    const [, command, typed] = /^\/(filter|policy) (\S*)$/.exec(text) ?? [];
+    const [, command, typed] = /^\/(filter|policy|thinking) (\S*)$/.exec(text) ?? [];
     if (!command) return null;
-    const values = command === 'filter' ? filterValues() : policyValues();
+    const values = command === 'filter' ? filterValues() : command === 'policy' ? policyValues() : thinkingValues();
     return values
       .filter(v => v.name.toLowerCase().startsWith(typed!.toLowerCase()))
       .map(v => ({ label: v.name, description: v.description, draft: `/${command} ${v.name}`, run: `/${command} ${v.name}` }));
@@ -104,8 +104,12 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   const filterValues = () => [...(gate.filter() ? [{ name: 'off', description: 'show all blocks' }] : []), ...FILTERS.map(f => ({ name: f.name, description: f.kinds.join(' + ') }))];
   const policyValues = () => [
     ...(gate.policy() ? [{ name: 'off', description: 'no policy' }] : []),
-    ...gate.policyNames().map(name => ({ name, description: name === gate.policy() ? 'active' : 'switch on' })),
+    ...gate.policyNames().map(name => {
+      const about = gate.policyDescription(name);
+      return { name, description: name === gate.policy() ? (about ? `active · ${about}` : 'active') : (about ?? 'switch on') };
+    }),
   ];
+  const thinkingValues = () => gate.thinkingOptions().map(o => ({ name: o.name, description: o.value === gate.thinking() ? 'active' : 'switch on' }));
   const chosen = () => Math.min(suggested(), suggestions().length - 1);
   const suggestion = () => suggestions()[chosen()];
   const editDraft = (text: string) => {
@@ -254,7 +258,6 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     e: gate.edit,
     space: gate.toggleMark,
     c: gate.startCompaction,
-    t: gate.cycleThinking,
     escape: () => (gate.status()?.tone === 'error' ? gate.dismiss() : gate.clearMarks()),
     q: props.onQuit,
   };
@@ -705,7 +708,7 @@ const LOOK_KEYS: Hint[] = [['q', 'quit']];
 // With marks only what acts on all marked blocks.
 const MARKED_KEYS: Hint[] = [['d', 'remove'], ['c', 'compact'], ['space', 'mark'], ['esc', 'unmark'], ['q', 'quit']];
 const MOVE: Hint = ['⌥↑↓', 'move'];
-const KEYS: Hint[] = [MOVE, ['e', 'edit'], ['d', 'remove'], ['space', 'mark'], ['c', 'compact'], ['t', 'thinking'], ['u', 'undo'], ['q', 'quit']];
+const KEYS: Hint[] = [MOVE, ['e', 'edit'], ['d', 'remove'], ['space', 'mark'], ['c', 'compact'], ['u', 'undo'], ['q', 'quit']];
 
 // Colours of a row: a removed one is muted throughout, one the chat template drops all but its flags.
 const rowFg = (row: Row) =>

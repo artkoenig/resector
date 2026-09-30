@@ -426,7 +426,7 @@ test('the built-in thinking-trail is offered and switched on without any policy 
   ui.mockInput.pressTab();
   await ui.flush();
   await ui.mockInput.typeText('/policy ');
-  expect(await frameMatching(ui, f => f.includes('switch on'))).toMatch(/thinking-trail\s+switch on/);
+  expect(await frameMatching(ui, f => f.includes('thinking-trail'))).toMatch(/thinking-trail\s+drops tool pairs, summarizes reasoning/);
   await ui.mockInput.typeText('t');
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('policy thinking-trail on'));
@@ -445,6 +445,15 @@ test('thinking-trail tells the model what it does: a Note right after the Tools 
   expect(answered).toMatch(/3\s+Note\s+Context Policy/);
   expect(log().find(e => e.type === 'NoteAdded')).toMatchObject({ after: 2, by: 'thinking-trail' });
   expect(JSON.stringify(fake.chatRequests[0])).toContain('Tool calls and results are removed once you have reasoned past them');
+});
+
+test('defaultPolicy: a new session starts with it on, an unknown name is reported', async () => {
+  await launch({ config: url => profileConfig(url).replace('"defaultProfile"', '"defaultPolicy": "shout", "defaultProfile"'), policies: { shout: SHOUT } });
+  expect(await frameMatching(ui, f => f.includes('/ 2k'))).toMatch(/local · thinking off · policy shout/);
+  ui.renderer.destroy();
+  fake.stop();
+  await launch({ config: url => profileConfig(url).replace('"defaultProfile"', '"defaultPolicy": "nope", "defaultProfile"') });
+  expect(await frameMatching(ui, f => f.includes('/ 2k'))).toMatch(/defaultPolicy nope – no such policy/);
 });
 
 test('the active policy belongs to the app: it stays when switching sessions and is not logged', async () => {
