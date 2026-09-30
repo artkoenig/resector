@@ -24,7 +24,7 @@ export function createRows(gate: Screen, tick: () => number) {
     const tokensOf = gate.blockTokens;
     const tokens = (id: number) => (tokensOf(id) === null ? '…' : formatTokens(tokensOf(id)!));
     const cache = (id: number) => ({ true: '●', false: '○', null: '' })[`${gate.warm(id)}`]!;
-    const blocks = gate.context().blocks;
+    const blocks = gate.reviewed();
     // Sources of a proposal are shown as such until it is accepted or discarded.
     const proposed = new Set(gate.compacting()?.phase === 'instruction' ? [] : gate.compacting()?.sources);
     // The running call is decided: no ? approve.

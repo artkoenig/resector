@@ -133,7 +133,7 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
     />
   );
   // Live rows stream and have no block yet.
-  const blockOf = (row: Row) => (row.live ? undefined : gate.context().blocks.find(b => b.id === row.id));
+  const blockOf = (row: Row) => (row.live ? undefined : gate.reviewed().find(b => b.id === row.id));
   const shown = (row: Row): Shown => {
     const block = blockOf(row);
     return { kind: row.kind, content: row.content, tool: block?.tool, file: block?.file, live: row.live };

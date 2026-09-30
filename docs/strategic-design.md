@@ -51,7 +51,7 @@ flowchart LR
 
 **F2 — Dependency direction broken at the Gate.** `ui/gate/types.ts` imports `Clipboard` and `Branches` from adapters; `ui/gate/edits.ts` and `ui/gate/git.ts` import adapter modules. Ports belong to their consumer (as `Backend`, `Runner`, `SessionLog` already do in core).
 
-**F3 — Shared kernel carries Gate view state.** `fold.Block` holds domain state (kind, content, revision, pair) and Gate state (`moved`, `revised`, `removed` "struck through until the next request", `missing` "set at the Gate", `title`). Every context depends on all of it.
+**F3 — Shared kernel carries Gate view state.** _Resolved in step 6._ `fold.Block` holds domain state (kind, content, revision, pair) and Gate state (`moved`, `revised`, `removed` "struck through until the next request", `missing` "set at the Gate", `title`). Every context depends on all of it.
 
 **F4 — Tooling has no home module.** _Resolved in step 5._ `core/toolcall/bash.ts` is named after one tool but holds the tool catalog, Tools Block content, raw-call parsing, result text and the `Runner` port. It is imported by `context/operations`, `render`, `session`, `backend.ts`, the Gate and `ui/format`.
 
@@ -84,7 +84,7 @@ Each step is small, keeps `bun test` green and can land alone.
 3. ~~**Ports at the Gate**~~ — done: `Clipboard` and `Branches` declared in `ui/gate/types.ts` (adapters match them structurally); the Gate's texts (`errorText`, `count`, `formatTokens`, `titleOf`, `thinkingLabel`) moved to `ui/gate/text.ts`. The Gate rules have no exceptions left.
 4. ~~**Extract `src/gate/`**~~ — done (ADR 0003): the workflow slices in `src/gate/`, selection, marks and Kind Filters in `ui/selection.ts`, composed in `ui/screen.ts`; the Gate drives the view through its `View` port. First plain unit tests in `src/gate/index.test.ts`. Open: move more workflow tests from frames to unit tests; narrow `View` towards focus announcements.
 5. ~~**`core/tools/`**~~ (F4) — done: `toolcall/` is `tools/`, `bash.ts` split into `catalog.ts` (definitions, Tools Block content), `call.ts` (parse, arguments, result text) and `runner.ts` (the `Runner` port); `thinking.ts` (inline `<think>` in answers) moved to `core/render/`, it is Inference.
-6. **Slim the kernel** (F3) — `fold` returns the domain Context; the Gate derives its view (changed since the last request, missing files, titles) on top.
+6. ~~**Slim the kernel**~~ (F3) — done: `fold` returns the domain Context, the blocks sent next (removed ones are gone); `gate/review.ts` derives what the Gate shows on top of it from the Session Log: blocks removed since the last request struck through in place, `moved`/`revised` since then, titles (Rename), unreadable references (`missing`, now returned beside the Context by `peekReferences`). `sentBlocks` is gone.
 7. **ACL only** (F5) — `compactionRequest` moves into `core/render`.
 
 ## Open questions

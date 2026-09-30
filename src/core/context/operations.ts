@@ -27,14 +27,13 @@ export const inPair = (block: Block) => block.kind === 'Tool Result' || (block.k
 export function move({ blocks }: Context, block: Block, dir: -1 | 1): Outcome {
   const blocked = untouchable(block);
   if (blocked) return blocked;
-  const live = blocks.filter(b => !b.removed);
-  let far = live.indexOf(block) + dir;
-  const neighbour = live[far];
+  let far = blocks.indexOf(block) + dir;
+  const neighbour = blocks[far];
   // System and Tools Block stay first.
   if (!neighbour || isFixed(neighbour)) return { error: 'boundary reached' };
   // The calls and results of an answer are passed as a whole: a block between them breaks the protocol.
-  while (isTool(live[far]) && isTool(live[far + dir])) far += dir;
-  const after = dir === 1 ? live[far]! : blocks[blocks.indexOf(live[far]!) - 1]!;
+  while (isTool(blocks[far]) && isTool(blocks[far + dir])) far += dir;
+  const after = blocks[dir === 1 ? far : far - 1]!;
   return { event: { type: 'Move', id: block.id, after: after.id } };
 }
 
@@ -42,10 +41,9 @@ export function move({ blocks }: Context, block: Block, dir: -1 | 1): Outcome {
 export function moveAfter({ blocks }: Context, block: Block, after: number): Outcome {
   const blocked = untouchable(block) ?? (inPair(block) ? { error: 'a Tool Pair moves as a Note' } : null);
   if (blocked) return blocked;
-  const live = blocks.filter(b => !b.removed);
-  const error = misplaced(live.filter(b => b !== block), after);
+  const error = misplaced(blocks.filter(b => b !== block), after);
   if (error) return { error };
-  if (live[live.indexOf(block) - 1]!.id === after) return { error: 'unchanged – already there' };
+  if (blocks[blocks.indexOf(block) - 1]!.id === after) return { error: 'unchanged – already there' };
   return { event: { type: 'Move', id: block.id, after } };
 }
 // Why a block may not go right after `after` among the other blocks sent, if not.
@@ -59,7 +57,7 @@ function misplaced(others: Block[], after: number): string | null {
 // A Context Policy's Note: `content` as Note `id` right after `after`, a block sent next.
 export function addNote({ blocks }: Context, id: number, after: number, content: string): Outcome {
   if (!content.trim()) return { error: 'empty Note' };
-  const error = misplaced(blocks.filter(b => !b.removed), after);
+  const error = misplaced(blocks, after);
   return error ? { error } : { event: { type: 'NoteAdded', id, after, content } };
 }
 
@@ -150,7 +148,7 @@ export function undo(events: SessionEvent[]): Outcome<Undo> {
 }
 
 // The Tool Call to decide on next: calls are approved one by one in Context order.
-export const nextCall = (context: Context): Block | undefined => context.blocks.find(b => b.pending && !b.removed);
+export const nextCall = (context: Context): Block | undefined => context.blocks.find(b => b.pending);
 
 // Why the block cannot be run or rejected now, or null.
 export function approvable(context: Context, block: Block): string | null {

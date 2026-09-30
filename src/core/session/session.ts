@@ -64,7 +64,7 @@ export function summarize(events: SessionEvent[]): SessionSummary {
   return {
     ...sessionTitle(events),
     profile: context.profile,
-    blocks: context.blocks.filter(b => !b.removed).length,
+    blocks: context.blocks.length,
     tokens: request?.tokens ?? null,
   };
 }

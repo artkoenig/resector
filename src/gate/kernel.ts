@@ -6,7 +6,8 @@ import * as ops from '../core/context/operations';
 import type { SessionEvent, SessionLog } from '../core/log/events';
 import { fold, type Block } from '../core/log/fold';
 import { peekReferences } from '../core/notes/files';
-import { renderPrefixes, sentBlocks, type Request } from '../core/render/native';
+import { review } from './review';
+import { renderPrefixes, type Request } from '../core/render/native';
 import { budget, lastDrift, type Budget } from '../core/tokens/budget';
 import { toolsIn } from '../core/tools/catalog';
 import type { Compaction, Project, Running, Status, Streaming } from './types';
@@ -37,11 +38,14 @@ export function createKernel(options: { log: SessionLog; backend: Backend; event
     setEvents([...events(), event]);
   };
   // Unread @path references show the file as it would be read now; only sending reads them.
-  const context = createMemo(() => {
+  const peeked = createMemo(() => {
     reread();
     return peekReferences(fold(events()), project.read);
   });
-  const sent = createMemo(() => sentBlocks(context()));
+  const context = () => peeked().context;
+  const sent = () => context().blocks;
+  // The Context as the Gate shows it: removed blocks struck through, changes since the last request flagged.
+  const reviewed = createMemo(() => review(events(), context(), peeked().missing));
   // An unchanged request (e.g. after a rename) keeps the memo value, so nothing is recounted.
   const prefixes = createMemo(() => renderPrefixes(context()), [], { equals: same });
   const request = () => prefixes().at(-1)!;
@@ -86,7 +90,7 @@ export function createKernel(options: { log: SessionLog; backend: Backend; event
   }
 
   return {
-    backend, events, append, apply, context, sent, prefixes, request, split, known, warm, nextId, budgetOf, blockOf, tokensOf, toolsOn,
+    backend, events, append, apply, context, sent, reviewed, prefixes, request, split, known, warm, nextId, budgetOf, blockOf, tokensOf, toolsOn,
     status, setStatus,
     streaming, setStreaming, running, setRunning, compacting, setCompacting, policing, setPolicing, idle,
     recount: () => setRecount(recount() + 1),

@@ -66,7 +66,7 @@ export function createSelection(k: Kernel, hiddenAtStart: readonly string[]) {
   const proposing = () => compacting()?.phase === 'running' || compacting()?.phase === 'review';
   const unfiltered = createMemo(() => new Set([
     ...(proposing() && live()[0] ? [live()[0]!.id] : []),
-    ...sent().filter(b => b.pending && !b.removed).map(b => b.id),
+    ...sent().filter(b => b.pending).map(b => b.id),
     ...(running() ? [running()!.call.id, ...live().map(l => l.id)] : []),
   ]));
   const passes = (id: number, kind: Kind) => !hides(kind) || unfiltered().has(id);

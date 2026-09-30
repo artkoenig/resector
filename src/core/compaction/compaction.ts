@@ -19,7 +19,7 @@ export function sourcesOf(context: Context, marked: ReadonlySet<number>, selecte
   // The selection may be the live row, which is no block.
   if (!marked.size && !context.blocks.some(b => b.id === selected)) return NOTHING;
   const wanted = marked.size ? marked : new Set(pairOf(context.blocks, selected));
-  const sources = context.blocks.filter(b => wanted.has(b.id) && !isFixed(b) && !b.pending && !b.unread && !b.removed).map(b => b.id);
+  const sources = context.blocks.filter(b => wanted.has(b.id) && !isFixed(b) && !b.pending && !b.unread).map(b => b.id);
   return sources.length ? { sources } : NOTHING;
 }
 

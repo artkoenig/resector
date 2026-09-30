@@ -132,7 +132,7 @@ export function Sessions(props: SessionsProps) {
   const preview = () => {
     const s = selected();
     if (!s) return [];
-    const blocks = fold(s.events).blocks.filter(b => !b.removed);
+    const blocks = fold(s.events).blocks;
     return blocks.slice(-PREVIEW_BLOCKS).map((b, i) => ({ n: blocks.length - Math.min(PREVIEW_BLOCKS, blocks.length) + i + 1, block: b }));
   };
 

@@ -13,9 +13,6 @@ export type ToolDefinition = { type: 'function'; function: { name: string; descr
 // else the backend sends the Model Profile's; answerStart: the answer begins with it, the server continues it without reasoning.
 export type Request = { messages: Message[]; tools: ToolDefinition[]; thinking?: Thinking; answerStart?: string };
 
-// What goes into the next request: removed blocks are only struck through at the Gate.
-export const sentBlocks = (context: Context): Block[] => context.blocks.filter(b => !b.removed);
-
 // Call ids number the calls of one assistant message, as a server numbers those of its answer: the
 // answer and its rendering in the next request are the same tokens (prefix cache).
 export const callId = (index: number) => `call_${index}`;
@@ -65,7 +62,7 @@ export function renderPrefixes(context: Context): Request[] {
   const request: Request = { messages: [], tools: [] };
   const ids = new Map<number, string>();
   const thinking = context.thinking && { thinking: context.thinking };
-  return sentBlocks(context).map(b => {
+  return context.blocks.map(b => {
     ADD[b.kind](request, ids, b);
     return { messages: [...request.messages], tools: request.tools, ...thinking };
   });

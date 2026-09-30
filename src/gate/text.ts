@@ -1,6 +1,7 @@
 // Texts the Gate writes into its status and titles: token numbers, block titles, labels, errors.
 import type { Thinking } from '../core/log/events';
 import { callText, type Block } from '../core/log/fold';
+import type { Reviewed } from './review';
 import { toolNames } from '../core/tools/catalog';
 import { questionTitle } from '../core/tools/question';
 
@@ -10,7 +11,7 @@ export const formatTokens = (t: number): string =>
 // `off`, `on`, or `on:<effort>`.
 export const thinkingLabel = (thinking: Thinking) => (thinking === 'off' || thinking === 'on' ? thinking : `on:${thinking}`);
 
-type Titled = Pick<Block, 'kind' | 'content'> & Partial<Pick<Block, 'title' | 'call' | 'source' | 'compacted' | 'file' | 'origin' | 'tool'>>;
+type Titled = Pick<Block, 'kind' | 'content'> & Partial<Pick<Reviewed, 'title'>> & Partial<Pick<Block, 'call' | 'source' | 'compacted' | 'file' | 'origin' | 'tool'>>;
 type Called = Pick<Block, 'id' | 'content'> & Partial<Pick<Block, 'tool'>>;
 const firstLine = (text: string) => (text.split('\n').find(l => l.trim()) ?? '').trim();
 

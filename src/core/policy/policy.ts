@@ -4,7 +4,6 @@ import { z } from 'zod';
 import * as ops from '../context/operations';
 import type { Kind, Origin, SessionEvent } from '../log/events';
 import { fold, pairOf, type Block, type Context } from '../log/fold';
-import { sentBlocks } from '../render/native';
 
 // A Context Block as a policy sees it: tokens as rendered, the other block of its Tool Pair, whether it awaits approval.
 export type PolicyBlock = { id: number; kind: Kind; origin: Origin; content: string; tokens: number; pair: number | null; pending: boolean };
@@ -30,7 +29,7 @@ export type Policy = { name: string; run: PolicyFunction; description?: string }
 export const MAX_PASSES = 8;
 
 export function viewOf(context: Context, counted: { blocks: number[]; total: number }, window: number): PolicyContext {
-  const blocks = sentBlocks(context);
+  const blocks = context.blocks;
   const view = ({ id, kind, origin, content, pending }: Block, i: number): PolicyBlock => ({
     id, kind, origin, content, tokens: counted.blocks[i]!, pair: pairOf(blocks, id).find(other => other !== id) ?? null, pending: pending === true,
   });
@@ -73,7 +72,7 @@ export function plan(events: SessionEvent[], op: PolicyOperation): Plan {
   return (PLANNERS[op.op] as Planner<PolicyOperation['op']>)(events, fold(events), op);
 }
 
-const sent = (context: Context, id: number) => sentBlocks(context).find(b => b.id === id);
+const sent = (context: Context, id: number) => context.blocks.find(b => b.id === id);
 function withBlock(context: Context, id: number, then: (block: Block) => Plan): Plan {
   const block = sent(context, id);
   return block ? then(block) : { error: `no block ${id} in the Context` };
@@ -99,7 +98,7 @@ function compactPlan(context: Context, { sources, instruction, inContext }: Of<'
   if (!sources.length) return { error: 'nothing to compact' };
   if (!instruction.trim()) return { error: 'no instruction' };
   const wanted = new Set(sources.flatMap(id => pairOf(context.blocks, id)));
-  const ordered = sentBlocks(context).filter(b => wanted.has(b.id));
+  const ordered = context.blocks.filter(b => wanted.has(b.id));
   // Kinds in Context order, a Tool Pair once.
   const nouns = new Map<string, number>();
   for (const b of ordered.filter(b => b.kind !== 'Tool Result')) nouns.set(nounOf(b), (nouns.get(nounOf(b)) ?? 0) + 1);

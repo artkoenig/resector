@@ -1,11 +1,11 @@
 // Display helpers for the views: flags, fixed-width cells, windows, ages.
-import type { Block } from '../core/log/fold';
+import type { Reviewed } from '../gate/review';
 
 // Changes since the last request: new Revision, moved.
-const changesOf = (block: Block): string => (block.revised ? `✎${block.revision}` : '') + (block.moved ? '⇄' : '');
+const changesOf = (block: Reviewed): string => (block.revised ? `✎${block.revision}` : '') + (block.moved ? '⇄' : '');
 
 // A pending call: decided now (a Question is answered), or queued.
-const pendingFlag = (block: Block, next?: number): string => {
+const pendingFlag = (block: Reviewed, next?: number): string => {
   if (!block.pending) return '';
   if (block.id !== next) return ' · queued';
   return block.tool === 'question' ? ' ? answer' : ' ? approve';
@@ -14,7 +14,7 @@ const pendingFlag = (block: Block, next?: number): string => {
 // Changes since the last request, then persistent status flags.
 // next: the Tool Call to decide on now; later pending calls are queued; dropped: a Thinking
 // block the chat template drops.
-export const flagsOf = (block: Block, next?: number, dropped = false): string =>
+export const flagsOf = (block: Reviewed, next?: number, dropped = false): string =>
   [
     changesOf(block),
     block.cutOff ? ' ⚠ cut off' : '',

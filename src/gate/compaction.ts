@@ -2,7 +2,7 @@
 import type * as ops from '../core/context/operations';
 import * as compaction from '../core/compaction/compaction';
 import { fold } from '../core/log/fold';
-import { renderPrefixes, sentBlocks, type Request } from '../core/render/native';
+import { renderPrefixes, type Request } from '../core/render/native';
 import { errorText, formatTokens } from './text';
 import type { Kernel } from './kernel';
 import type { Compaction, Compactor, Live, Review, Status, View } from './types';
@@ -90,7 +90,7 @@ export function createCompaction(k: Kernel, sel: View, deps: { editor: ops.Edito
     const c = compacting()!;
     const after = fold([...k.events(), { type: 'Compact', sources: c.sources, instruction: c.instruction, noteId: nextId(), content: c.text }]);
     const counted = await backend().count(renderPrefixes(after)).catch(() => null);
-    const note = sentBlocks(after).findIndex(b => b.id === nextId());
+    const note = after.blocks.findIndex(b => b.id === nextId());
     if (counted && compacting()?.text === c.text) update({ after: { note: counted.blocks[note]!, total: counted.total } });
   }
   // Under review: tokens before → after and the Context after accept; the cache effect.

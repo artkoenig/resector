@@ -16,9 +16,9 @@ test('Context holds the session profile and the added blocks in order', () => {
     protocol: 'native',
     thinking: null,
     blocks: [
-      { id: 1, kind: 'System', origin: 'config', content: 'You are an agent.', cutOff: false, title: null, removed: false, moved: false, revision: 1, revised: false },
-      { id: 2, kind: 'User', origin: 'user', content: 'hi', cutOff: false, title: null, removed: false, moved: false, revision: 1, revised: false },
-      { id: 3, kind: 'Assistant', origin: 'model', content: 'hello', cutOff: true, title: null, removed: false, moved: false, revision: 1, revised: false },
+      { id: 1, kind: 'System', origin: 'config', content: 'You are an agent.', cutOff: false, revision: 1 },
+      { id: 2, kind: 'User', origin: 'user', content: 'hi', cutOff: false, revision: 1 },
+      { id: 3, kind: 'Assistant', origin: 'model', content: 'hello', cutOff: true, revision: 1 },
     ],
     nextId: 4,
   });
@@ -45,10 +45,10 @@ const ids = (events: SessionEvent[]) => fold(events).blocks.map(b => b.id);
 const block = (events: SessionEvent[], id: number) => fold(events).blocks.find(b => b.id === id)!;
 const sent: SessionEvent = { type: 'RequestSent', hash: 'h', tokens: 1 };
 
-test('a new block starts untitled and unflagged', () => {
+test('a new block starts at its first Revision', () => {
   expect(block(session(1), 2)).toEqual({
     id: 2, kind: 'User', origin: 'user', content: 'u2', cutOff: false,
-    title: null, removed: false, moved: false, revision: 1, revised: false,
+    revision: 1,
   });
 });
 
@@ -57,12 +57,8 @@ test('nextId follows the highest block id, also past hidden blocks', () => {
   expect(fold(session(2, { type: 'Remove', id: 3 }, sent)).nextId).toBe(4);
 });
 
-test('Move puts the block right after its anchor and flags it until the next request', () => {
-  const moved = session(3, { type: 'Move', id: 4, after: 1 });
-  expect(ids(moved)).toEqual([1, 4, 2, 3]);
-  expect(block(moved, 4).moved).toBe(true);
-  expect(block(moved, 2).moved).toBe(false);
-  expect(block([...moved, sent], 4).moved).toBe(false);
+test('Move puts the block right after its anchor', () => {
+  expect(ids(session(3, { type: 'Move', id: 4, after: 1 }))).toEqual([1, 4, 2, 3]);
 });
 
 test('Move down past the neighbour', () => {
@@ -84,42 +80,21 @@ test('a block added pinned in an older log stays where it was added', () => {
   expect(block(events, 3)).not.toHaveProperty('pin');
 });
 
-test('Remove strikes the block until the next request, then hides it', () => {
-  const removed = session(2, { type: 'Remove', id: 2 });
-  expect(block(removed, 2).removed).toBe(true);
-  expect(block(removed, 3).removed).toBe(false);
-  expect(ids([...removed, sent])).toEqual([1, 3]);
+test('Remove takes the block out of the Context at once', () => {
+  expect(ids(session(2, { type: 'Remove', id: 2 }))).toEqual([1, 3]);
 });
 
-test('Rename sets a display title; an empty title resets it', () => {
-  const renamed = session(1, { type: 'Rename', id: 2, title: 'greeting' });
-  expect(block(renamed, 2).title).toBe('greeting');
-  expect(block([...renamed, { type: 'Rename', id: 2, title: '' }], 2).title).toBeNull();
+test('Rename changes no block: titles are the Gate\'s', () => {
+  expect(fold(session(1, { type: 'Rename', id: 2, title: 'greeting' })).blocks).toEqual(fold(session(1)).blocks);
 });
 
 test('Undo cancels the named event, even across a request', () => {
   const events = session(3, { type: 'Move', id: 4, after: 1 }, { type: 'Remove', id: 2 }, sent, { type: 'Undo', eventId: 6 });
   expect(ids(events)).toEqual([1, 4, 2, 3]);
-  expect(block(events, 2).removed).toBe(false);
 });
 
 test('undone lists the event ids cancelled by Undo events', () => {
   expect([...undone(session(1, { type: 'Remove', id: 2 }, { type: 'Undo', eventId: 3 }))]).toEqual([3]);
-});
-
-test('undoing an operation already sent flags the change again', () => {
-  const moved = session(2, { type: 'Move', id: 3, after: 1 }, sent);
-  const undoneAfterSend = [...moved, { type: 'Undo', eventId: 4 }] satisfies SessionEvent[];
-  expect(block(undoneAfterSend, 3)).toMatchObject({ moved: true });
-  const undoneBeforeSend = session(2, { type: 'Move', id: 3, after: 1 }, { type: 'Undo', eventId: 4 });
-  expect(block(undoneBeforeSend, 3)).toMatchObject({ moved: false });
-  expect(block([...undoneAfterSend, sent], 3)).toMatchObject({ moved: false });
-});
-
-test('undoing other sent operations flags nothing', () => {
-  const removed = session(2, { type: 'Remove', id: 3 }, { type: 'Rename', id: 2, title: 'x' }, sent, { type: 'Undo', eventId: 5 }, { type: 'Undo', eventId: 4 });
-  expect(block(removed, 3)).toMatchObject({ moved: false, removed: false, revised: false });
-  expect(block(removed, 2)).toMatchObject({ moved: false, title: null, revised: false });
 });
 
 test('a ProfileFallback replaces the session profile', () => {
@@ -145,22 +120,19 @@ test('Tool Results follow the Tool Calls of their answer, in call order, before 
   expect(ids(events)).toEqual([1, 2, 3, 4, 6, 7, 5]);
 });
 
-test('a Tool Call awaits approval until it has a Tool Result, also a removed one', () => {
+test('a Tool Call awaits approval until it has a Tool Result', () => {
   const events = session(1, call(3, 'ls'), call(4, 'pwd'), result(5, 3));
   expect(block(events, 3).pending).toBe(false);
   expect(block(events, 4).pending).toBe(true);
   expect(block(events, 2).pending).toBeUndefined();
-  expect(block([...events, { type: 'Remove', id: 5 }], 3).pending).toBe(false);
 });
 
 test('Remove takes the whole Tool Pair, from either block', () => {
   const events = session(1, call(3, 'ls'), result(4, 3), call(5, 'pwd'));
   for (const id of [3, 4]) {
-    const removed = [...events, { type: 'Remove', id } as SessionEvent];
-    expect([3, 4].map(b => block(removed, b).removed)).toEqual([true, true]);
-    expect(ids([...removed, sent])).toEqual([1, 2, 5]);
+    expect(ids([...events, { type: 'Remove', id } as SessionEvent])).toEqual([1, 2, 5]);
   }
-  expect(block([...events, { type: 'Remove', id: 2 }], 3).removed).toBe(false);
+  expect(ids([...events, { type: 'Remove', id: 2 }])).toEqual([1, 3, 4, 5]);
 });
 
 const toNote = (id: number, of: number): SessionEvent => ({ type: 'PairToNote', id, call: of });
@@ -170,7 +142,7 @@ test('PairToNote turns the Tool Pair into a Note after the calls and results of 
   expect(ids(events)).toEqual([1, 2, 4, 6, 7]);
   expect(block(events, 7)).toEqual({
     id: 7, kind: 'Note', origin: 'tool', content: '[Tool bash: ls]\nout 3', source: 'ls', cutOff: false,
-    title: null, removed: false, moved: false, revision: 1, revised: false,
+    revision: 1,
   });
   expect(ids([...events, sent])).toEqual([1, 2, 4, 6, 7]);
   expect(ids(session(1, call(3, 'ls'), call(4, 'pwd'), result(5, 3), result(6, 4), toNote(7, 4)))).toEqual([1, 2, 3, 5, 7]);
@@ -210,18 +182,9 @@ test('Edit replaces the content with the new Revision, keeping kind and place', 
   expect(ids(events)).toEqual([1, 2, 3]);
 });
 
-test('a new Revision is flagged until the next request', () => {
-  const events = session(1, edit(2, 2, 'x'));
-  expect(block(events, 2).revised).toBe(true);
-  expect(block([...events, sent], 2)).toMatchObject({ revision: 2, revised: false });
-  expect(block([...events, sent, edit(2, 3, 'y')], 2)).toMatchObject({ revision: 3, revised: true });
-});
-
-test('undoing an Edit restores the earlier Revision; flagged only when that was sent', () => {
-  const unsent = session(1, edit(2, 2, 'x'), { type: 'Undo', eventId: 3 });
-  expect(block(unsent, 2)).toMatchObject({ content: 'u2', revision: 1, revised: false });
-  const afterSend = session(1, edit(2, 2, 'x'), sent, { type: 'Undo', eventId: 3 });
-  expect(block(afterSend, 2)).toMatchObject({ content: 'u2', revision: 1, revised: true });
+test('undoing an Edit restores the earlier Revision, also across a request', () => {
+  expect(block(session(1, edit(2, 2, 'x'), { type: 'Undo', eventId: 3 }), 2)).toMatchObject({ content: 'u2', revision: 1 });
+  expect(block(session(1, edit(2, 2, 'x'), sent, { type: 'Undo', eventId: 3 }), 2)).toMatchObject({ content: 'u2', revision: 1 });
 });
 
 const compact = (sources: number[], noteId: number, content = 'short'): SessionEvent => ({ type: 'Compact', sources, instruction: 'keep it', noteId, content });
@@ -231,7 +194,7 @@ test('Compact replaces its sources at once by one Note at the first source’s p
   expect(ids(events)).toEqual([1, 2, 6, 5]);
   expect(block(events, 6)).toEqual({
     id: 6, kind: 'Note', origin: 'compaction', content: 'gist', cutOff: false, compacted: { sources: [3, 4], instruction: 'keep it' },
-    title: null, removed: false, moved: false, revision: 1, revised: false,
+    revision: 1,
   });
   expect(fold(events).nextId).toBe(7);
 });
@@ -259,10 +222,10 @@ test('a file reference is an unread Note until the file is read, then a plain sn
   const referenced = session(1, { type: 'FileReferenced', id: 3, file: 'a.ts:1-2' });
   expect(block(referenced, 3)).toEqual({
     id: 3, kind: 'Note', origin: 'file', file: 'a.ts:1-2', unread: true, content: '', cutOff: false,
-    title: null, removed: false, moved: false, revision: 1, revised: false,
+    revision: 1,
   });
   const read = block([...referenced, { type: 'FileRead', id: 3, content: '[a.ts:1-2]\n1: x' }], 3);
-  expect(read).toMatchObject({ file: 'a.ts:1-2', content: '[a.ts:1-2]\n1: x', revision: 1, revised: false });
+  expect(read).toMatchObject({ file: 'a.ts:1-2', content: '[a.ts:1-2]\n1: x', revision: 1 });
   expect(read.unread).toBeUndefined();
 });
 
@@ -275,7 +238,7 @@ test('ThinkingSet sets the thinking of the following requests; the last one wins
 test('NoteAdded puts a Context Policy\'s Note right after its anchor; undo drops it', () => {
   const events = session(3, { type: 'NoteAdded', id: 5, after: 2, content: 'about', by: 'trail' });
   expect(ids(events)).toEqual([1, 2, 5, 3, 4]);
-  expect(block(events, 5)).toEqual({ id: 5, kind: 'Note', origin: 'policy', content: 'about', cutOff: false, title: null, removed: false, moved: false, revision: 1, revised: false });
+  expect(block(events, 5)).toEqual({ id: 5, kind: 'Note', origin: 'policy', content: 'about', cutOff: false, revision: 1 });
   expect(fold(events).nextId).toBe(6);
   expect(ids([...events, { type: 'Undo', eventId: events.length - 1 }])).toEqual([1, 2, 3, 4]);
 });

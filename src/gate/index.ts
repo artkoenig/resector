@@ -55,6 +55,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   const { split, sent } = k;
   return {
     context: k.context,
+    reviewed: k.reviewed,
     sent,
     split,
     streaming: k.streaming,

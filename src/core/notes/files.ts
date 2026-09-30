@@ -60,14 +60,16 @@ export function snapshot(file: string, read: ReadFile): { content: string } | { 
   return { content: fileNote(file, numbered.join('\n')) };
 }
 
-// The Context at the Gate: each unread reference shows its file as it would be read now, or why it cannot be.
-export function peekReferences(context: Context, read: ReadFile): Context {
+// The Context at the Gate: each unread reference shows its file as it would be read now; missing: why it cannot be.
+export function peekReferences(context: Context, read: ReadFile): { context: Context; missing: Map<number, string> } {
+  const missing = new Map<number, string>();
   const blocks = context.blocks.map(b => {
     if (!b.unread) return b;
     const found = snapshot(b.file!, read);
-    return 'error' in found ? { ...b, content: '', missing: found.error } : { ...b, content: found.content };
+    if ('error' in found) missing.set(b.id, found.error);
+    return { ...b, content: 'error' in found ? '' : found.content };
   });
-  return { ...context, blocks };
+  return { context: { ...context, blocks }, missing };
 }
 
 type FileRead = Extract<SessionEvent, { type: 'FileRead' }>;
@@ -75,7 +77,7 @@ type FileRead = Extract<SessionEvent, { type: 'FileRead' }>;
 // On send: the unread references in the Context read into snapshots, or the first that cannot be (sending aborts).
 export function readReferences(context: Context, read: ReadFile): { events: FileRead[] } | { error: string; id: number } {
   const events: FileRead[] = [];
-  for (const b of context.blocks.filter(b => b.unread && !b.removed)) {
+  for (const b of context.blocks.filter(b => b.unread)) {
     const found = snapshot(b.file!, read);
     if ('error' in found) return { error: found.error, id: b.id };
     events.push({ type: 'FileRead', id: b.id, content: found.content });

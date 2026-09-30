@@ -118,7 +118,7 @@ function ports(events: SessionEvent[], { note = async () => 'the gist', abortAt 
   const port: Ports = {
     events: () => log,
     append: event => void log.push(event),
-    count: async (context: Context) => ({ blocks: context.blocks.filter(b => !b.removed).map(() => 10), total: 999 }),
+    count: async (context: Context) => ({ blocks: context.blocks.map(() => 10), total: 999 }),
     window: 4096,
     aborted: () => ++checks > abortAt,
     compact: async (context, sources, instruction, inContext) => {
