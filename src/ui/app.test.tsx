@@ -393,14 +393,14 @@ test('p pins nothing: pinning is gone (ADR 0002)', async () => {
 test('/thinking sets the thinking mode, shown in the header, logged and sent with the next request (FR-49)', async () => {
   const { events } = await withUsers('question');
   expect(line(await frameMatching(ui, f => f.includes('default')), /default/)).toContain('default · thinking off');
-  await write('/thinking on:low');
-  const frame = await frameMatching(ui, f => f.includes('default · thinking on:low'));
-  expect(frame).toContain('thinking on:low');
-  expect(events().slice(-1)).toEqual([{ type: 'ThinkingSet', thinking: 'low' }]);
+  await write('/thinking on');
+  const frame = await frameMatching(ui, f => f.includes('default · thinking on'));
+  expect(frame).toContain('thinking on');
+  expect(events().slice(-1)).toEqual([{ type: 'ThinkingSet', thinking: 'on' }]);
   fake.reply({ chunks: ['ok'] });
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('answer complete'));
-  expect(fake.chatRequests[0]).toMatchObject({ chat_template_kwargs: { enable_thinking: true }, reasoning_effort: 'low' });
+  expect(fake.chatRequests[0]).toMatchObject({ chat_template_kwargs: { enable_thinking: true } });
   await write('/thinking off');
   await frameMatching(ui, f => f.includes('default · thinking off'));
 });

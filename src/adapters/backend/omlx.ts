@@ -5,7 +5,7 @@ import type { Backend, CacheHit } from '../../core/backend';
 import { commonPrefix } from '../../core/cache/cache';
 import type { Thinking } from '../../core/log/events';
 import { EMPTY_REQUEST as EMPTY, type AssistantMessage, type Message, type Request } from '../../core/render/native';
-import { thinkingModes } from '../../core/render/template';
+import { probedModes, RANK, thinkingModes } from '../../core/render/template';
 import { thinkingShares } from '../../core/tokens/thinking';
 import { splitTokens } from '../../core/tokens/split';
 import { answerMessage, httpClient, streamChat, thinkingParams } from './openai';
@@ -104,6 +104,15 @@ async function chatTemplate(request: (path: string) => Promise<Response>, model:
   }
 }
 
+// Where the template is not readable: the modes the prompts show that the server renders for each effort
+// (splash's /apply-template). null where it renders none (oMLX has no such endpoint).
+async function renderedModes(post: <T>(path: string, body: unknown) => Promise<T>, model: string): Promise<Thinking[] | null> {
+  const render = (effort: string) =>
+    post<{ prompt: string }>('/apply-template', { model, messages: [{ role: 'user', content: 'probe' }], reasoning_effort: effort }).then(r => r.prompt, () => null);
+  const prompts = await Promise.all(RANK.map(render));
+  return prompts.every(p => p === null) ? null : probedModes(prompts);
+}
+
 // Model Profile values that shape requests; the window defaults to the model's max_model_len; thinking:
 // unless a request sets its own.
 export type OmlxOptions = { window?: number; model?: string; sampling?: Record<string, number>; thinking?: Thinking };
@@ -118,6 +127,7 @@ export async function connectOmlx(endpoint: string, { window, model, sampling, t
   const size = window ?? served.max_model_len;
   if (!size) throw new Error(`oMLX reports no max_model_len for ${model}: set window in the Model Profile`);
   const template = await chatTemplate(request, model);
+  const modes = template === null ? await renderedModes(post, model) : thinkingModes(template);
 
   // Every count includes the generation prompt. Counted prefixes end in an empty user turn, since
   // some templates (Qwen3-2507) cannot render a prompt without user message and oMLX then silently
@@ -164,7 +174,7 @@ export async function connectOmlx(endpoint: string, { window, model, sampling, t
   return {
     window: size,
     thinking,
-    thinkingModes: template === null ? null : thinkingModes(template),
+    thinkingModes: modes,
     exact: true,
 
     async count(requests) {

@@ -246,6 +246,11 @@ test('the thinking modes come from the chat template in the model directory the 
   expect((await open()).thinkingModes).toBeNull();
 });
 
+test('without the admin API the thinking modes come from the prompts the server renders per effort (splash, FR-49)', async () => {
+  const efforts = { none: '<think></think>', low: 'effort low', medium: '<think>', high: 'effort xhigh', xhigh: 'effort xhigh' };
+  expect((await open({}, { efforts })).thinkingModes).toEqual(['off', 'on', 'low', 'medium', 'xhigh']);
+});
+
 test('a request with its own thinking overrides the profile (FR-49)', async () => {
   const backend = await open({ thinking: 'off' });
   fake.reply({ chunks: ['ok'] });
