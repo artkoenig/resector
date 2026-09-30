@@ -2,9 +2,16 @@
 import { createEffect, createMemo, createSignal } from 'solid-js';
 import type { Kind } from '../../core/log/events';
 import { afterCalls, type Block } from '../../core/log/fold';
-import { proposalRow } from './compaction';
+import { count } from '../format';
 import type { Kernel } from './kernel';
-import type { Live, Streaming } from './types';
+import type { Compaction, Live, Streaming } from './types';
+
+// The proposal row goes before the first source, so each source's row number is one more than its place.
+export function proposalRow(k: Kernel, c: Compaction): Live {
+  const numbers = c.sources.map(id => `#${k.sent().findIndex(b => b.id === id) + 2}`).join(' ');
+  const heading = `◇ proposal · attempt ${c.attempt} · replaces ${numbers} · "${c.instruction}"`;
+  return { id: k.nextId(), kind: 'Note', content: c.text, before: c.sources[0]!, title: `◇ proposal · ${count(c.sources.length, 'block')} · attempt ${c.attempt}`, heading, ...(c.after && { tokens: c.after.note }) };
+}
 
 // The Kind Filters, in glossary order: the Kinds each shows; a Tool Call never without its Tool Result.
 // Additive: each is on or off on its own; the blocks shown are those of the ones on.

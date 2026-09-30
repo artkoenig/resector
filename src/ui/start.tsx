@@ -6,8 +6,10 @@ import { copyCommand, createClipboard } from '../adapters/clipboard/clipboard';
 import { configPaths } from '../adapters/fs/config';
 import { createEditor, createFileEditor } from '../adapters/editor/editor';
 import { projectSessionStore } from '../adapters/store/sessions';
-import type { Start } from '../main';
+import type { SessionRef } from '../core/session/session';
 import { Launch } from './launch';
+
+export type Start = { resume?: SessionRef };
 
 export async function start({ resume }: Start) {
   const renderer = await createCliRenderer({ exitOnCtrlC: true });

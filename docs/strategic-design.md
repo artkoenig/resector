@@ -80,7 +80,7 @@ Dependency rules: `ui → gate → core`, `adapters → core | gate` (types only
 Each step is small, keeps `bun test` green and can land alone.
 
 1. ~~**Glossary**~~ — done.
-2. **Architecture test** — a `bun test` that reads imports and asserts the dependency rules above; known violations in an allowlist that only shrinks.
+2. ~~**Architecture test**~~ — done as dependency-cruiser rules (`bun run depcruise`, type-only imports count); known violations are the rules' `pathNot` exceptions.
 3. **Ports at the Gate** (F2) — declare `Clipboard` and `Branches` in the Gate's types; adapters implement them. Move `errorText`, `count`, `formatTokens` out of `ui/format` to where the Gate owns its status texts.
 4. **Extract `src/gate/`** (F1) — move the workflow slices (kernel, send, tool-loop, policy, compaction, edits, rules, settings, git, commands); leave selection, marks and Kind Filter in `ui/`. The Gate announces "focus this block" instead of calling `follow`. Workflow tests move from frames to plain unit tests. Record as ADR (keeps solid-js signals as the Gate's reactive state; see Q2).
 5. **`core/tools/`** (F4) — split `toolcall/bash.ts` into catalog (definitions, Tools Block content), call (parse, arguments, result text) and the `Runner` port.
