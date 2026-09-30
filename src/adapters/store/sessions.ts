@@ -1,4 +1,4 @@
-// Session store (FR-32–FR-36): the project's Session Logs in one directory, `<id>.jsonl` plus `<id>.lock`
+// Session store: the project's Session Logs in one directory, `<id>.jsonl` plus `<id>.lock`
 // holding the pid of the process that has the session open.
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

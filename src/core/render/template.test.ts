@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { DEFAULT_MODES, probedModes, thinkingModes } from './template';
 
-test('a template with enable_thinking and a checked effort list offers off, on and its efforts, lowest first (FR-49)', () => {
+test('a template with enable_thinking and a checked effort list offers off, on and its efforts, lowest first', () => {
   const template = `{%- if enable_thinking is defined and enable_thinking is false %}…{%- endif %}
 {%- set resolved_reasoning_effort = reasoning_effort|default('low') %}
 {%- if resolved_reasoning_effort not in ('xhigh', 'medium', 'low') %}{{ raise_exception('bad') }}{%- endif %}`;

@@ -1,4 +1,4 @@
-// Scriptable fake of the llama.cpp server endpoints Resector uses (architecture §7 "Fake backend").
+// Scriptable fake of the llama.cpp server endpoints Resector uses.
 // Template: ChatML, tools, tool calls and thinking as Qwen3 renders them: reasoning only after the last
 // user message, before it the template drops it. Tokenizer: every special marker, whitespace
 // run and word is one token; BOS = 1 token.

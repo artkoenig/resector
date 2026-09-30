@@ -1,4 +1,4 @@
-// search runner (FR-21): the query goes to ddgr (DuckDuckGo from the terminal), its JSON results are the output.
+// search runner: the query goes to ddgr (DuckDuckGo from the terminal), its JSON results are the output.
 // ddgr reports a blocked or failed request on stderr and still exits 0: the output carries it to the model.
 import type { Runner } from '../../core/toolcall/bash';
 import { processRunner } from '../bash/runner';

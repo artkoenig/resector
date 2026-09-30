@@ -40,7 +40,7 @@ const QUESTION_TOOL = {
   },
 };
 
-test('a new Tools Block offers bash with one command parameter and question (FR-12, FR-21)', () => {
+test('a new Tools Block offers bash with one command parameter and question', () => {
   expect(JSON.parse(TOOLS)).toEqual([BASH, QUESTION_TOOL]);
   expect(QUESTION_DEFINITION.description).toContain('always a recommendation');
   expect(QUESTION_DEFINITION.description).toContain('never add an "Other" option');

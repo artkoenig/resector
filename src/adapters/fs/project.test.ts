@@ -6,7 +6,7 @@ import { listProjectFiles, probeEnvironment, projectFiles, projectInstructions }
 
 const dir = () => realpathSync(mkdtempSync(join(tmpdir(), 'resector-project-')));
 
-test('files are read relative to the project root, or absolute; anything unreadable is null (FR-27)', () => {
+test('files are read relative to the project root, or absolute; anything unreadable is null', () => {
   const root = dir();
   mkdirSync(join(root, 'src'));
   writeFileSync(join(root, 'src/a.ts'), 'x\n');
@@ -28,7 +28,7 @@ test('the project files for @path completion: git ignores apply in a repository,
   expect(listProjectFiles(root, 2)).toHaveLength(2);
 });
 
-test('AGENTS.md wins over CLAUDE.md; neither is no instructions (FR-29)', () => {
+test('AGENTS.md wins over CLAUDE.md; neither is no instructions', () => {
   const root = dir();
   expect(projectInstructions(root)).toBeNull();
   writeFileSync(join(root, 'CLAUDE.md'), 'claude');
@@ -39,7 +39,7 @@ test('AGENTS.md wins over CLAUDE.md; neither is no instructions (FR-29)', () => 
 
 const at = new Date(2026, 8, 26, 23, 30);
 
-test('the environment: cwd, OS, bash, local date and the git branch (FR-28)', () => {
+test('the environment: cwd, OS, bash, local date and the git branch', () => {
   const root = dir();
   const git = (...args: string[]) => Bun.spawnSync(['git', ...args], { cwd: root });
   expect(probeEnvironment(root, at)).toEqual({ cwd: root, os: `${process.platform} ${process.arch}`, shell: 'bash', date: '2026-09-26', branch: null });

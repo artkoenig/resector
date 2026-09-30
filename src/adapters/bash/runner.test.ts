@@ -21,7 +21,7 @@ test('stdin is /dev/null: a command reading it ends at once', async () => {
   expect(await run('cat; echo done').result).toEqual({ output: 'done\n', exit: 0, stopped: null });
 });
 
-test('the timeout stops the command and everything it started (FR-21)', async () => {
+test('the timeout stops the command and everything it started', async () => {
   const started = Date.now();
   const result = await run('echo before; sleep 5 | cat', { timeout: 0.3 }).result;
   expect(result).toEqual({ output: 'before\n', exit: null, stopped: 'timeout' });

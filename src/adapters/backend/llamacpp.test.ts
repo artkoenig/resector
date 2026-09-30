@@ -59,7 +59,7 @@ test('an answer streams in deltas and ends with finish reason, usage and cached 
   expect(fake.chatRequests).toEqual([{ n_cache_reuse: 0, messages, stream: true, stream_options: { include_usage: true } }]);
 });
 
-test('max_tokens goes into the request: the window minus the Context (FR-18); llama.cpp counts exactly', async () => {
+test('max_tokens goes into the request: the window minus the Context; llama.cpp counts exactly', async () => {
   fake = startFakeLlamaCpp();
   fake.reply({ chunks: ['ok'] });
   const backend = await connectLlamaCpp(fake.url);
@@ -233,7 +233,7 @@ test('an answer with tool calls counts as cached with its calls', async () => {
   expect(counted.cached.tokens).toBe(counted.blocks.slice(0, 6).reduce((a, b) => a + b, 0));
 });
 
-test('reasoning streams apart from the answer, as reasoning_content or inline <think> (FR-46, FR-50)', async () => {
+test('reasoning streams apart from the answer, as reasoning_content or inline <think>', async () => {
   fake = startFakeLlamaCpp();
   const backend = await connectLlamaCpp(fake.url);
   fake.reply({ thinking: ['Let me ', 'think.'], chunks: ['Hel', 'lo'] });
@@ -249,7 +249,7 @@ test('reasoning streams apart from the answer, as reasoning_content or inline <t
   }
 });
 
-test('the profile thinking goes into every request: on/off through the chat template, an effort also as reasoning_effort (FR-49)', async () => {
+test('the profile thinking goes into every request: on/off through the chat template, an effort also as reasoning_effort', async () => {
   fake = startFakeLlamaCpp();
   for (const thinking of ['off', 'on', 'high'] as const) {
     fake.reply({ chunks: ['ok'] });
@@ -263,7 +263,7 @@ test('the profile thinking goes into every request: on/off through the chat temp
   ]);
 });
 
-test('a request with its own thinking overrides the profile, also in the counted chat template (FR-49)', async () => {
+test('a request with its own thinking overrides the profile, also in the counted chat template', async () => {
   fake = startFakeLlamaCpp();
   const backend = await connectLlamaCpp(fake.url, { thinking: 'off' });
   fake.reply({ chunks: ['ok'] });
@@ -275,7 +275,7 @@ test('a request with its own thinking overrides the profile, also in the counted
   expect(new Set(fake.templateRequests.map(r => r.reasoning_effort))).toEqual(new Set(['low']));
 });
 
-test('the thinking modes are those of the chat template /props reports; unknown without one (FR-49)', async () => {
+test('the thinking modes are those of the chat template /props reports; unknown without one', async () => {
   fake = startFakeLlamaCpp({ template: "{% if enable_thinking %}{% endif %}{% if reasoning_effort not in ('high', 'low') %}{% endif %}" });
   expect((await connectLlamaCpp(fake.url)).thinkingModes).toEqual(['off', 'on', 'low', 'high']);
   fake.stop();
@@ -285,7 +285,7 @@ test('the thinking modes are those of the chat template /props reports; unknown 
 
 const THOUGHT = { role: 'assistant', content: '', reasoning_content: 'plan it' } as const;
 
-test('reasoning the chat template drops before the last user message counts 0 tokens (FR-48)', async () => {
+test('reasoning the chat template drops before the last user message counts 0 tokens', async () => {
   fake = startFakeLlamaCpp();
   const messages: Message[] = [SYSTEM, USER, { ...THOUGHT, content: 'hello' }, { role: 'user', content: 'more' }];
   const requests = prefixes(messages);

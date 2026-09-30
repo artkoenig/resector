@@ -1,9 +1,9 @@
-// Budget (FR-2, FR-18): max_tokens, the warning near the window, sending blocked at a full window, and the
-// drift of an inexact tokenizer (architecture §4 "Token counting").
+// Budget: max_tokens, the warning near the window, sending blocked at a full window, and the
+// drift of an inexact tokenizer.
 import type { SessionEvent } from '../log/events';
 
 // The drift last measured: prompt tokens the server reported − the tokens counted before sending that request;
-// null before the first answer with usage. A Model Profile fallback (FR-35) counts with another tokenizer: none yet.
+// null before the first answer with usage. A Model Profile fallback counts with another tokenizer: none yet.
 export function lastDrift(events: SessionEvent[]): number | null {
   let counted: number | null = null;
   let drift: number | null = null;

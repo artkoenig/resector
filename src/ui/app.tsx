@@ -1,4 +1,4 @@
-// The one screen (FR-1): header band · block table · preview · prompt band · footer.
+// The one screen: header band · block table · preview · prompt band · footer.
 import { type MouseEvent, type ScrollBoxRenderable, TextAttributes } from '@opentui/core';
 import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/solid';
 import { createEffect, createMemo, createSignal, For, type JSX, on, onCleanup, Show } from 'solid-js';
@@ -24,7 +24,7 @@ const CACHE_COLOR: Record<string, string> = { '●': TONE.ok, '○': FAINT, '': 
 
 type Mode = 'context' | 'input';
 // A row per visible block; removed ones are struck through, unnumbered and not selectable until sent.
-// dropped: a Thinking block the chat template drops (FR-48), dimmed.
+// dropped: a Thinking block the chat template drops, dimmed.
 // A line above the input: Tab puts `draft` into it; Enter runs `run`, or (null) completes as Tab does.
 type Suggestion = { label: string; description: string; draft: string; run: string | null };
 type Row = { id: number; heading?: string; n: string; kind: Kind; title: string; content: string; tokens: string; cache: string; flags: string; live: boolean; removed: boolean; dropped?: boolean };
@@ -47,7 +47,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     const tokens = (id: number) => (split ? formatTokens(tokensOf(id)!) : '…');
     const cache = (id: number) => ({ true: '●', false: '○', null: '' })[`${gate.warm(id)}`]!;
     const blocks = gate.context().blocks;
-    // Sources of a proposal are shown as such until it is accepted or discarded (FR-15).
+    // Sources of a proposal are shown as such until it is accepted or discarded.
     const proposed = new Set(gate.compacting()?.phase === 'instruction' ? [] : gate.compacting()?.sources);
     // The running call is decided: no ? approve.
     const running = gate.running()?.call.id;
@@ -66,15 +66,15 @@ export function App(props: GateOptions & { onQuit: () => void }) {
       const row = { ...live, n: n(live.id), title: titleOf({ ...live, call: running }, blocks), tokens: counted, cache: '', flags: '', live: true, removed: false };
       done.splice(at < 0 ? done.length : at, 0, row);
     }
-    // The Kind Filters as the Gate applies them to selection, here also to removed rows (FR-51).
+    // The Kind Filters as the Gate applies them to selection, here also to removed rows.
     return done.filter(r => gate.passes(r.id, r.kind));
   };
 
-  // The project's files, listed when the input opens: @path completion (FR-27).
+  // The project's files, listed when the input opens: @path completion.
   const [files, setFiles] = createSignal<string[]>([]);
   createEffect(on(mode, m => m === 'input' && setFiles(props.project.list())));
-  // Suggestions above the input: commands while it is a single `/word` (FR-6), the tools after `/tools `, the filter values after `/filter ` (FR-51), the policies after `/policy `, project files while an @path
-  // is typed at its end (FR-27). Tab completes; Enter runs a command taking no argument, else completes too.
+  // Suggestions above the input: commands while it is a single `/word`, the tools after `/tools `, the filter values after `/filter `, the policies after `/policy `, project files while an @path
+  // is typed at its end. Tab completes; Enter runs a command taking no argument, else completes too.
   const suggestions = createMemo((): Suggestion[] => {
     if (mode() !== 'input') return [];
     if (/^\/\S*$/.test(draft())) {
@@ -93,7 +93,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     const found = fileCompletions(draft(), files());
     return found ? found.paths.map(path => ({ label: path, description: '', draft: `${draft().slice(0, found.at)}${path} `, run: null })) : [];
   });
-  // The values after `/filter ` (FR-51), `all` first while one is off, `/policy `, `off` first while one is on, `/thinking `
+  // The values after `/filter `, `all` first while one is off, `/policy `, `off` first while one is on, `/thinking `
   // and the /git: commands; null for any other draft.
   function valueSuggestions(text: string): Suggestion[] | null {
     const [, command, typed] = /^\/(filter|policy|thinking|git:branch|git:worktree) (\S*)$/.exec(text) ?? [];
@@ -226,7 +226,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   };
   // Lines of the dock's band, which takes the prompt band's place: the dock, then a meta line.
   const dockLines = () => dockHeight(dockState()!) + 1;
-  // Compaction (FR-13, FR-15): writing the instruction, then the Gate locked on the proposal.
+  // Compaction: writing the instruction, then the Gate locked on the proposal.
   // A memo: `on(phase)` must fire on a phase change only, not on every update of the Compaction.
   const phase = createMemo(() => gate.compacting()?.phase);
   // The instruction line starts empty, on `i` or when blocked with the draft of the last run.
@@ -277,7 +277,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     escape: () => (gate.status()?.tone === 'error' ? gate.dismiss() : gate.clearMarks()),
     q: props.onQuit,
   };
-  // The key pressed last in the Context: only the same key again confirms (FR-9).
+  // The key pressed last in the Context: only the same key again confirms.
   let lastKey = '';
   // A key in the Context. Streaming or running: only looking around (select, scroll, quit); Esc stops after the step, again aborts.
   function contextAction(name: string) {
@@ -470,8 +470,8 @@ export function App(props: GateOptions & { onQuit: () => void }) {
 }
 
 const ACTION_COLOR: Record<Action, string> = { allow: TONE.ok, ask: TONE.warn, deny: TONE.error };
-// Why the rules ask for the pending call: each sub-command with its decision and reason (FR-22), then what `a`
-// would allow for the session, before anything is saved (FR-23).
+// Why the rules ask for the pending call: each sub-command with its decision and reason, then what `a`
+// would allow for the session, before anything is saved.
 function Checks(props: { verdict: Verdict }) {
   const session = () => {
     const found = sessionRules(props.verdict);
@@ -494,7 +494,7 @@ function Checks(props: { verdict: Verdict }) {
   );
 }
 
-// An unread @path reference in the preview: when it is read, or why it cannot be (FR-27).
+// An unread @path reference in the preview: when it is read, or why it cannot be.
 function ReferenceHint(props: { block: Block | undefined }) {
   return (
     <Show when={props.block?.unread}>
@@ -609,7 +609,7 @@ function PromptMeta(props: { mode: Mode }) {
   );
 }
 
-// Compaction: the header while writing the instruction (FR-13), the proposal's effect while it is reviewed (FR-15).
+// Compaction: the header while writing the instruction, the proposal's effect while it is reviewed.
 function CompactionMeta(props: { gate: Gate; compaction: Compaction }) {
   const c = () => props.compaction;
   const tokens = (t: number | null) => (t === null ? '…' : formatTokens(t));
@@ -635,7 +635,7 @@ function Header(props: { gate: Gate; width: number }) {
   const total = () => props.gate.split()?.total ?? 0;
   const used = () => (props.gate.split() ? formatTokens(total()) : '…');
   const budget = () => props.gate.budget();
-  // FR-2: ±X drift of an inexact tokenizer, dimmed; above the window red `over by X`.
+  // ±X drift of an inexact tokenizer, dimmed; above the window red `over by X`.
   const window = () => ` / ${formatTokens(props.gate.window())}`;
   const drift = () => {
     const label = budget()?.driftLabel;
@@ -647,7 +647,7 @@ function Header(props: { gate: Gate; width: number }) {
   };
   const tone = () => ({ ok: undefined, warn: TONE.warn, over: TONE.error })[budget()?.tone ?? 'ok'];
   const profile = () => props.gate.profile();
-  // The active Context Policy follows the thinking mode (ADR 0001), then auto-approve (FR-23), then the git branch
+  // The active Context Policy follows the thinking mode (ADR 0001), then auto-approve, then the git branch
   // and the worktree.
   const git = () => (props.gate.branch() ? ` · ⎇ ${props.gate.branch()}` : '') + (props.gate.worktree() ? ' · worktree' : '');
   const thinking = () =>
@@ -676,7 +676,7 @@ function Header(props: { gate: Gate; width: number }) {
   );
 }
 
-// While blocks are hidden: the Kind Filters off below the header, and the share of the blocks and tokens sent that is shown; removed ones are not (FR-51).
+// While blocks are hidden: the Kind Filters off below the header, and the share of the blocks and tokens sent that is shown; removed ones are not.
 function FilterLine(props: { gate: Gate }) {
   const share = () => props.gate.filterShare();
   const tokens = () => (share().total === null ? '…' : `${formatTokens(share().tokens!)}/${formatTokens(share().total!)}`);
@@ -688,7 +688,7 @@ function FilterLine(props: { gate: Gate }) {
   );
 }
 
-// FR-2: one segment per block in Context order (plus Template), proportional to tokens; free space in the border colour.
+// One segment per block in Context order (plus Template), proportional to tokens; free space in the border colour.
 // Over the window the bar is scaled to the Context and marks the window edge.
 // Half cells: thicker than a line, lighter than a solid strip.
 const BAR = '▀';
@@ -782,7 +782,7 @@ function modeKeys(gate: Gate, mode: KeyMode): Hint[] {
   const own = MODE_KEYS[mode] ?? busyKeys(gate);
   if (own) return own;
   if (gate.marked().size) return MARKED_KEYS;
-  // No move while a Kind Filter hides blocks (FR-51).
+  // No move while a Kind Filter hides blocks.
   const keys = gate.hiding() ? KEYS.filter(k => k !== MOVE) : KEYS;
   return gate.selectedBlock()?.pending ? [['y', 'run once'], ['a', 'allow for session'], ['n', 'reject'], ...keys] : keys;
 }

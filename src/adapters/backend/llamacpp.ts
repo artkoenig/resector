@@ -70,7 +70,7 @@ export async function connectLlamaCpp(endpoint: string, { window, model, samplin
     return [...withThinking, ...endOfTurn];
   };
 
-  // The session slot's prefix cache (architecture §4), empty (cold) per connection: `slotTokens` as the
+  // The session slot's prefix cache, empty (cold) per connection: `slotTokens` as the
   // server holds them (prompt + generated answer); `shownTokens` adds the answer's end of turn, so the
   // Assistant row counts as cached.
   let slotTokens: number[] = [];

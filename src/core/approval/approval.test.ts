@@ -8,14 +8,14 @@ const rule = (pattern: string, action: Rule['action'], source: Rule['source'] = 
 const verdict = (command: string, rules: Rule[] = BUILTIN_ALLOW, split: Split = words) => evaluate(command, { rules, split, root: ROOT });
 const only = (command: Command) => () => [command];
 
-test('search is always allowed, whatever the rules; a bash call is decided by them (FR-21)', () => {
+test('search is always allowed, whatever the rules; a bash call is decided by them', () => {
   const input = { rules: [rule('*', 'deny')], split: words, root: ROOT };
   expect(verdictOf({ tool: 'search', content: 'rm -rf /' }, input)).toEqual({ action: 'allow', checks: [] });
   expect(verdictOf({ content: 'ls' }, input).action).toBe('deny');
   expect(verdictOf({ tool: 'bash', content: 'ls' }, input).action).toBe('deny');
 });
 
-test('a Question is never asked for: only a rule for `question` denies it, the last one wins (FR-21)', () => {
+test('a Question is never asked for: only a rule for `question` denies it, the last one wins', () => {
   const input = (...rules: Rule[]) => ({ rules, split: words, root: ROOT });
   const question = { tool: 'question' as const, content: '{}' };
   expect(verdictOf(question, input(rule('*', 'deny'), rule('question *', 'deny'), rule('question', 'ask')))).toEqual({ action: 'allow', checks: [] });
@@ -33,7 +33,7 @@ test('a Question is never asked for: only a rule for `question` denies it, the l
   expect(deniedTools(permissionRules({ question: 'deny' }, { question: 'allow' }).rules)).toEqual(['question']);
 });
 
-test('a pattern ending in " *" matches the command alone or with arguments, not a longer word (FR-22)', () => {
+test('a pattern ending in " *" matches the command alone or with arguments, not a longer word', () => {
   expect(matches('git status *', 'git status')).toBe(true);
   expect(matches('git status *', 'git status --short')).toBe(true);
   expect(matches('git status *', 'git statuses')).toBe(false);
@@ -54,7 +54,7 @@ test('runs of whitespace in the command count as one space', () => {
   expect(matches('git status *', '  git status ')).toBe(true);
 });
 
-test('the built-in allow list: read-only commands (FR-22)', () => {
+test('the built-in allow list: read-only commands', () => {
   const allowed = ['ls', 'cat a', 'head a', 'tail a', 'wc a', 'grep x a', 'rg x', 'find .', 'sed -n 1p a', 'git status', 'git diff', 'git log', 'git show HEAD'];
   for (const command of allowed) expect(verdict(command).action, command).toBe('allow');
   for (const command of ['sed -i s/a/b/ a', 'git push', 'rm a']) expect(verdict(command).action, command).toBe('ask');
@@ -93,7 +93,7 @@ test('a command with nothing to run: ask', () => {
   expect(verdict('# only a comment', BUILTIN_ALLOW, () => [])).toEqual({ action: 'ask', checks: [{ text: '# only a comment', action: 'ask', why: 'no command', unallowable: true }] });
 });
 
-test('an argument outside the project turns allow into ask, which no session rule changes (FR-22)', () => {
+test('an argument outside the project turns allow into ask, which no session rule changes', () => {
   const outside = (arg: string) => verdict('cat', BUILTIN_ALLOW, only({ text: `cat ${arg}`, args: [arg], writes: [] })).checks[0]!;
   expect(outside('/etc/passwd')).toEqual({ text: 'cat /etc/passwd', action: 'ask', why: 'argument outside project: /etc/passwd', unallowable: true });
   expect(outside('../secret').why).toBe('argument outside project: ../secret');
@@ -142,7 +142,7 @@ test('a built-in read-only command writing a file asks; a rule of the user allow
   expect(verdict('make', [rule('make *', 'allow')], only({ text: 'make', args: [], writes: ['log'] })).action).toBe('allow');
 });
 
-test('options making a built-in read-only command write or run something ask (FR-22)', () => {
+test('options making a built-in read-only command write or run something ask', () => {
   const asks = (command: string) => verdict(command).checks[0]!;
   expect(asks('find . -delete')).toEqual({ text: 'find . -delete', action: 'ask', why: 'may write: -delete', unallowable: false });
   for (const command of ['find . -exec rm {} +', 'find . -execdir x', 'find . -ok x', 'find . -okdir x', 'find . -fprint f', 'find . -fprint0 f', 'find . -fprintf f %p', 'find . -fls f']) expect(asks(command).action, command).toBe('ask');
@@ -152,7 +152,7 @@ test('options making a built-in read-only command write or run something ask (FR
   expect(verdict('find', BUILTIN_ALLOW, only({ text: ' find . -delete', args: ['.', '-delete'], writes: [] })).action).toBe('ask');
 });
 
-test('allow for session: the command prefix by the arity table, then " *" (architecture §5)', () => {
+test('allow for session: the command prefix by the arity table, then " *"', () => {
   expect(prefixRule('git checkout -b feature')).toBe('git checkout *');
   expect(prefixRule('bun test src/a.test.ts')).toBe('bun test *');
   expect(prefixRule('npm run build -- --watch')).toBe('npm run build *');
@@ -178,7 +178,7 @@ test('no session rule where an argument or the parse is why it asks', () => {
   expect(sessionRules(verdict('echo "open'))).toEqual({ error: 'cannot allow for session: unparseable – y runs once, e edits' });
 });
 
-test('config rules: global ones in order, then the project ones; project allow is ignored (FR-25)', () => {
+test('config rules: global ones in order, then the project ones; project allow is ignored', () => {
   expect(permissionRules({ 'git push *': 'ask', 'rm *': 'deny' }, { 'curl *': 'deny', 'git commit *': 'allow', 'make *': 'ask' })).toEqual({
     rules: [...BUILTIN_ALLOW, rule('git push *', 'ask'), rule('rm *', 'deny'), rule('curl *', 'deny', 'project'), rule('make *', 'ask', 'project')],
     ignored: ['git commit *'],
@@ -186,7 +186,7 @@ test('config rules: global ones in order, then the project ones; project allow i
   expect(permissionRules(undefined, undefined)).toEqual({ rules: BUILTIN_ALLOW, ignored: [] });
 });
 
-test('the session rules are the AllowRuleAdded events of the Session Log (FR-25)', () => {
+test('the session rules are the AllowRuleAdded events of the Session Log', () => {
   const rules = sessionAllowed([
     { type: 'SessionCreated', profile: 'default', protocol: 'native' },
     { type: 'AllowRuleAdded', pattern: 'make *' },

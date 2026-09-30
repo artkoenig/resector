@@ -26,7 +26,7 @@ test('global and project config are found in their standard places and merged', 
   expect(loaded?.profile()).toMatchObject({ name: 'qwen', window: 4096 });
 });
 
-test('the project config may only tighten permissions: its allow entries are ignored (FR-25)', () => {
+test('the project config may only tighten permissions: its allow entries are ignored', () => {
   put(join(home, '.config/resector/config.jsonc'), '{ "permission": { "make *": "allow" } }');
   put(join(cwd, '.resector/config.jsonc'), '{ "permission": { "curl *": "deny", "git commit *": "allow" } }');
   const { permissions } = loadConfig(configPaths({ home, cwd, env: {} }))!;
@@ -63,7 +63,7 @@ test('the system prompt comes from the profile file, else system.md (project bef
   expect(systemPrompt('own')).toBe('own prompt');
 });
 
-test('the default compaction instruction comes from compaction.md (project before global), else the shipped one (FR-13)', () => {
+test('the default compaction instruction comes from compaction.md (project before global), else the shipped one', () => {
   const paths = configPaths({ home, cwd, env: {} });
   put(paths.global, '{}');
   expect(loadConfig(paths)!.compactionInstruction()).toBe(DEFAULT_INSTRUCTION);

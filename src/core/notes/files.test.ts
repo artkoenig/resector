@@ -3,7 +3,7 @@ import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
 import { fileCompletions, fileNote, parseReference, peekReferences, readReferences, references, snapshot } from './files';
 
-test('@path references are taken from the input; the rest is the User text (FR-27)', () => {
+test('@path references are taken from the input; the rest is the User text', () => {
   expect(references('@src/a.ts explain this')).toEqual({ files: ['src/a.ts'], text: 'explain this' });
   expect(references('compare @a.ts:3-5 and\n@b.ts')).toEqual({ files: ['a.ts:3-5', 'b.ts'], text: 'compare and' });
   expect(references('@a.ts')).toEqual({ files: ['a.ts'], text: '' });
@@ -16,7 +16,7 @@ test('@path references are taken from the input; the rest is the User text (FR-2
 
 const FILES = ['src/ui/gate.ts', 'src/ui/app.tsx', 'docs/gate.md', 'src/core/notes/files.ts', 'package.json'];
 
-test('the @path being typed is completed from the project files, file name matches first (FR-27)', () => {
+test('the @path being typed is completed from the project files, file name matches first', () => {
   expect(fileCompletions('see @', FILES, 3)).toEqual({ at: 5, paths: ['docs/gate.md', 'package.json', 'src/ui/app.tsx'] });
   expect(fileCompletions('@GA', FILES)).toEqual({ at: 1, paths: ['docs/gate.md', 'src/ui/gate.ts'] });
   expect(fileCompletions('@src/', FILES)?.paths).toEqual(['src/ui/app.tsx', 'src/ui/gate.ts', 'src/core/notes/files.ts']);
@@ -82,7 +82,7 @@ test('at the Gate an unread reference shows the file as it is now; a missing one
   expect(peeked[0]).toBe(twoRefs.blocks[0]!);
 });
 
-test('on send each unread reference is read into its snapshot (FR-27)', () => {
+test('on send each unread reference is read into its snapshot', () => {
   const found = readReferences(session({ type: 'FileReferenced', id: 2, file: 'a.ts:1' }, { type: 'FileReferenced', id: 3, file: 'a.ts' }), read);
   expect(found).toEqual({ events: [{ type: 'FileRead', id: 2, content: '[a.ts:1]\n1: one' }, { type: 'FileRead', id: 3, content: `[a.ts]\n${text}` }] });
 });

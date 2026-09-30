@@ -1,4 +1,4 @@
-// /sessions (FR-33, FR-34): full-screen table of the project's sessions with a preview of the selected one.
+// /sessions: full-screen table of the project's sessions with a preview of the selected one.
 import { useKeyboard, useTerminalDimensions } from '@opentui/solid';
 import { createSignal, For, Show } from 'solid-js';
 import type { SessionStore, StoredSession } from '../adapters/store/sessions';
@@ -58,7 +58,7 @@ export function Sessions(props: SessionsProps) {
   }
   function finishEditing(apply: boolean) {
     const edit = editing()!;
-    // An unchanged derived title is not fixed as a rename (FR-34).
+    // An unchanged derived title is not fixed as a rename.
     const unchanged = edit.kind === 'rename' && !edit.session.renamed && draft().trim() === edit.session.title;
     if (edit.kind === 'rename' && apply && !unchanged) {
       props.rename(edit.session.id, draft().trim());

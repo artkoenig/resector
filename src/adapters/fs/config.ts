@@ -1,4 +1,4 @@
-// Reads the config files from disk (FR-42): global, then project; RESECTOR_CONFIG replaces the global path.
+// Reads the config files from disk: global, then project; RESECTOR_CONFIG replaces the global path.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { DEFAULT_INSTRUCTION } from '../../core/compaction/compaction';
@@ -14,21 +14,21 @@ export function configPaths({ home, cwd, env }: { home: string; cwd: string; env
   };
 }
 
-// Null when no config file exists yet (first start, FR-45).
+// Null when no config file exists yet (first start).
 export function loadConfig(paths: ConfigPaths) {
   const files: ConfigFile[] = [paths.global, paths.project]
     .filter(path => existsSync(path))
     .map(path => ({ source: path, text: readFileSync(path, 'utf8'), project: path === paths.project }));
   if (!files.length) return null;
   const config = readConfig(files);
-  // FR-31: profile file, else system.md next to the project config, else next to the global one, else shipped.
+  // Profile file, else system.md next to the project config, else next to the global one, else shipped.
   const beside = (name: string) => [paths.project, paths.global].map(p => join(dirname(p), name)).find(p => existsSync(p));
   const systemPrompt = ({ name, systemPrompt: own }: ModelProfile) => {
     if (own && !existsSync(own)) throw new Error(`system prompt of profile "${name}" not found: ${own}`);
     const path = own ?? beside('system.md');
     return path ? readFileSync(path, 'utf8') : DEFAULT_SYSTEM_PROMPT;
   };
-  // FR-13: compaction.md next to the project config, else next to the global one, else shipped. One line in the input.
+  // Compaction.md next to the project config, else next to the global one, else shipped. One line in the input.
   const compactionInstruction = () => {
     const path = beside('compaction.md');
     return path ? readFileSync(path, 'utf8').trim() : DEFAULT_INSTRUCTION;
@@ -36,7 +36,7 @@ export function loadConfig(paths: ConfigPaths) {
   return { ...config, systemPrompt, compactionInstruction };
 }
 
-// First start: the chosen model becomes the global config (the only config Resector ever writes, FR-44).
+// First start: the chosen model becomes the global config (the only config Resector ever writes).
 export function writeInitialConfig(paths: ConfigPaths, model: { backend: BackendKind; endpoint: string; model: string }) {
   mkdirSync(dirname(paths.global), { recursive: true });
   writeFileSync(paths.global, initialConfig(model));

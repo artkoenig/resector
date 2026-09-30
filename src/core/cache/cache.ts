@@ -1,4 +1,4 @@
-// Prefix cache (architecture §4 "Prefix cache"): the server reuses the prompt up to the first element
+// Prefix cache: the server reuses the prompt up to the first element
 // that differs from what it last processed; rows before that invalidation point are ●, from it on ○.
 
 // Length of the common prefix of `a` and `b`: the index of the first differing element.
@@ -9,7 +9,7 @@ export function commonPrefix<T>(a: readonly T[], b: readonly T[], same: (x: T, y
 }
 
 // Per row (tokens in Context order): warm when all its tokens lie within the `cached` prompt tokens. A
-// row of 0 tokens (a Thinking block the chat template drops, FR-48) is warm when the row after it is:
+// row of 0 tokens (a Thinking block the chat template drops) is warm when the row after it is:
 // the prompt differs from where it was.
 export function warmRows(blocks: number[], cached: number): boolean[] {
   let end = 0;

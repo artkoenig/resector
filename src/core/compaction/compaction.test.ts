@@ -17,7 +17,7 @@ const session = (...then: SessionEvent[]): SessionEvent[] => [
 ];
 const NOTHING = { error: 'nothing to compact (System, Tools and pending Tool Calls, unread @path references are excluded)' };
 
-test('the sources are the marked blocks in Context order (FR-13)', () => {
+test('the sources are the marked blocks in Context order', () => {
   expect(sourcesOf(fold(session()), new Set([6, 3]), 1)).toEqual({ sources: [3, 6] });
 });
 
@@ -43,7 +43,7 @@ test('System, Tools Block, pending Tool Calls and removed blocks are never sourc
   expect(sourcesOf(fold(events), new Set([3, 7]), 1)).toEqual({ sources: [3] });
 });
 
-test('the request holds only the sources and the instruction (FR-14)', () => {
+test('the request holds only the sources and the instruction', () => {
   const context = fold(session());
   expect(compactionRequest(context, [4, 5, 6], 'keep errors')).toEqual({
     messages: [
@@ -64,7 +64,7 @@ test('in the Context: the answer begins with the first heading the instruction a
   expect(inContextRequest(fold(session()), 'summarize as:\n## Goal\n## Done').answerStart).toBe('## Goal\n');
 });
 
-test('accept logs the Compaction; an empty proposal is not accepted (FR-16)', () => {
+test('accept logs the Compaction; an empty proposal is not accepted', () => {
   expect(accept([3, 6], 'keep', 7, 'gist')).toEqual({ event: { type: 'Compact', sources: [3, 6], instruction: 'keep', noteId: 7, content: 'gist' } });
   expect(accept([3, 6], 'keep', 7, ' \n')).toEqual({ error: 'empty proposal – e to edit, i to change the instruction, x to discard' });
 });
@@ -81,7 +81,7 @@ test('reduction is the share of tokens saved, in whole percent', () => {
   expect(reduction(0, 5)).toBe(0);
 });
 
-test('an unread @path reference is not compacted: it is read only on send (FR-27)', () => {
+test('an unread @path reference is not compacted: it is read only on send', () => {
   const events = session({ type: 'FileReferenced', id: 9, file: 'a.ts' });
   expect(sourcesOf(fold(events), new Set(), 9)).toEqual(NOTHING);
 });

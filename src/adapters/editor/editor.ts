@@ -1,4 +1,4 @@
-// $EDITOR (FR-8): the text in a temporary file, the editor on the terminal, the saved text back.
+// $EDITOR: the text in a temporary file, the editor on the terminal, the saved text back.
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -23,7 +23,7 @@ export function createEditor({ env, suspend, resume, dir = tmpdir() }: EditorOpt
   };
 }
 
-// The editor on a file itself (`e` on an @path reference, FR-27).
+// The editor on a file itself (`e` on an @path reference).
 export function createFileEditor({ env, suspend, resume }: Omit<EditorOptions, 'dir'>): (file: string) => Promise<void> {
   // $VISUAL, then $EDITOR, as a shell command line (e.g. `code --wait`).
   const command = env.VISUAL || env.EDITOR || 'vi';

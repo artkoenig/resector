@@ -1,4 +1,4 @@
-// Session Log JSONL codec (architecture §3): one event per line.
+// Session Log JSONL codec: one event per line.
 import type { SessionEvent } from './events';
 
 export const encodeEvent = (event: SessionEvent): string => JSON.stringify(event) + '\n';

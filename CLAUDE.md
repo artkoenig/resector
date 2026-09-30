@@ -30,7 +30,6 @@ TUI harness for local LLMs (Bun + TypeScript, UI with OpenTUI/Solid). No build s
 
 - Code, identifiers and comments in English; comments are short and say why.
 - Match the style of the surrounding code; no new dependencies.
-- Requirement IDs like `FR-49` in comments refer to the product requirements; keep them when changing that code.
 
 ## Agent skills
 

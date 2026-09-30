@@ -90,7 +90,7 @@ async function escape() {
   await Bun.sleep(50);
 }
 
-// Writes `text` in input mode; Enter adds it and sends the Context (FR-6).
+// Writes `text` in input mode; Enter adds it and sends the Context.
 async function write(text: string) {
   ui.mockInput.pressTab();
   await ui.flush();
@@ -133,7 +133,7 @@ test('Enter in input mode adds a User block and sends the Context; the answer st
   ]);
 });
 
-test('every request sends max_tokens = window − Context: no answer reserve (FR-18)', async () => {
+test('every request sends max_tokens = window − Context: no answer reserve', async () => {
   const { events } = await start();
   fake.reply({ chunks: ['ok'] });
   await write('hi there');
@@ -148,7 +148,7 @@ const headerTone = () => {
   return spans.map(s => Array.from(s.fg.buffer.slice(0, 3), c => c.toString(16).padStart(2, '0')).join(''));
 };
 
-test('from 90 % of the window the tokens turn yellow (FR-2)', async () => {
+test('from 90 % of the window the tokens turn yellow', async () => {
   await start({ window: 64, users: ['short'] });
   const frame = ui.captureCharFrame();
   expect(line(frame, /default/)).toMatch(/58 \/ 64 {2}$/);
@@ -157,7 +157,7 @@ test('from 90 % of the window the tokens turn yellow (FR-2)', async () => {
 
 const LONG = 'a b c d e f g h i j k l m n o p q r s t';
 
-test('a Context as big as the window blocks sending: red over by X, the bar marks the window edge (FR-2, FR-18)', async () => {
+test('a Context as big as the window blocks sending: red over by X, the bar marks the window edge', async () => {
   const { events } = await start({ window: 80, users: [LONG, 'short'] });
   let frame = ui.captureCharFrame();
   expect(line(frame, /default/)).toMatch(/102 \/ 80 over by 23 {2}$/);
@@ -181,7 +181,7 @@ test('a Context as big as the window blocks sending: red over by X, the bar mark
   expect(fake.chatRequests[0]).toMatchObject({ max_tokens: 80 - 58 });
 });
 
-test('an inexact tokenizer shows ±drift and blocks sending that much below the window (FR-2, FR-18)', async () => {
+test('an inexact tokenizer shows ±drift and blocks sending that much below the window', async () => {
   const { events } = await start({ window: 80, exact: false, users: ['short'] });
   expect(line(ui.captureCharFrame(), /default/)).toMatch(/58 \/ 80 ±\? {2}$/);
   // The server counts 10 more prompt tokens than the backend did.
@@ -202,7 +202,7 @@ test('an inexact tokenizer shows ±drift and blocks sending that much below the 
   expect(fake.chatRequests).toHaveLength(1);
 });
 
-test('Enter in input mode on a full window: the User block stays, the status says why (FR-6, FR-18)', async () => {
+test('Enter in input mode on a full window: the User block stays, the status says why', async () => {
   const { events } = await start({ window: 64, users: [LONG] });
   await write('more');
   const frame = await frameMatching(ui, f => f.includes('sending blocked'));
@@ -260,7 +260,7 @@ test('Esc again aborts streaming; the partial answer is kept as cut off', async 
   ]);
 });
 
-test('reasoning streams dimmed into its own Thinking row, the status says thinking; it is logged before the answer (FR-46, FR-50)', async () => {
+test('reasoning streams dimmed into its own Thinking row, the status says thinking; it is logged before the answer', async () => {
   const { events } = await start();
   fake.reply({ thinking: ['plan ', 'it'], chunks: ['hello'] });
   await write('hi there');
@@ -275,7 +275,7 @@ test('reasoning streams dimmed into its own Thinking row, the status says thinki
   expect(fake.chatRequests).toHaveLength(1);
 });
 
-test('cut off while thinking: the Thinking row streams with status thinking, Esc keeps it ⚠ cut off without Assistant block (FR-19, FR-50)', async () => {
+test('cut off while thinking: the Thinking row streams with status thinking, Esc keeps it ⚠ cut off without Assistant block', async () => {
   const { events } = await start();
   fake.reply({ thinking: ['Let me see'], chunks: [], hang: true });
   await write('hi there');
@@ -294,7 +294,7 @@ test('cut off while thinking: the Thinking row streams with status thinking, Esc
   ]);
 });
 
-test('a Thinking block the chat template drops counts 0 tokens, is dimmed and flagged ✂ template; the cache is cold from there (FR-48)', async () => {
+test('a Thinking block the chat template drops counts 0 tokens, is dimmed and flagged ✂ template; the cache is cold from there', async () => {
   await start();
   fake.reply({ thinking: ['plan it'], chunks: ['hello'] });
   await write('hi there');
@@ -390,7 +390,7 @@ test('p pins nothing: pinning is gone (ADR 0002)', async () => {
   expect(events()).toHaveLength(before);
 });
 
-test('/thinking sets the thinking mode, shown in the header, logged and sent with the next request (FR-49)', async () => {
+test('/thinking sets the thinking mode, shown in the header, logged and sent with the next request', async () => {
   const { events } = await withUsers('question');
   expect(line(await frameMatching(ui, f => f.includes('default')), /default/)).toContain('default · thinking off');
   await write('/thinking on');
@@ -405,7 +405,7 @@ test('/thinking sets the thinking mode, shown in the header, logged and sent wit
   await frameMatching(ui, f => f.includes('default · thinking off'));
 });
 
-test('/thinking offers the modes of the chat template (FR-49)', async () => {
+test('/thinking offers the modes of the chat template', async () => {
   const { events } = await start({ template: "{% if reasoning_effort not in ('xhigh', 'low') %}{% endif %}" });
   await write('/thinking on:low');
   await frameMatching(ui, f => f.includes('default · thinking on:low'));
@@ -513,7 +513,7 @@ test('the header Context bar highlights the selected block', async () => {
 // Per numbered row: its number and Cache column.
 const cache = (frame: string) => [...frame.matchAll(/^[ ┃] [ ●] +(\d+) {2}.*\d +([●○]) /gm)].map(m => m[1]! + m[2]!);
 
-test('the Cache column shows ● for rows before the invalidation point, ○ from it on (FR-3)', async () => {
+test('the Cache column shows ● for rows before the invalidation point, ○ from it on', async () => {
   await withUsers('hi there');
   expect(cache(await frameMatching(ui, f => cache(f).length === 3))).toEqual(['1○', '2○', '3○']);
   fake.reply({ chunks: ['hello'] });
@@ -526,7 +526,7 @@ test('the Cache column shows ● for rows before the invalidation point, ○ fro
   expect(cache(frame)).toEqual(['1●', '2●', '3○', '4○']);
 });
 
-test('a server reusing fewer tokens than predicted is reported (FR-41)', async () => {
+test('a server reusing fewer tokens than predicted is reported', async () => {
   await withUsers('hi there');
   fake.reply({ chunks: ['hello'] });
   ui.mockInput.pressEnter();
@@ -582,7 +582,7 @@ test('an undone change leaves nothing to send', async () => {
   expect(fake.chatRequests).toHaveLength(1);
 });
 
-test('typing / suggests the commands, filtered while typing; ↑↓ choose, Enter runs (FR-6)', async () => {
+test('typing / suggests the commands, filtered while typing; ↑↓ choose, Enter runs', async () => {
   const { opened } = await start();
   ui.mockInput.pressTab();
   await ui.flush();
@@ -622,7 +622,7 @@ test('/ in the Context starts a command in the input line', async () => {
   await frameMatching(ui, f => f.includes('rename session') && !f.includes('/sessions'));
 });
 
-test('Tab completes a command; /rename sets the session title, empty resets it (FR-34)', async () => {
+test('Tab completes a command; /rename sets the session title, empty resets it', async () => {
   const { events } = await start();
   ui.mockInput.pressTab();
   await ui.flush();
@@ -662,7 +662,7 @@ test('/tools completes the tool names and switches one off and on; off, it is no
   await frameMatching(ui, f => f.includes('unknown tool python – bash search'));
 });
 
-test('search, switched on with /tools, runs without asking; its call and result are sent as search (FR-21)', async () => {
+test('search, switched on with /tools, runs without asking; its call and result are sent as search', async () => {
   const { events } = await start();
   await write('/tools search');
   await frameMatching(ui, f => f.includes('search on · u = undo'));
@@ -731,7 +731,7 @@ async function ran(command: string, { reply = 'ok', ...options }: { reply?: stri
   return started;
 }
 
-test('the Tools Block (bash) is always sent and fixed (FR-12)', async () => {
+test('the Tools Block (bash) is always sent and fixed', async () => {
   await withUsers('hi');
   fake.reply({ chunks: ['ok'] });
   ui.mockInput.pressEnter();
@@ -745,7 +745,7 @@ test('the Tools Block (bash) is always sent and fixed (FR-12)', async () => {
   await frameMatching(ui, f => f.includes('Tools Block is fixed'));
 });
 
-test('a Tool Call waits at ? approve; y runs it once, its result is a Tool Result block and is sent (FR-23)', async () => {
+test('a Tool Call waits at ? approve; y runs it once, its result is a Tool Result block and is sent', async () => {
   const { events } = await asked(['echo hello'], { text: 'Let me look.' });
   let frame = ui.captureCharFrame();
   expect(line(frame, /Let me look/)).toMatch(/4\s+Assistant\s+Let me look\./);
@@ -775,7 +775,7 @@ test('a Tool Call waits at ? approve; y runs it once, its result is a Tool Resul
   ]);
 });
 
-test('Enter in input mode while a Tool Call awaits approval adds the User block but sends nothing (FR-6)', async () => {
+test('Enter in input mode while a Tool Call awaits approval adds the User block but sends nothing', async () => {
   const { events } = await asked(['echo hi']);
   ui.mockInput.pressTab();
   await frameMatching(ui, f => f.includes('adds a block and sends the Context'));
@@ -798,7 +798,7 @@ test('n rejects: the call does not run, its result says "rejected by user"', asy
   expect(events().at(-1)).toEqual({ type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'rejected by user', call: 4 });
 });
 
-test('several calls are decided one by one in order; results keep call order (FR-24)', async () => {
+test('several calls are decided one by one in order; results keep call order', async () => {
   const { events } = await asked(['echo one', 'echo two']);
   let frame = ui.captureCharFrame();
   expect(line(frame, /echo one/)).toMatch(/\? approve/);
@@ -816,7 +816,7 @@ test('several calls are decided one by one in order; results keep call order (FR
   expect(events().slice(-2).map(e => [e.call, e.content])).toEqual([[4, 'one\n[exit 0]'], [5, 'rejected by user']]);
 });
 
-test('Esc again kills a running command: partial output + ⚠ killed (FR-21)', async () => {
+test('Esc again kills a running command: partial output + ⚠ killed', async () => {
   const { events } = await asked(['echo partial; sleep 5']);
   await press('y');
   let frame = await frameMatching(ui, f => f.includes('running: echo partial') && /^┃ partial\s*$/m.test(f));
@@ -898,7 +898,7 @@ test('stopped at a call the rules ask for: Enter still asks for approval', async
   await frameMatching(ui, f => f.includes('Tool Calls await approval'));
 });
 
-test('a command running into the timeout ends with ⚠ timeout (FR-21)', async () => {
+test('a command running into the timeout ends with ⚠ timeout', async () => {
   const { events } = await asked(['sleep 5'], { timeout: 0.3 });
   await press('y');
   const frame = await frameMatching(ui, f => f.includes('⚠ timeout – review the results'));
@@ -906,7 +906,7 @@ test('a command running into the timeout ends with ⚠ timeout (FR-21)', async (
   expect(events().at(-1)).toMatchObject({ content: '[timeout after 0.3 s]', stopped: 'timeout' });
 });
 
-test('an answer cut off at max_tokens runs no call; calls that are no bash command are not run (FR-19)', async () => {
+test('an answer cut off at max_tokens runs no call; calls that are no bash command are not run', async () => {
   const { events } = await start();
   fake.reply({ chunks: ['Hm'], calls: [bash('ls')], finish: 'length' });
   await write('go');
@@ -962,7 +962,7 @@ test('only whitespace before a call adds no Assistant block', async () => {
   expect(events().filter(e => e.kind === 'Assistant')).toEqual([]);
 });
 
-test('e edits the block in $EDITOR: a new Revision flagged ✎2 until sent, the request carries it (FR-5, FR-8)', async () => {
+test('e edits the block in $EDITOR: a new Revision flagged ✎2 until sent, the request carries it', async () => {
   const { events } = await withUsers('helo');
   const opened: string[] = [];
   editor = async text => (opened.push(text), 'hello\n');
@@ -1008,7 +1008,7 @@ test('the Tools Block and executed Tool Calls are not opened in $EDITOR', async 
   expect(opened).toEqual([]);
 });
 
-test('a Tool Call awaiting approval is edited; y runs the edited command (FR-22)', async () => {
+test('a Tool Call awaiting approval is edited; y runs the edited command', async () => {
   const { events } = await asked(['echo wrong']);
   editor = async () => 'echo right\n';
   await press('e');
@@ -1020,7 +1020,7 @@ test('a Tool Call awaiting approval is edited; y runs the edited command (FR-22)
   expect(events().find(e => e.kind === 'Tool Result')).toEqual({ type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'right\n[exit 0]', call: 4 });
 });
 
-test('allowed calls run without asking; then their results are sent (FR-22, FR-23)', async () => {
+test('allowed calls run without asking; then their results are sent', async () => {
   const { events } = await start();
   fake.reply({ chunks: [], calls: [bash('ls -d .'), bash('git status --short | wc -l')] });
   fake.reply({ chunks: ['ok'] });
@@ -1031,7 +1031,7 @@ test('allowed calls run without asking; then their results are sent (FR-22, FR-2
   expect(fake.chatRequests).toHaveLength(2);
 });
 
-test('a result held back (rejected, denied, killed, timeout) stops the tool loop: Enter sends (FR-23)', async () => {
+test('a result held back (rejected, denied, killed, timeout) stops the tool loop: Enter sends', async () => {
   await asked(['echo one', 'echo two']);
   await press('n');
   await frameMatching(ui, f => f.includes('? approve –') && /^ask\s+echo two\s/.test(previewed(f)));
@@ -1040,7 +1040,7 @@ test('a result held back (rejected, denied, killed, timeout) stops the tool loop
   expect(fake.chatRequests).toHaveLength(1);
 });
 
-test('a denied call is not run: its result says "denied by rule", the next call is still decided (FR-23)', async () => {
+test('a denied call is not run: its result says "denied by rule", the next call is still decided', async () => {
   const { events } = await answered(['touch denied.txt', 'echo next'], { global: { 'touch *': 'deny' } });
   const frame = await frameMatching(ui, f => f.includes('⚠ denied by rule: touch denied.txt · ? approve'));
   expect(line(frame, /echo next/)).toMatch(/\? approve/);
@@ -1048,7 +1048,7 @@ test('a denied call is not run: its result says "denied by rule", the next call 
   expect(events().at(-1)).toEqual({ type: 'BlockAdded', id: 6, kind: 'Tool Result', origin: 'tool', content: 'denied by rule', call: 4 });
 });
 
-test('/auto runs the call awaiting approval at once and every later one a rule asks for; a deny stays; /auto again asks (FR-23)', async () => {
+test('/auto runs the call awaiting approval at once and every later one a rule asks for; a deny stays; /auto again asks', async () => {
   const { events } = await asked(['touch one.txt', 'touch denied.txt', 'touch two.txt'], { global: { 'touch denied.txt': 'deny' } });
   await write('/auto');
   let frame = await frameMatching(ui, f => f.includes('review the results, Enter sends'));
@@ -1079,7 +1079,7 @@ test('/auto with nothing awaiting approval only switches it', async () => {
   expect(fake.chatRequests).toHaveLength(0);
 });
 
-test('the preview of a pending call shows each sub-command with the rule deciding it (FR-22)', async () => {
+test('the preview of a pending call shows each sub-command with the rule deciding it', async () => {
   await asked(['ls && touch x.txt', 'cat /etc/hostname']);
   const frame = ui.captureCharFrame();
   expect(frame).toMatch(/┃ allow\s+ls\s+built-in rule "ls \*"/);
@@ -1087,7 +1087,7 @@ test('the preview of a pending call shows each sub-command with the rule decidin
   expect(frame).toContain('┃ a allows "touch *" for this session');
 });
 
-test('a logs the session rule the preview shows and runs the call; every later match runs too, then the results are sent (FR-23, FR-25)', async () => {
+test('a logs the session rule the preview shows and runs the call; every later match runs too, then the results are sent', async () => {
   const { events } = await asked(['touch one.txt', 'touch two.txt']);
   expect(ui.captureCharFrame()).toContain('┃ a allows "touch *" for this session');
   fake.reply({ chunks: ['ok'] });
@@ -1106,7 +1106,7 @@ test('a is not offered where an argument points outside the project', async () =
   expect(events().some(e => e.type === 'AllowRuleAdded')).toBe(false);
 });
 
-test('e on a pending call: the new Revision is decided again by the rules (FR-23)', async () => {
+test('e on a pending call: the new Revision is decided again by the rules', async () => {
   const { events } = await asked(['touch edited.txt']);
   editor = async () => 'ls -d .\n';
   fake.reply({ chunks: ['ok'] });
@@ -1124,7 +1124,7 @@ test('calls pending when the Gate opens are decided by the rules at once', async
   expect(events().at(-1)).toEqual({ type: 'BlockAdded', id: 6, kind: 'Tool Result', origin: 'tool', content: '.\n[exit 0]', call: 4 });
 });
 
-test('project allow entries are ignored; the Gate says so (FR-25)', async () => {
+test('project allow entries are ignored; the Gate says so', async () => {
   await start({ project: { 'touch *': 'allow', 'curl *': 'deny' } });
   expect(ui.captureCharFrame()).toContain('project config: allow "touch *" ignored (project config may only tighten)');
   fake.reply({ chunks: [], calls: [bash('touch project.txt')] });
@@ -1156,7 +1156,7 @@ test('text selected with the mouse is copied to the clipboard on release', async
   expect(copied).toEqual(['You are']);
 });
 
-test('d removes a Tool Pair as a whole; Space marks it as a whole (FR-9)', async () => {
+test('d removes a Tool Pair as a whole; Space marks it as a whole', async () => {
   const { events } = await ran('echo hi');
   await press('up');
   let frame = await frameMatching(ui, f => /┃ hi\s*$/m.test(f));
@@ -1174,7 +1174,7 @@ test('d removes a Tool Pair as a whole; Space marks it as a whole (FR-9)', async
   expect(events().at(-1)).toEqual({ type: 'Remove', id: 5, by: 'user' });
 });
 
-test('⌥↑ on a Tool Pair asks; any other key cancels; the same key again turns it into a Note and moves it (FR-9)', async () => {
+test('⌥↑ on a Tool Pair asks; any other key cancels; the same key again turns it into a Note and moves it', async () => {
   const { events } = await ran('echo hi', { text: 'Look.' });
   await press('up');
   await press('up', { meta: true });
@@ -1199,9 +1199,9 @@ test('⌥↑ on a Tool Pair asks; any other key cancels; the same key again turn
   ]);
 });
 
-// Compaction (FR-13–FR-17) ------------------------------------------------------------------------------------
+// Compaction ------------------------------------------------------------------------------------
 
-test('c opens the instruction line with header and the default instruction as hint; Tab copies it, Esc cancels (FR-13)', async () => {
+test('c opens the instruction line with header and the default instruction as hint; Tab copies it, Esc cancels', async () => {
   await withUsers('one', 'two');
   await press('c');
   let frame = await frameMatching(ui, f => /◇ Compact 1 block \(6 tok\) · default · request \d+ \/ 4k/.test(f));
@@ -1217,7 +1217,7 @@ test('c opens the instruction line with header and the default instruction as hi
   expect(fake.chatRequests).toEqual([]);
 });
 
-test('the proposal streams at the first source; Enter accepts it as one Note, u restores the sources (FR-14–FR-16)', async () => {
+test('the proposal streams at the first source; Enter accepts it as one Note, u restores the sources', async () => {
   const { events } = await withUsers('one', 'two', 'three');
   await press('up');
   await press('up');
@@ -1260,7 +1260,7 @@ test('the proposal streams at the first source; Enter accepts it as one Note, u 
   expect(order(frame)).toEqual(['1 System', '2 bash', '3 one', '4 two', '5 three']);
 });
 
-test('x discards the proposal; i runs again from the sources with a changed instruction; e edits the proposal (FR-15)', async () => {
+test('x discards the proposal; i runs again from the sources with a changed instruction; e edits the proposal', async () => {
   const { events } = await withUsers('one', 'two');
   await press('c');
   await frameMatching(ui, f => f.includes('◇ Compact 1 block'));
@@ -1296,7 +1296,7 @@ test('x discards the proposal; i runs again from the sources with a changed inst
   expect(events().at(-1)).toEqual({ type: 'Compact', sources: [4], instruction: 'shorter!', noteId: 5, content: '2nd edited', by: 'user' });
 });
 
-test('a request too big for the compaction window is blocked; Compaction runs on compactionProfile, leaving the session cache (FR-14, FR-17)', async () => {
+test('a request too big for the compaction window is blocked; Compaction runs on compactionProfile, leaving the session cache', async () => {
   const small = startFakeLlamaCpp({ nCtx: 80 });
   try {
     const backend = await connectLlamaCpp(small.url);
@@ -1318,7 +1318,7 @@ test('a request too big for the compaction window is blocked; Compaction runs on
     ui.mockInput.pressEnter();
     frame = await frameMatching(ui, f => f.includes('session cache untouched'));
     expect(small.chatRequests).toHaveLength(1);
-    // The proposal may use the rest of the Compaction profile's window (FR-18).
+    // The proposal may use the rest of the Compaction profile's window.
     expect(small.chatRequests[0]).toMatchObject({ max_tokens: 80 - request });
     expect(fake.chatRequests).toEqual([]);
   } finally {
@@ -1326,10 +1326,10 @@ test('a request too big for the compaction window is blocked; Compaction runs on
   }
 });
 
-// Files, environment and project instructions (FR-27–FR-29) ---------------------------------------------------------
+// Files, environment and project instructions ---------------------------------------------------------
 const messages = (i: number) => (fake.chatRequests[i] as { messages: { role: string; content: string }[] }).messages;
 
-test('@adds a reference row, not sent; e opens the file; on send it becomes a snapshot Note (FR-27)', async () => {
+test('@adds a reference row, not sent; e opens the file; on send it becomes a snapshot Note', async () => {
   writeFileSync(join(project, 'notes.txt'), 'one\ntwo\nthree\n');
   const { events } = await start();
   await write('@notes.txt:2-3');
@@ -1357,7 +1357,7 @@ test('@adds a reference row, not sent; e opens the file; on send it becomes a sn
   ]);
 });
 
-test('an @path is completed from the project files: ↑↓ choose, Tab or Enter complete (FR-27)', async () => {
+test('an @path is completed from the project files: ↑↓ choose, Tab or Enter complete', async () => {
   mkdirSync(join(project, 'docs'), { recursive: true });
   writeFileSync(join(project, 'docs/complete-me.md'), 'x\n');
   writeFileSync(join(project, 'complete-too.txt'), 'y\n');
@@ -1376,7 +1376,7 @@ test('an @path is completed from the project files: ↑↓ choose, Tab or Enter 
   expect(events().at(-1)).toEqual({ type: 'FileReferenced', id: 3, file: 'docs/complete-me.md' });
 });
 
-test('a referenced file missing at send aborts sending (FR-27)', async () => {
+test('a referenced file missing at send aborts sending', async () => {
   const { events } = await start();
   await write('@gone.txt what is in it?');
   const frame = await frameMatching(ui, f => f.includes('✗ file not found') && f.includes('gone.txt – sending aborted'));
@@ -1385,7 +1385,7 @@ test('a referenced file missing at send aborts sending (FR-27)', async () => {
   expect(events().map(e => e.type)).not.toContain('RequestSent');
 });
 
-test('the environment Note follows the Tools Block; a changed environment is a new Revision in place before sending (FR-28)', async () => {
+test('the environment Note follows the Tools Block; a changed environment is a new Revision in place before sending', async () => {
   const { events } = await start({ notes: { environment: 'date: 2026-09-26' } });
   let frame = ui.captureCharFrame();
   expect(line(frame, /Environment/)).toMatch(/3\s+Note\s+Environment\s+\d+/);
@@ -1402,7 +1402,7 @@ test('the environment Note follows the Tools Block; a changed environment is a n
   expect(messages(1)[1]).toEqual({ role: 'user', content: 'date: 2026-09-27' });
 });
 
-test('the project instructions are a Note after the environment (FR-29)', async () => {
+test('the project instructions are a Note after the environment', async () => {
   await start({ notes: { environment: 'cwd: /p', instructions: { file: 'AGENTS.md', content: '# Rules' } } });
   const frame = ui.captureCharFrame();
   expect(line(frame, /AGENTS/)).toMatch(/4\s+Note\s+@AGENTS\.md\s+\d+/);
@@ -1415,7 +1415,7 @@ test('the Notes a new session starts with ask for no answer', async () => {
   expect(fake.chatRequests).toEqual([]);
 });
 
-test('a file reference alone whose send failed can be sent again (FR-27)', async () => {
+test('a file reference alone whose send failed can be sent again', async () => {
   writeFileSync(join(project, 'again.txt'), 'content');
   await start({ notes: { environment: 'cwd: /p' } });
   await write('@again.txt');
@@ -1428,7 +1428,7 @@ test('a file reference alone whose send failed can be sent again (FR-27)', async
   expect(messages(0).at(-1)).toEqual({ role: 'user', content: '[again.txt]\ncontent' });
 });
 
-test('a file reference alone is sent with Enter, the file as the last user message (FR-27)', async () => {
+test('a file reference alone is sent with Enter, the file as the last user message', async () => {
   writeFileSync(join(project, 'alone.txt'), 'content');
   await start();
   await write('@alone.txt');
@@ -2017,7 +2017,7 @@ test('a policy Compaction that writes nothing stops the Gate: nothing is sent', 
   expect(events().some(e => e.type === 'Compact' || e.type === 'RequestSent')).toBe(false);
 });
 
-test('a policy Compaction runs on compactionProfile; too big for its window, cut off or aborted, it stops the Gate (FR-14, FR-17)', async () => {
+test('a policy Compaction runs on compactionProfile; too big for its window, cut off or aborted, it stops the Gate', async () => {
   const small = startFakeLlamaCpp({ nCtx: 80 });
   try {
     const backend = await connectLlamaCpp(small.url);

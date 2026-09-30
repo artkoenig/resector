@@ -30,14 +30,14 @@ export type LaunchOptions = {
   paths: ConfigPaths;
   servers?: LocalServer[];
   store: SessionStore;
-  // Project root: where bash runs (FR-21) unless the session runs in its worktree; default the working directory.
+  // Project root: where bash runs unless the session runs in its worktree; default the working directory.
   cwd?: string;
-  // $EDITOR for `e` (FR-8), and on a file itself (`e` on an @path reference, FR-27).
+  // $EDITOR for `e`, and on a file itself (`e` on an @path reference).
   editor: Editor;
   openFile: (file: string) => Promise<void>;
   // Copy on select.
   clipboard: Clipboard;
-  // -c [id]: true = the last session (FR-32).
+  // -c [id]: true = the last session.
   resume?: SessionRef;
   onQuit: () => void;
   onFatal: (message: string) => void;
@@ -54,13 +54,13 @@ export function Launch(props: LaunchOptions) {
   const [gate, setGate] = createSignal<GateOptions | null>(null);
   const [view, setView] = createSignal<'gate' | 'sessions'>('gate');
   let session: OpenSession | null = null;
-  // tree-sitter-bash, loaded once (FR-22).
+  // tree-sitter-bash, loaded once.
   let split: Split | undefined;
   const [current, setCurrent] = createSignal('');
-  // Context Policies (ADR 0001, FR-53), loaded at start: the active one belongs to the app, it stays when switching sessions.
+  // Context Policies (ADR 0001), loaded at start: the active one belongs to the app, it stays when switching sessions.
   const [active, setActive] = createSignal<Policy | null>(null);
   const policies: Policies = { all: [], active, set: setActive };
-  // Auto-approve (FR-23) belongs to the app like the active policy: off at start, kept when switching sessions.
+  // Auto-approve belongs to the app like the active policy: off at start, kept when switching sessions.
   const [autoOn, setAutoOn] = createSignal(false);
   const autoApprove: AutoApprove = { on: autoOn, set: setAutoOn };
   // Policies that failed to load, reported once in the first status line.
@@ -77,9 +77,9 @@ export function Launch(props: LaunchOptions) {
     if (!loaded) throw new Error(`no config at ${props.paths.global}`);
     return loaded;
   };
-  // The config as read when the session was opened (FR-44).
+  // The config as read when the session was opened.
   let config: Loaded;
-  // Compaction runs on the profile's compactionProfile, else on the session's own backend (null, FR-17). Its own slot
+  // Compaction runs on the profile's compactionProfile, else on the session's own backend (null). Its own slot
   // where the server has several, so the session cache stays.
   const compactor = (name: string, session: string) => async () => {
     const other = config.profile(name).compactionProfile;
@@ -89,7 +89,7 @@ export function Launch(props: LaunchOptions) {
   function create(loaded: Loaded) {
     const opened = props.store.create();
     const profile = loaded.profile();
-    // The project instructions are read once, now (FR-29).
+    // The project instructions are read once, now.
     const events = newSession(profile.name, loaded.systemPrompt(profile), { environment: projectAt(root).environment(), instructions: projectInstructions(root) });
     events.forEach(opened.log.append);
     // A new session starts with the configured policy on; without one, and when resumed, the app's stays.
@@ -100,7 +100,7 @@ export function Launch(props: LaunchOptions) {
     return { opened, events, notice };
   }
 
-  // Resume = replay; a Model Profile missing from the config falls back to the default one (FR-35).
+  // Resume = replay; a Model Profile missing from the config falls back to the default one.
   function resume(loaded: Loaded, which: SessionRef) {
     const opened = props.store.open(which);
     const events: SessionEvent[] = [...opened.events];
@@ -143,7 +143,7 @@ export function Launch(props: LaunchOptions) {
       return { dir: root, warning: `worktree: ${errorText(e)} – runs in ${root}` };
     }
   }
-  // What depends on where the session runs: bash and search (FR-21), the arguments' root (FR-22), the project, git.
+  // What depends on where the session runs: bash and search, the arguments' root, the project, git.
   function runningIn(dir: string, id: string): Pick<GateOptions, 'runner' | 'searcher' | 'approval' | 'project' | 'git'> {
     const git: Git = {
       branches: () => listBranches(dir),
@@ -168,7 +168,7 @@ export function Launch(props: LaunchOptions) {
     return text.length ? { text: [notice.text, ...text].join(' · '), tone: 'warn' } : notice;
   }
 
-  // /sessions (FR-33): switching sessions reconnects; the Gate comes back with the session's logged events.
+  // /sessions: switching sessions reconnects; the Gate comes back with the session's logged events.
   const switchTo = (which?: string) => open(load(), which).then(() => void setView('gate'));
   const back = () => {
     const events = props.store.read(current());

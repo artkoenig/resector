@@ -1,4 +1,4 @@
-// Compaction (FR-13–FR-17): the user's selection rewritten by the LLM into one Note, reviewed before it replaces the sources.
+// Compaction: the user's selection rewritten by the LLM into one Note, reviewed before it replaces the sources.
 import { isFixed, type Outcome } from '../context/operations';
 import type { SessionEvent } from '../log/events';
 import { pairOf, type Context } from '../log/fold';
@@ -9,12 +9,12 @@ import instruction from './default-instruction.md' with { type: 'text' };
 type Compact = Extract<SessionEvent, { type: 'Compact' }>;
 
 export const COMPACTION_SYSTEM = system.trimEnd();
-// Used when the user sends an empty instruction and no `compaction.md` exists (FR-13).
+// Used when the user sends an empty instruction and no `compaction.md` exists.
 export const DEFAULT_INSTRUCTION = instruction.trimEnd();
 
 const NOTHING = { error: 'nothing to compact (System, Tools and pending Tool Calls, unread @path references are excluded)' };
 
-// The blocks to compact, in Context order: the marked ones, else the selected block (a Tool Pair as a whole, FR-9).
+// The blocks to compact, in Context order: the marked ones, else the selected block (a Tool Pair as a whole).
 export function sourcesOf(context: Context, marked: ReadonlySet<number>, selected: number): { sources: number[] } | { error: string } {
   // The selection may be the live row, which is no block.
   if (!marked.size && !context.blocks.some(b => b.id === selected)) return NOTHING;
@@ -23,7 +23,7 @@ export function sourcesOf(context: Context, marked: ReadonlySet<number>, selecte
   return sources.length ? { sources } : NOTHING;
 }
 
-// Only the sources and the instruction, no tools (FR-14). Titles are display only, never sent.
+// Only the sources and the instruction, no tools. Titles are display only, never sent.
 export function compactionRequest(context: Context, sources: number[], instruction: string): Request {
   const text = context.blocks.filter(b => sources.includes(b.id)).map(b => `# ${b.kind}\n${b.content}`).join('\n\n');
   return { messages: [{ role: 'system', content: COMPACTION_SYSTEM }, { role: 'user', content: `${text}\n\nInstruction: ${instruction}` }], tools: [] };

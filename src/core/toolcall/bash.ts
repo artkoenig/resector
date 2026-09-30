@@ -1,4 +1,4 @@
-// The tools (FR-21): bash, search and question. Their definitions in the Tools Block, calls as the model sends them, results.
+// The tools: bash, search and question. Their definitions in the Tools Block, calls as the model sends them, results.
 import type { Stopped, Tool } from '../log/events';
 import { parseQuestions, QUESTION_DEFINITION } from './question';
 
@@ -29,7 +29,7 @@ export const TOOLS = toolsContent(CATALOG.filter(t => t.name !== 'search'));
 // The names of the tools in Tools Block content.
 export const toolsIn = (tools: string): string[] => (JSON.parse(tools) as { name: string }[]).map(t => t.name);
 
-// Title of the Tools Block: the tool names (FR-4).
+// Title of the Tools Block: the tool names.
 export const toolNames = (tools: string): string => toolsIn(tools).join(', ') || 'no tools';
 
 // /tools <name>: the Tools Block content with the tool switched on or off, in catalog order.
@@ -79,6 +79,6 @@ export function resultText({ output, exit, stopped }: RunResult, timeout: number
 }
 
 // Runner port (adapters/bash): runs a command, streaming its output; aborting the signal kills it.
-// timeout: seconds after which a run is stopped (FR-21).
+// timeout: seconds after which a run is stopped.
 export type RunOptions = { signal: AbortSignal; onOutput: (text: string) => void };
 export type Runner = { timeout: number; run(command: string, options: RunOptions): Promise<RunResult> };

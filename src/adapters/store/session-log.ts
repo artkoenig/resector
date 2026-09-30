@@ -1,4 +1,4 @@
-// Session Log files: <data>/resector/sessions/<project-hash>/<id>.jsonl, one event per line (architecture §3).
+// Session Log files: <data>/resector/sessions/<project-hash>/<id>.jsonl, one event per line.
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { encodeEvent } from '../../core/log/codec';

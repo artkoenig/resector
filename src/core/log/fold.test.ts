@@ -122,7 +122,7 @@ test('undoing other sent operations flags nothing', () => {
   expect(block(removed, 2)).toMatchObject({ moved: false, title: null, revised: false });
 });
 
-test('a ProfileFallback replaces the session profile (FR-35)', () => {
+test('a ProfileFallback replaces the session profile', () => {
   expect(fold(session(0, { type: 'ProfileFallback', profile: 'qwen' })).profile).toBe('qwen');
 });
 
@@ -140,7 +140,7 @@ test('a Tool Result keeps its Tool Call and how the run stopped', () => {
   expect(block(events, 3).call).toBeUndefined();
 });
 
-test('Tool Results follow the Tool Calls of their answer, in call order, before blocks added since (FR-24)', () => {
+test('Tool Results follow the Tool Calls of their answer, in call order, before blocks added since', () => {
   const events = session(1, call(3, 'a'), call(4, 'b'), { type: 'BlockAdded', id: 5, kind: 'User', origin: 'user', content: 'wait' }, result(6, 3), result(7, 4));
   expect(ids(events)).toEqual([1, 2, 3, 4, 6, 7, 5]);
 });
@@ -153,7 +153,7 @@ test('a Tool Call awaits approval until it has a Tool Result, also a removed one
   expect(block([...events, { type: 'Remove', id: 5 }], 3).pending).toBe(false);
 });
 
-test('Remove takes the whole Tool Pair, from either block (FR-9)', () => {
+test('Remove takes the whole Tool Pair, from either block', () => {
   const events = session(1, call(3, 'ls'), result(4, 3), call(5, 'pwd'));
   for (const id of [3, 4]) {
     const removed = [...events, { type: 'Remove', id } as SessionEvent];
@@ -165,7 +165,7 @@ test('Remove takes the whole Tool Pair, from either block (FR-9)', () => {
 
 const toNote = (id: number, of: number): SessionEvent => ({ type: 'PairToNote', id, call: of });
 
-test('PairToNote turns the Tool Pair into a Note after the calls and results of its answer: `[Tool bash: <cmd>]` + result (FR-9)', () => {
+test('PairToNote turns the Tool Pair into a Note after the calls and results of its answer: `[Tool bash: <cmd>]` + result', () => {
   const events = session(1, call(3, 'ls'), call(4, 'pwd'), result(5, 3), result(6, 4), toNote(7, 3));
   expect(ids(events)).toEqual([1, 2, 4, 6, 7]);
   expect(block(events, 7)).toEqual({
@@ -204,13 +204,13 @@ test('the Note carries the result as edited in place; undo brings the pair back'
 
 const edit = (id: number, revision: number, content: string): SessionEvent => ({ type: 'Edit', id, revision, content });
 
-test('Edit replaces the content with the new Revision, keeping kind and place (FR-8)', () => {
+test('Edit replaces the content with the new Revision, keeping kind and place', () => {
   const events = session(2, edit(2, 2, 'better'));
   expect(block(events, 2)).toMatchObject({ kind: 'User', content: 'better', revision: 2 });
   expect(ids(events)).toEqual([1, 2, 3]);
 });
 
-test('a new Revision is flagged until the next request (FR-5)', () => {
+test('a new Revision is flagged until the next request', () => {
   const events = session(1, edit(2, 2, 'x'));
   expect(block(events, 2).revised).toBe(true);
   expect(block([...events, sent], 2)).toMatchObject({ revision: 2, revised: false });
@@ -226,7 +226,7 @@ test('undoing an Edit restores the earlier Revision; flagged only when that was 
 
 const compact = (sources: number[], noteId: number, content = 'short'): SessionEvent => ({ type: 'Compact', sources, instruction: 'keep it', noteId, content });
 
-test('Compact replaces its sources at once by one Note at the first source’s place (FR-16)', () => {
+test('Compact replaces its sources at once by one Note at the first source’s place', () => {
   const events = session(4, compact([3, 4], 6, 'gist'));
   expect(ids(events)).toEqual([1, 2, 6, 5]);
   expect(block(events, 6)).toEqual({
@@ -255,7 +255,7 @@ test('a Compaction of a Tool Pair hides both its blocks', () => {
   expect(ids(events)).toEqual([1, 2, 5]);
 });
 
-test('a file reference is an unread Note until the file is read, then a plain snapshot (FR-27)', () => {
+test('a file reference is an unread Note until the file is read, then a plain snapshot', () => {
   const referenced = session(1, { type: 'FileReferenced', id: 3, file: 'a.ts:1-2' });
   expect(block(referenced, 3)).toEqual({
     id: 3, kind: 'Note', origin: 'file', file: 'a.ts:1-2', unread: true, content: '', cutOff: false,
@@ -266,13 +266,13 @@ test('a file reference is an unread Note until the file is read, then a plain sn
   expect(read.unread).toBeUndefined();
 });
 
-test('ThinkingSet sets the thinking of the following requests; the last one wins (FR-49)', () => {
+test('ThinkingSet sets the thinking of the following requests; the last one wins', () => {
   const created = { type: 'SessionCreated', profile: 'default', protocol: 'native' } as const;
   expect(fold([created]).thinking).toBeNull();
   expect(fold([created, { type: 'ThinkingSet', thinking: 'on' }, { type: 'ThinkingSet', thinking: 'high' }]).thinking).toBe('high');
 });
 
-test('NoteAdded puts a Context Policy\'s Note right after its anchor (FR-52); undo drops it', () => {
+test('NoteAdded puts a Context Policy\'s Note right after its anchor; undo drops it', () => {
   const events = session(3, { type: 'NoteAdded', id: 5, after: 2, content: 'about', by: 'trail' });
   expect(ids(events)).toEqual([1, 2, 5, 3, 4]);
   expect(block(events, 5)).toEqual({ id: 5, kind: 'Note', origin: 'policy', content: 'about', cutOff: false, title: null, removed: false, moved: false, revision: 1, revised: false });

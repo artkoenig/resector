@@ -153,7 +153,7 @@ test('a Model Profile whose backend cannot be opened fails before the Gate', asy
   expect(fatal).toEqual(['ollama backend not supported yet']);
 });
 
-test('Compaction runs on compactionProfile with the instruction from compaction.md, both as read at start (FR-13, FR-17)', async () => {
+test('Compaction runs on compactionProfile with the instruction from compaction.md, both as read at start', async () => {
   const other = startFakeLlamaCpp({ nCtx: 1024 });
   try {
     const second = `, "compactionProfile": "small" }, "small": { "backend": "llamacpp", "endpoint": "${other.url}"`;
@@ -186,7 +186,7 @@ const chat = (profile: string): SessionEvent[] => [
   { type: 'ResponseReceived', usage: null, cached: null },
 ];
 
-test('-c replays the last Session Log and lands at the Gate; unchanged, nothing is sent (FR-32, FR-35)', async () => {
+test('-c replays the last Session Log and lands at the Gate; unchanged, nothing is sent', async () => {
   const { root } = await launch({ config: url => profileConfig(url), sessions: { ses_a: chat('local') }, resume: true });
   const frame = await frameMatching(ui, f => f.includes('resumed "hi there"'));
   expect(frame).toMatch(/3\s+User\s+hi there/);
@@ -197,7 +197,7 @@ test('-c replays the last Session Log and lands at the Gate; unchanged, nothing 
   expect(fake.chatRequests).toEqual([]);
 });
 
-test('a resumed session whose Model Profile is gone continues on the default one, logged (FR-35)', async () => {
+test('a resumed session whose Model Profile is gone continues on the default one, logged', async () => {
   const { store } = await launch({ config: url => profileConfig(url), sessions: { ses_a: chat('gone') }, resume: 'ses_a' });
   const frame = await frameMatching(ui, f => f.includes('not in config'));
   expect(frame).toContain('profile "gone" not in config → local');
@@ -205,7 +205,7 @@ test('a resumed session whose Model Profile is gone continues on the default one
   expect(store.list()[0]!.events.at(-1)).toEqual({ type: 'ProfileFallback', profile: 'local' });
 });
 
-test('a session open in another instance is not resumed (FR-36)', async () => {
+test('a session open in another instance is not resumed', async () => {
   const other = Bun.spawn(['sleep', '10']);
   try {
     const { fatal } = await launch({ config: url => profileConfig(url), sessions: { ses_a: chat('local') }, locks: { ses_a: other.pid }, resume: 'ses_a' });
@@ -243,7 +243,7 @@ const key = async (name: string) => {
   await ui.flush();
 };
 
-test('/sessions lists the project sessions newest first with marker, profile, Context and blocks (FR-33)', async () => {
+test('/sessions lists the project sessions newest first with marker, profile, Context and blocks', async () => {
   const other = Bun.spawn(['sleep', '10']);
   try {
     await sessionsView({ ses_a: titled('local', 'fix the build', 1900), ses_b: titled('gone', 'old question'), ses_c: titled('local', 'busy') }, { ses_c: other.pid });
@@ -275,7 +275,7 @@ test('Enter opens the selected session; the lock moves with it; Esc goes back', 
   expect(readdirSync(join(root, 'sessions')).filter(f => f.endsWith('.lock'))).toEqual(['ses_a.lock']);
 });
 
-test('a session open in another instance is neither opened nor deleted (FR-36)', async () => {
+test('a session open in another instance is neither opened nor deleted', async () => {
   const other = Bun.spawn(['sleep', '10']);
   try {
     await sessionsView({ ses_c: titled('local', 'busy') }, { ses_c: other.pid });
@@ -333,7 +333,7 @@ test('deleting the only session starts a new empty one', async () => {
   expect(line(frame, /\(new session\)/)).toMatch(/^[ ┃]●/);
 });
 
-test('r renames a session, / filters by title, n starts a new session (FR-33, FR-34)', async () => {
+test('r renames a session, / filters by title, n starts a new session', async () => {
   const { store } = await sessionsView({ ses_a: titled('local', 'fix the build'), ses_b: titled('local', 'other') });
   await key('down');
   await key('r');
@@ -388,7 +388,7 @@ test('/sessions with more sessions than fit: rows never overlap, the list follow
   expect(frame.split('\n')[2]).toMatch(/^ {5}Title/);
 });
 
-test('a new session starts with the environment Note and AGENTS.md, else CLAUDE.md, right after the Tools Block (FR-28, FR-29)', async () => {
+test('a new session starts with the environment Note and AGENTS.md, else CLAUDE.md, right after the Tools Block', async () => {
   const { log } = await launch({ config: url => profileConfig(url), files: { 'AGENTS.md': '# Agents', 'CLAUDE.md': '# Claude' } });
   const frame = await frameMatching(ui, f => f.includes('/ 2k') && !f.includes('… / 2k'));
   expect(frame).toMatch(/3\s+Note\s+Environment/);
@@ -399,7 +399,7 @@ test('a new session starts with the environment Note and AGENTS.md, else CLAUDE.
   ]);
 });
 
-test('resuming does not read the project instructions again (FR-29)', async () => {
+test('resuming does not read the project instructions again', async () => {
   const { log } = await launch({ config: url => profileConfig(url), sessions: { ses_test: chat('local') }, resume: true, files: { 'AGENTS.md': '# Agents' } });
   await frameMatching(ui, f => f.includes('resumed'));
   expect(log().some(e => e.file === 'AGENTS.md')).toBe(false);
@@ -474,7 +474,7 @@ test('the active policy belongs to the app: it stays when switching sessions and
   expect(JSON.stringify(log())).not.toContain('shout');
 });
 
-test('auto-approve belongs to the app: it stays when switching sessions and is not logged (FR-23)', async () => {
+test('auto-approve belongs to the app: it stays when switching sessions and is not logged', async () => {
   const { log } = await launch({ config: url => profileConfig(url), sessions: { ses_a: titled('local', 'fix the build') } });
   await frameMatching(ui, f => f.includes('/ 2k'));
   await command('/auto');

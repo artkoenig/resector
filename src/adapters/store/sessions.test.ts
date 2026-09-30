@@ -17,7 +17,7 @@ function stored(root: string, id: string, minutesAgo: number, title = id) {
   utimesSync(path, t, t);
 }
 
-test('sessions are listed newest first with their summary and lock state (FR-33)', () => {
+test('sessions are listed newest first with their summary and lock state', () => {
   const root = dir();
   stored(root, 'ses_old', 60);
   stored(root, 'ses_new', 1);
@@ -49,7 +49,7 @@ test('a created session is locked by this process and appends its events', () =>
   expect(process.listenerCount('exit')).toBe(exitHandlers);
 });
 
-test('opening a session replays its events; one locked by another live process is refused (FR-36)', () => {
+test('opening a session replays its events; one locked by another live process is refused', () => {
   const root = dir();
   stored(root, 'ses_a', 1, 'hello');
   const store = openSessionStore(root);

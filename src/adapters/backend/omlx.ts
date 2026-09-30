@@ -145,7 +145,7 @@ export async function connectOmlx(endpoint: string, { window, model, sampling, t
       (await post<{ input_tokens: number }>('/v1/messages/count_tokens', { model, ...anthropic(request), ...anthropicThinking(request.thinking ?? thinking) }))
         .input_tokens);
 
-  // Prefix cache (architecture §4): oMLX predicts its hits itself with the admin cache probe, in whole
+  // Prefix cache: oMLX predicts its hits itself with the admin cache probe, in whole
   // cache blocks. The probe sees a request's blocks only a moment after its answer, so the unchanged
   // messages of the last request count too, rounded down to whole blocks. Where the probe is not
   // available (e.g. admin API key), messages equal to the last request and its answer count as
