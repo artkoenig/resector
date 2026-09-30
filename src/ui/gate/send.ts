@@ -6,7 +6,7 @@ import { readReferences } from '../../core/notes/files';
 import type { Policy } from '../../core/policy/policy';
 import { renderNative } from '../../core/render/native';
 import { openingBlocks } from '../../core/session/session';
-import { errorText, formatTokens } from '../format';
+import { errorText, formatTokens } from './text';
 import type { GitSlice } from './git';
 import { same, type Kernel } from './kernel';
 import type { PolicySlice } from './policy';

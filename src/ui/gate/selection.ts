@@ -2,7 +2,7 @@
 import { createEffect, createMemo, createSignal } from 'solid-js';
 import type { Kind } from '../../core/log/events';
 import { afterCalls, type Block } from '../../core/log/fold';
-import { count } from '../format';
+import { count } from './text';
 import type { Kernel } from './kernel';
 import type { Compaction, Live, Streaming } from './types';
 

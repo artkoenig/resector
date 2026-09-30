@@ -2,7 +2,7 @@
 import type { Thinking } from '../../core/log/events';
 import * as ops from '../../core/context/operations';
 import { DEFAULT_MODES } from '../../core/render/template';
-import { thinkingLabel } from '../format';
+import { thinkingLabel } from './text';
 import type { Kernel } from './kernel';
 import type { Rules } from './rules';
 import { FILTERS, type Selection } from './selection';

@@ -1,6 +1,6 @@
 // The input line: slash commands, and text with @path references that becomes a User block and is sent.
 import { references } from '../../core/notes/files';
-import { count } from '../format';
+import { count } from './text';
 import type { Kernel } from './kernel';
 import type { Selection } from './selection';
 

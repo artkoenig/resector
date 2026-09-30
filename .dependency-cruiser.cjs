@@ -22,7 +22,7 @@ module.exports = {
       name: 'gate-not-to-adapters',
       comment: 'The Review Gate declares its ports; the composition root wires adapters in.',
       severity: 'error',
-      from: { path: '^src/ui/gate', pathNot: '^src/ui/gate/(types|edits|git)\\.ts$' },
+      from: { path: '^src/ui/gate' },
       to: { path: '^src/adapters' },
     },
     {
@@ -30,7 +30,7 @@ module.exports = {
       comment: 'The Review Gate is the application layer below the views.',
       severity: 'error',
       from: { path: '^src/ui/gate' },
-      to: { path: '^src/ui/', pathNot: '^src/ui/(gate/|format\\.ts$)' },
+      to: { path: '^src/ui/', pathNot: '^src/ui/gate/' },
     },
     {
       name: 'ui-not-to-adapters',

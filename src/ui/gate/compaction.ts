@@ -3,7 +3,7 @@ import type * as ops from '../../core/context/operations';
 import * as compaction from '../../core/compaction/compaction';
 import { fold } from '../../core/log/fold';
 import { renderPrefixes, sentBlocks, type Request } from '../../core/render/native';
-import { errorText, formatTokens } from '../format';
+import { errorText, formatTokens } from './text';
 import type { Kernel } from './kernel';
 import type { Selection } from './selection';
 import type { Compaction, Compactor, Live, Review, Status } from './types';

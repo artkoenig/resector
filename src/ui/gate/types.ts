@@ -1,6 +1,4 @@
 // Types of the Review Gate: its options (the ports it runs on) and the state it shows.
-import type { Clipboard } from '../../adapters/clipboard/clipboard';
-import type { Branches } from '../../adapters/git/git';
 import type { Backend } from '../../core/backend';
 import type { Rule, Split } from '../../core/approval/approval';
 import type * as ops from '../../core/context/operations';
@@ -48,6 +46,11 @@ export type Project = { read: ReadFile; list: () => string[]; environment: () =>
 // Tool Approval: the splitter, the project root arguments must stay in, and the config's rules as read
 // when the session opened (ignored: project allow patterns).
 export type Approval = { split: Split; root: string; permissions: () => { rules: Rule[]; ignored: string[] } };
+
+// Copies a text to the system clipboard.
+export type Clipboard = (text: string) => Promise<void>;
+// The local branches, the current one (null when detached) and those checked out in another worktree, with its path.
+export type Branches = { current: string | null; all: string[]; elsewhere: Record<string, string> };
 
 // Git where the session runs: the branches, switching to one and watching for switches; worktree(on) prepares the session's own worktree
 // (or the project directory) and returns it, reopen shows the Gate again running there, with a status.

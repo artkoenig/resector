@@ -3,7 +3,8 @@ import type { MouseEvent } from '@opentui/core';
 import { For, Show } from 'solid-js';
 import type { Kind } from '../core/log/events';
 import type { Gate } from './gate';
-import { cell, flagsOf, formatTokens, right, titleOf } from './format';
+import { cell, flagsOf, right } from './format';
+import { formatTokens, titleOf } from './gate/text';
 import { ACCENT, FAINT, KIND_COLOR, MUTED, SELECTED_BG, TEXT, TONE } from './theme';
 
 export const SPINNER = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';

@@ -7,7 +7,7 @@ import type { Block } from '../../core/log/fold';
 import { answerBlocks } from '../../core/toolcall/answer';
 import type { Runner } from '../../core/toolcall/bash';
 import { answerText, parseQuestions, type Answer } from '../../core/toolcall/question';
-import { errorText, titleOf } from '../format';
+import { errorText, titleOf } from './text';
 import type { GitSlice } from './git';
 import type { Kernel } from './kernel';
 import type { Rules } from './rules';

@@ -1,7 +1,7 @@
 // The Gate's header: profile and modes, the Context's tokens with its bar, and the Kind Filters line below.
 import { For } from 'solid-js';
 import type { Gate } from './gate';
-import { formatTokens, thinkingLabel } from './format';
+import { formatTokens, thinkingLabel } from './gate/text';
 import { HeaderBand } from './parts';
 import { ACCENT, BORDER, FAINT, KIND_COLOR, MUTED, TEXT, TONE } from './theme';
 

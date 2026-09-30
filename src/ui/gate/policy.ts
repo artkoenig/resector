@@ -2,7 +2,7 @@
 import * as compaction from '../../core/compaction/compaction';
 import { applyPolicy, summary, type Policy, type Ports } from '../../core/policy/policy';
 import { renderPrefixes, type Request } from '../../core/render/native';
-import { errorText, formatTokens } from '../format';
+import { errorText, formatTokens } from './text';
 import type { Kernel } from './kernel';
 import type { Selection } from './selection';
 import type { Compactor, Policies } from './types';

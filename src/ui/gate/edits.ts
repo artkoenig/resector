@@ -1,15 +1,14 @@
 // Context operations on the selected or marked blocks: move, remove, undo, edit, mark, copy.
 import { createSignal } from 'solid-js';
-import type { Clipboard } from '../../adapters/clipboard/clipboard';
 import * as ops from '../../core/context/operations';
 import type { SessionEvent } from '../../core/log/events';
 import { pairOf, type Block } from '../../core/log/fold';
 import { parseReference } from '../../core/notes/files';
-import { errorText } from '../format';
+import { errorText } from './text';
 import type { Kernel } from './kernel';
 import type { Selection } from './selection';
 import type { ToolLoop } from './tool-loop';
-import type { Project } from './types';
+import type { Clipboard, Project } from './types';
 
 // Undone operations whose event type does not read as one.
 const UNDONE: Partial<Record<SessionEvent['type'], string>> = { PairToNote: 'Tool Pair → Note' };

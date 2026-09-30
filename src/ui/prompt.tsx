@@ -1,7 +1,8 @@
 // The prompt band's meta line (what Enter does, or the Compaction's effect) and the status line of the step under way.
 import { Show } from 'solid-js';
 import type { Compaction, Gate, Status } from './gate';
-import { cell, count, formatTokens, titleOf } from './format';
+import { cell } from './format';
+import { count, formatTokens, titleOf } from './gate/text';
 import { ACCENT, KIND_COLOR, MUTED, TONE } from './theme';
 
 export type Mode = 'context' | 'input';
