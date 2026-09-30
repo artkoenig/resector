@@ -96,6 +96,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     // Git where the session runs (null outside a repository): the branch, all branches with the other worktree holding
     // one, the worktree on or off.
     branch: repo.branch,
+    dirty: repo.dirty,
     branches: repo.branches,
     worktree: repo.worktree,
     thinking: settings.thinking,

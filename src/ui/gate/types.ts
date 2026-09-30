@@ -53,6 +53,7 @@ export type Approval = { split: Split; root: string; permissions: () => { rules:
 // (or the project directory) and returns it, reopen shows the Gate again running there, with a status.
 export type Git = {
   branches: () => Branches;
+  status: () => boolean;
   switchBranch: (name: string) => void;
   watch: (onChange: () => void) => () => void;
   worktree: (on: boolean) => string;

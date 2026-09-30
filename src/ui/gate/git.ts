@@ -21,12 +21,25 @@ export function createGit(k: Kernel, git: Git | null, project: Project, root: st
   };
   const branchNow = () => branchesNow().current;
   const [branch, setBranch] = createSignal(branchNow());
-  // Switched outside the Gate too (another terminal): the header follows.
-  const unwatch = git?.watch(() => setBranch(branchNow()));
+  // The working tree's dirtiness, as of the last look: tool calls may change it too.
+  const dirtyNow = () => {
+    try {
+      return git?.status() ?? false;
+    } catch {
+      return false;
+    }
+  };
+  const [dirty, setDirty] = createSignal(dirtyNow());
+  const lookAgain = () => {
+    setBranch(branchNow());
+    setDirty(dirtyNow());
+  };
+  // Switched or dirtied outside the Gate too (another terminal): the header follows.
+  const unwatch = git?.watch(lookAgain);
   if (unwatch) onCleanup(unwatch);
   // The environment Note, refreshed when the environment changed.
   function refresh() {
-    setBranch(branchNow());
+    lookAgain();
     const edit = refreshEnvironment(events(), k.context(), project.environment());
     if (edit) k.append(edit);
   }
@@ -70,8 +83,9 @@ export function createGit(k: Kernel, git: Git | null, project: Project, root: st
 
   return {
     branch,
-    // A tool call may have switched the branch.
-    lookAgain: () => setBranch(branchNow()),
+    dirty,
+    // A tool call may have switched the branch or dirtied the tree.
+    lookAgain,
     // All branches with the other worktree holding one.
     branches: () => {
       const { all, elsewhere } = branchesNow();

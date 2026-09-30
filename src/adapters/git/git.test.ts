@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ensureWorktree, isRepository, listBranches, switchBranch, watchHead } from './git';
+import { ensureWorktree, isRepository, listBranches, status, switchBranch, watchHead } from './git';
 
 // A repository with one commit on main.
 function repository(): string {
@@ -39,6 +39,17 @@ test('switching with conflicting changes fails with git message', () => {
   writeFileSync(join(root, 'a.txt'), 'dirty\n');
   expect(() => switchBranch(root, 'other')).toThrow('error:');
   expect(listBranches(root).current).toBe('main');
+});
+
+test('the status: dirty with uncommitted changes, clean without', () => {
+  const root = repository();
+  expect(status(root)).toBe(false);
+  writeFileSync(join(root, 'a.txt'), 'dirty\n');
+  expect(status(root)).toBe(true);
+  gitIn(root, 'add', '.');
+  expect(status(root)).toBe(true);
+  gitIn(root, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-am', 'dirty');
+  expect(status(root)).toBe(false);
 });
 
 test("a session's worktree: created on its own branch, ignored by the project, reused and recreated", () => {

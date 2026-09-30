@@ -23,7 +23,7 @@ export function Header(props: { gate: Gate; width: number }) {
   const profile = () => props.gate.profile();
   // The active Context Policy follows the thinking mode (ADR 0001), then auto-approve, then the git branch
   // and the worktree.
-  const git = () => (props.gate.branch() ? ` · ⎇ ${props.gate.branch()}` : '') + (props.gate.worktree() ? ' · worktree' : '');
+  const git = () => (props.gate.branch() ? ` · ⎇ ${props.gate.branch()}${props.gate.dirty() ? '*' : ''}` : '') + (props.gate.worktree() ? ' · worktree' : '');
   const thinking = () =>
     ` · thinking ${thinkingLabel(props.gate.thinking())}${props.gate.policy() ? ` · policy ${props.gate.policy()}` : ''}${props.gate.autoApprove() ? ' · auto-approve' : ''}${git()}`;
   return (
