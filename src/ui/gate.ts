@@ -42,6 +42,8 @@ export type GateOptions = {
   compactor?: () => Promise<Compactor | null>;
   policies?: Policies;
   autoApprove?: AutoApprove;
+  // The Kind Filters off at start (FR-51).
+  hidden?: readonly string[];
   // Absent outside a git repository: the /git: commands are then not offered.
   git?: Git | null;
 };
@@ -73,16 +75,18 @@ export const COMMANDS = [
   { name: '/sessions', arg: '', description: 'list, resume, rename, delete sessions' },
   { name: '/rename', arg: '<title>', description: 'rename session' },
   { name: '/tools', arg: '<tool>', description: 'switch a tool on or off' },
-  { name: '/filter', arg: '<kind>', description: 'show only blocks of one Kind' },
+  { name: '/filter', arg: '<kind>', description: 'show or hide blocks of a Kind' },
   { name: '/policy', arg: '<name>', description: 'switch a Context Policy on or off' },
   { name: '/auto', arg: '', description: 'switch auto-approve of Tool Calls on or off' },
   { name: '/thinking', arg: '<mode>', description: 'set thinking for the next requests' },
   { name: '/git:branch', arg: '<branch>', description: 'show or switch the git branch' },
   { name: '/git:worktree', arg: '<on|off>', description: 'run the session in its own git worktree' },
 ] as const;
-// What a Kind Filter takes (FR-51), in glossary order: the Kinds each shows; a Tool Call never without its Tool Result.
+// The Kind Filters (FR-51), in glossary order: the Kinds each shows; a Tool Call never without its Tool Result.
+// Additive: each is on or off on its own; the blocks shown are those of the ones on.
 export type Filter = { name: string; kinds: readonly Kind[] };
 export const FILTERS: readonly Filter[] = [
+  { name: 'system', kinds: ['System', 'Tools'] },
   { name: 'user', kinds: ['User'] },
   { name: 'thinking', kinds: ['Thinking'] },
   { name: 'assistant', kinds: ['Assistant'] },
@@ -140,7 +144,7 @@ function ownAutoApprove(): AutoApprove {
   return { on, set };
 }
 
-export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, policies = NO_POLICIES, autoApprove = ownAutoApprove(), git = null, ...options }: GateOptions) {
+export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, policies = NO_POLICIES, autoApprove = ownAutoApprove(), hidden: hiddenAtStart = ['tool-calls'], git = null, ...options }: GateOptions) {
   const [events, setEvents] = createSignal(options.events);
   const [counted, setCounted] = createSignal<{ prefixes: Request[]; split: Counted } | null>(null);
   const [streaming, setStreaming] = createSignal<Streaming | null>(null);
@@ -149,8 +153,9 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   const [selected, setSelected] = createSignal(1);
   // Marked blocks (Space) for Compaction; UI state, not logged.
   const [marked, setMarked] = createSignal<ReadonlySet<number>>(new Set());
-  // Kind Filter (FR-51): what the block table shows; UI state, not logged.
-  const [filter, setFilter] = createSignal<Filter | null>(null);
+  // Kind Filters switched off (FR-51): what the block table hides; UI state, not logged. Tool Calls are off at first.
+  const [hidden, setHidden] = createSignal<readonly Filter[]>(FILTERS.filter(f => hiddenAtStart.includes(f.name)));
+  const hides = (kind: Kind) => hidden().some(f => f.kinds.includes(kind));
   const backend = () => options.backend;
   // Moving a Tool Pair asks first: the operation and block awaiting the same key again (FR-9).
   const [confirming, setConfirming] = createSignal<string | null>(null);
@@ -213,9 +218,15 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     }
     return ids;
   });
-  // Whether the Kind Filter lets a row through (FR-51); a Compaction's proposal always passes.
+  // Whether the Kind Filters let a row through (FR-51). Always passing: a Compaction's proposal, and Tool Calls awaiting
+  // approval or running with their output, since they are decided or stopped at their row.
   const proposing = () => compacting()?.phase === 'running' || compacting()?.phase === 'review';
-  const passes = (id: number, kind: Kind) => !filter() || filter()!.kinds.includes(kind) || (proposing() && id === live()[0]?.id);
+  const unfiltered = createMemo(() => new Set([
+    ...(proposing() && live()[0] ? [live()[0]!.id] : []),
+    ...sent().filter(b => b.pending && !b.removed).map(b => b.id),
+    ...(running() ? [running()!.call.id, ...live().map(l => l.id)] : []),
+  ]));
+  const passes = (id: number, kind: Kind) => !hides(kind) || unfiltered().has(id);
   // The rows shown, in order.
   const shown = createMemo(() => {
     const kinds = new Map<number, Kind>([...sent(), ...live()].map(b => [b.id, b.kind]));
@@ -224,8 +235,9 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   // Only a shown block is selected: a hidden one gives way to the next shown row, else the previous.
   createEffect(() => {
     const ids = shown();
-    if (!filter() || !ids.length || ids.includes(selected())) return;
     const at = rows().indexOf(selected());
+    // Not a row yet (the next block, selected ahead of it): nothing to give way to.
+    if (!ids.length || ids.includes(selected()) || at < 0) return;
     setSelected(ids.find(id => rows().indexOf(id) > at) ?? ids.at(-1)!);
   });
   const selectedBlock = (): Block | undefined => (shown().includes(selected()) ? sent().find(b => b.id === selected()) : undefined);
@@ -322,9 +334,10 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     setSelected(id);
     then();
   }
-  // Not while a Kind Filter hides the neighbours the block would move past (FR-51).
+  // Not while a Kind Filter hides neighbours the block would move past (FR-51).
+  const hiding = () => shown().length < rows().length;
   function move(dir: -1 | 1) {
-    if (filter()) return;
+    if (hiding()) return;
     viaNote(`move ${dir}`, dir < 0 ? '⌥↑' : '⌥↓', () => operate(b => ops.move(context(), b, dir), () => null));
   }
   // A block as it is now, after an operation.
@@ -890,15 +903,17 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     setStatus({ text: `${name} ${toolsOn().includes(name) ? 'on' : 'off'} · u = undo`, tone: 'info' });
   }
 
-  // /filter <kind> shows only blocks of that Kind, /filter off all again; alone it shows the filter (FR-51).
-  // A change clears the marks: none stay hidden.
+  // /filter <kind> switches that Kind Filter on or off, /filter all shows every block; alone it lists them (FR-51).
+  // Marks on blocks now hidden are cleared: none stay hidden.
   function filterBy(name: string) {
-    const values = `off ${FILTERS.map(f => f.name).join(' ')}`;
-    if (!name) return setStatus({ text: `filter ${filter()?.name ?? 'off'} · /filter ${values}`, tone: 'info' });
-    const chosen = name.toLowerCase() === 'off' ? null : FILTERS.find(f => f.name === name.toLowerCase());
-    if (chosen === undefined) return setStatus({ text: `unknown filter ${name}: ${values}`, tone: 'error' });
-    if (chosen !== filter()) setMarked(new Set<number>());
-    setFilter(chosen);
+    const values = `all ${FILTERS.map(f => f.name).join(' ')}`;
+    const state = FILTERS.map(f => `${f.name} ${hidden().includes(f) ? 'off' : 'on'}`).join(', ');
+    if (!name) return setStatus({ text: `filter: ${state} · /filter ${values}`, tone: 'info' });
+    const chosen = FILTERS.find(f => f.name === name.toLowerCase());
+    if (name.toLowerCase() === 'all') setHidden([]);
+    else if (!chosen) return setStatus({ text: `unknown filter ${name}: ${values}`, tone: 'error' });
+    else setHidden(hidden().includes(chosen) ? hidden().filter(f => f !== chosen) : FILTERS.filter(f => f === chosen || hidden().includes(f)));
+    setMarked(new Set([...marked()].filter(id => shown().includes(id))));
   }
 
   // Git (only in a repository) -------------------------------------------------------------------------------
@@ -991,11 +1006,12 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     selected,
     selectedBlock,
     marked,
-    filter,
+    hidden,
+    hiding,
     passes,
-    // The Kind Filter's share of the Context: its sent blocks, their tokens (null while counting) (FR-51).
+    // The Kind Filters' share of the Context: the sent blocks shown, their tokens (null while counting) (FR-51).
     filterShare: () => {
-      const indexes = sent().flatMap((b, i) => (filter()?.kinds.includes(b.kind) ? [i] : []));
+      const indexes = sent().flatMap((b, i) => (hides(b.kind) ? [] : [i]));
       const s = split();
       return { blocks: indexes.length, all: sent().length, tokens: s && indexes.reduce((sum, i) => sum + s.blocks[i]!, 0), total: s && s.total };
     },

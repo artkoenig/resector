@@ -11,7 +11,7 @@ import { TOOL_NAMES } from '../core/toolcall/bash';
 import { isRecommended, shownAnswer } from '../core/toolcall/question';
 import * as dock from './dock';
 import type { DockState } from './dock';
-import { type Compaction, createGate, type Filter, FILTERS, type Gate, type GateOptions, type Status } from './gate';
+import { type Compaction, createGate, FILTERS, type Gate, type GateOptions, type Status } from './gate';
 import { around, cell, count, flagsOf, formatTokens, right, thinkingLabel, titleOf } from './format';
 import { Band, ErrorBand, errorBandLines, Footer, footerLines, HeaderBand, type Hint, PROMPT_LINES, PromptBand } from './parts';
 import { ACCENT, BG, BORDER, FAINT, KIND_COLOR, MUTED, PANEL_BG, SELECTED_BG, TEXT, TONE } from './theme';
@@ -66,7 +66,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
       const row = { ...live, n: n(live.id), title: titleOf({ ...live, call: running }, blocks), tokens: counted, cache: '', flags: '', live: true, removed: false };
       done.splice(at < 0 ? done.length : at, 0, row);
     }
-    // The Kind Filter as the Gate applies it to selection, here also to removed rows (FR-51).
+    // The Kind Filters as the Gate applies them to selection, here also to removed rows (FR-51).
     return done.filter(r => gate.passes(r.id, r.kind));
   };
 
@@ -93,8 +93,8 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     const found = fileCompletions(draft(), files());
     return found ? found.paths.map(path => ({ label: path, description: '', draft: `${draft().slice(0, found.at)}${path} `, run: null })) : [];
   });
-  // The values after `/filter ` (FR-51), `/policy `, `off` first while one is on, `/thinking ` and the /git: commands;
-  // null for any other draft.
+  // The values after `/filter ` (FR-51), `all` first while one is off, `/policy `, `off` first while one is on, `/thinking `
+  // and the /git: commands; null for any other draft.
   function valueSuggestions(text: string): Suggestion[] | null {
     const [, command, typed] = /^\/(filter|policy|thinking|git:branch|git:worktree) (\S*)$/.exec(text) ?? [];
     if (!command || !gate.commands.some(c => c.name === `/${command}`)) return null;
@@ -103,7 +103,10 @@ export function App(props: GateOptions & { onQuit: () => void }) {
       .filter(v => v.name.toLowerCase().startsWith(typed!.toLowerCase()))
       .map(v => ({ label: v.name, description: v.description, draft: `/${command} ${v.name}`, run: `/${command} ${v.name}` }));
   }
-  const filterValues = () => [...(gate.filter() ? [{ name: 'off', description: 'show all blocks' }] : []), ...FILTERS.map(f => ({ name: f.name, description: f.kinds.join(' + ') }))];
+  const filterValues = () => [
+    ...(gate.hidden().length ? [{ name: 'all', description: 'show all blocks' }] : []),
+    ...FILTERS.map(f => ({ name: f.name, description: `${gate.hidden().includes(f) ? 'off' : 'on'} · ${f.kinds.join(' + ')}` })),
+  ];
   const policyValues = () => [
     ...(gate.policy() ? [{ name: 'off', description: 'no policy' }] : []),
     ...gate.policyNames().map(name => {
@@ -317,7 +320,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   // Block rows that fit: the screen less header band, filter line, column header, Template, preview band, error band, suggestions,
   // prompt band and footer. Preview and error band have a blank line above, the prompt band too. Lines never shrink, so rows cannot overlap.
   const capacity = () =>
-    Math.max(1, size().height - 2 - 2 - (gate.filter() ? 1 : 0) - (previewHeight() + 1) - errorLines() - 1 - suggestions().length - (dockOpen() ? dockLines() : PROMPT_LINES) - footerLines(footerStatus()?.text ?? '', keys(), width()));
+    Math.max(1, size().height - 2 - 2 - (gate.hiding() ? 1 : 0) - (previewHeight() + 1) - errorLines() - 1 - suggestions().length - (dockOpen() ? dockLines() : PROMPT_LINES) - footerLines(footerStatus()?.text ?? '', keys(), width()));
   // The rows shown: a window around the selection.
   const visibleRows = () => around(rows(), rows().findIndex(r => r.id === gate.selected() && !r.removed), capacity());
   // The wheel over the block table moves the selection, like ↑↓ (also while busy).
@@ -355,7 +358,9 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   return (
     <box flexDirection="column" width="100%" height="100%" backgroundColor={BG} onMouseUp={copySelection}>
       <Header gate={gate} width={width()} />
-      <Show when={gate.filter()}>{(filter: () => Filter) => <FilterLine gate={gate} filter={filter()} />}</Show>
+      <Show when={gate.hiding()}>
+        <FilterLine gate={gate} />
+      </Show>
       <text fg={MUTED} flexShrink={0}>{`     #  ${'Type'.padEnd(11)}  ${cell('Content', titleWidth())}  Tokens  Cache  Flags`}</text>
       <box flexDirection="column" flexGrow={1} overflow="hidden" onMouseScroll={wheel}>
         <For each={visibleRows()}>
@@ -376,8 +381,8 @@ export function App(props: GateOptions & { onQuit: () => void }) {
             );
           }}
         </For>
-        <Show when={gate.filter() && rows().every(r => r.removed)}>
-          <text fg={MUTED} flexShrink={0}>{`        no ${gate.filter()!.name} blocks`}</text>
+        <Show when={gate.hiding() && rows().every(r => r.removed)}>
+          <text fg={MUTED} flexShrink={0}>{'        no blocks shown'}</text>
         </Show>
         <text fg={MUTED} flexShrink={0}>
           {`        ${'Template'.padEnd(11)}  ${cell('BOS · generation prompt', titleWidth())}  ${right(gate.split() ? String(gate.split()!.template) : '…', 6)}`}
@@ -671,13 +676,13 @@ function Header(props: { gate: Gate; width: number }) {
   );
 }
 
-// The Kind Filter below the header: its share of the blocks and tokens sent; removed ones are not (FR-51).
-function FilterLine(props: { gate: Gate; filter: Filter }) {
+// While blocks are hidden: the Kind Filters off below the header, and the share of the blocks and tokens sent that is shown; removed ones are not (FR-51).
+function FilterLine(props: { gate: Gate }) {
   const share = () => props.gate.filterShare();
   const tokens = () => (share().total === null ? '…' : `${formatTokens(share().tokens!)}/${formatTokens(share().total!)}`);
   return (
     <text flexShrink={0}>
-      <span style={{ fg: ACCENT }}>{`  filter: ${props.filter.name}`}</span>
+      <span style={{ fg: ACCENT }}>{`  hidden: ${props.gate.hidden().map(f => f.name).join(' ')}`}</span>
       <span style={{ fg: MUTED }}>{` · ${share().blocks}/${share().all} blocks · ${tokens()} tokens`}</span>
     </text>
   );
@@ -777,7 +782,7 @@ function modeKeys(gate: Gate, mode: KeyMode): Hint[] {
   const own = MODE_KEYS[mode] ?? busyKeys(gate);
   if (own) return own;
   if (gate.marked().size) return MARKED_KEYS;
-  // No move under a Kind Filter (FR-51).
-  const keys = gate.filter() ? KEYS.filter(k => k !== MOVE) : KEYS;
+  // No move while a Kind Filter hides blocks (FR-51).
+  const keys = gate.hiding() ? KEYS.filter(k => k !== MOVE) : KEYS;
   return gate.selectedBlock()?.pending ? [['y', 'run once'], ['a', 'allow for session'], ['n', 'reject'], ...keys] : keys;
 }
