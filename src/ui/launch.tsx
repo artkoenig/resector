@@ -8,7 +8,7 @@ import { createSearcher } from '../adapters/search/ddgr';
 import { createSplit } from '../adapters/bash/split';
 import type { Clipboard } from '../adapters/clipboard/clipboard';
 import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
-import { ensureWorktree, isRepository, listBranches, switchBranch, watchHead } from '../adapters/git/git';
+import { ensureWorktree, isRepository, listBranches, status, switchBranch, watchHead } from '../adapters/git/git';
 import { loadPolicies, policiesDir } from '../adapters/fs/policies';
 import { listProjectFiles, personalInstructionsDir, probeEnvironment, projectFiles, projectInstructions } from '../adapters/fs/project';
 import type { OpenSession, SessionStore } from '../adapters/store/sessions';
@@ -147,6 +147,7 @@ export function Launch(props: LaunchOptions) {
   function runningIn(dir: string, id: string): Pick<GateOptions, 'runner' | 'searcher' | 'approval' | 'project' | 'git'> {
     const git: Git = {
       branches: () => listBranches(dir),
+      status: () => status(dir),
       switchBranch: name => switchBranch(dir, name),
       watch: onChange => watchHead(dir, onChange),
       worktree: on => (on ? ensureWorktree(root, id) : root),
