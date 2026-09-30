@@ -1,8 +1,8 @@
 // Texts the Gate writes into its status and titles: token numbers, block titles, labels, errors.
-import type { Thinking } from '../../core/log/events';
-import { callText, type Block } from '../../core/log/fold';
-import { toolNames } from '../../core/toolcall/bash';
-import { questionTitle } from '../../core/toolcall/question';
+import type { Thinking } from '../core/log/events';
+import { callText, type Block } from '../core/log/fold';
+import { toolNames } from '../core/toolcall/bash';
+import { questionTitle } from '../core/toolcall/question';
 
 export const formatTokens = (t: number): string =>
   t >= 1024 && t % 1024 === 0 ? `${t / 1024}k` : t >= 1000 ? `${(t / 1000).toFixed(1)}k` : String(t);

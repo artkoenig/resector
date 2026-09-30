@@ -1,19 +1,18 @@
 // Context operations on the selected or marked blocks: move, remove, undo, edit, mark, copy.
 import { createSignal } from 'solid-js';
-import * as ops from '../../core/context/operations';
-import type { SessionEvent } from '../../core/log/events';
-import { pairOf, type Block } from '../../core/log/fold';
-import { parseReference } from '../../core/notes/files';
+import * as ops from '../core/context/operations';
+import type { SessionEvent } from '../core/log/events';
+import { pairOf, type Block } from '../core/log/fold';
+import { parseReference } from '../core/notes/files';
 import { errorText } from './text';
 import type { Kernel } from './kernel';
-import type { Selection } from './selection';
 import type { ToolLoop } from './tool-loop';
-import type { Clipboard, Project } from './types';
+import type { Clipboard, Project, View } from './types';
 
 // Undone operations whose event type does not read as one.
 const UNDONE: Partial<Record<SessionEvent['type'], string>> = { PairToNote: 'Tool Pair → Note' };
 
-export function createEdits(k: Kernel, sel: Selection, loop: ToolLoop, deps: { editor: ops.Editor; clipboard: Clipboard; project: Project }) {
+export function createEdits(k: Kernel, sel: View, loop: ToolLoop, deps: { editor: ops.Editor; clipboard: Clipboard; project: Project }) {
   const { context, events, nextId, apply, setStatus, blockOf } = k;
   const { selectedBlock, setSelected, shown, marked, setMarked } = sel;
   // Moving a Tool Pair asks first: the operation and block awaiting the same key again.

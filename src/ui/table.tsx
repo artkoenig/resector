@@ -2,9 +2,9 @@
 import type { MouseEvent } from '@opentui/core';
 import { For, Show } from 'solid-js';
 import type { Kind } from '../core/log/events';
-import type { Gate } from './gate';
+import type { Screen } from './screen';
 import { cell, flagsOf, right } from './format';
-import { formatTokens, titleOf } from './gate/text';
+import { formatTokens, titleOf } from '../gate/text';
 import { ACCENT, FAINT, KIND_COLOR, MUTED, SELECTED_BG, TEXT, TONE } from './theme';
 
 export const SPINNER = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
@@ -18,7 +18,7 @@ const WHEEL: Record<string, number> = { up: -1, down: 1 };
 // dropped: a Thinking block the chat template drops, dimmed.
 export type Row = { id: number; heading?: string; n: string; kind: Kind; title: string; content: string; tokens: string; cache: string; flags: string; live: boolean; removed: boolean; dropped?: boolean };
 
-export function createRows(gate: Gate, tick: () => number) {
+export function createRows(gate: Screen, tick: () => number) {
   return (): Row[] => {
     const n = (id: number) => String(gate.rows().indexOf(id) + 1);
     const tokensOf = gate.blockTokens;
@@ -49,9 +49,9 @@ export function createRows(gate: Gate, tick: () => number) {
   };
 }
 
-export const isSelected = (gate: Gate, row: Row) => !row.removed && row.id === gate.selected();
+export const isSelected = (gate: Screen, row: Row) => !row.removed && row.id === gate.selected();
 
-export function BlockTable(props: { gate: Gate; rows: Row[]; visible: Row[]; width: number }) {
+export function BlockTable(props: { gate: Screen; rows: Row[]; visible: Row[]; width: number }) {
   const gate = props.gate;
   const titleWidth = () => Math.max(8, props.width - FIXED_COLUMNS);
   // The wheel over the block table moves the selection, like ↑↓ (also while busy).

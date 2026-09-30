@@ -1,7 +1,7 @@
 // Building blocks shared by the screens: header band, prompt band and footer (status left, key hints right).
 import { For, type JSX, Show } from 'solid-js';
 import { linesOf } from './format';
-import type { Status } from './gate';
+import type { Status } from '../gate';
 import { ACCENT, MUTED, PANEL_BG, TEXT, TONE } from './theme';
 
 // Key hints: `key action` pairs, the key in text colour, the action muted.

@@ -1,7 +1,7 @@
 // UI tests: git: /git:branch and /git:worktree.
 import { expect, test } from 'bun:test';
 import { frameMatching } from '../../test/frames';
-import type { GateOptions } from './gate';
+import type { GateOptions } from '../gate';
 import { escape, line, start, ui, useHarness, write } from './app.harness';
 
 useHarness();

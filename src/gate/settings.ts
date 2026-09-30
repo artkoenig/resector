@@ -1,15 +1,14 @@
-// Session settings switched by slash commands: /thinking, /rename, /tools, /filter, /auto.
-import type { Thinking } from '../../core/log/events';
-import * as ops from '../../core/context/operations';
-import { DEFAULT_MODES } from '../../core/render/template';
+// Session settings switched by slash commands: /thinking, /rename, /tools, /auto.
+import type { Thinking } from '../core/log/events';
+import * as ops from '../core/context/operations';
+import { DEFAULT_MODES } from '../core/render/template';
 import { thinkingLabel } from './text';
 import type { Kernel } from './kernel';
 import type { Rules } from './rules';
-import { FILTERS, type Selection } from './selection';
 import type { ToolLoop } from './tool-loop';
 import type { AutoApprove } from './types';
 
-export function createSettings(k: Kernel, sel: Selection, rules: Rules, loop: ToolLoop, autoApprove: AutoApprove) {
+export function createSettings(k: Kernel, rules: Rules, loop: ToolLoop, autoApprove: AutoApprove) {
   const { context, backend, append, setStatus, toolsOn } = k;
 
   // Thinking for the following requests: the one set at the Gate, else the Model Profile's.
@@ -44,20 +43,6 @@ export function createSettings(k: Kernel, sel: Selection, rules: Rules, loop: To
     setStatus({ text: `${name} ${toolsOn().includes(name) ? 'on' : 'off'} · u = undo`, tone: 'info' });
   }
 
-  // /filter <kind> switches that Kind Filter on or off, /filter all shows every block; alone it lists them.
-  // Marks on blocks now hidden are cleared: none stay hidden.
-  function filterBy(name: string) {
-    const { hidden, setHidden } = sel;
-    const values = `all ${FILTERS.map(f => f.name).join(' ')}`;
-    const state = FILTERS.map(f => `${f.name} ${hidden().includes(f) ? 'off' : 'on'}`).join(', ');
-    if (!name) return setStatus({ text: `filter: ${state} · /filter ${values}`, tone: 'info' });
-    const chosen = FILTERS.find(f => f.name === name.toLowerCase());
-    if (name.toLowerCase() === 'all') setHidden([]);
-    else if (!chosen) return setStatus({ text: `unknown filter ${name}: ${values}`, tone: 'error' });
-    else setHidden(hidden().includes(chosen) ? hidden().filter(f => f !== chosen) : FILTERS.filter(f => f === chosen || hidden().includes(f)));
-    sel.setMarked(new Set([...sel.marked()].filter(id => sel.shown().includes(id))));
-  }
-
   // /auto switches auto-approve on or off; a call awaiting approval then runs at once.
   function switchAutoApprove() {
     autoApprove.set(!autoApprove.on());
@@ -67,5 +52,5 @@ export function createSettings(k: Kernel, sel: Selection, rules: Rules, loop: To
     setStatus({ text, tone: 'info' });
   }
 
-  return { thinking, thinkingOptions, setThinking, renameSession, toggleTool, filterBy, switchAutoApprove };
+  return { thinking, thinkingOptions, setThinking, renameSession, toggleTool, switchAutoApprove };
 }

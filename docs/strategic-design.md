@@ -11,7 +11,7 @@ Resector lets the user see, measure and edit everything sent to a local LLM with
 | Subdomain | Type | Why | Code today |
 |---|---|---|---|
 | Context Curation | **core** | The product: Context Blocks, Revisions, Context operations, Compaction, Context Policies, Notes, replay of the Session Log. | `core/log`, `core/context`, `core/compaction`, `core/policy`, `core/notes` |
-| Review Gate | **core** | The request cycle the user steers: send, stream, decide Tool Calls, hold, stop, go on. | `ui/gate/*.ts` (!) |
+| Review Gate | **core** | The request cycle the user steers: send, stream, decide Tool Calls, hold, stop, go on. | `gate/*.ts` |
 | Measurement | supporting | Needed to judge the Context, but its numbers come from the backend's tokenizer and cache; the product decides nothing on its own there. | `core/tokens`, `core/cache` |
 | Tooling | supporting | Needed, not differentiating: tool catalog, Tool Call parsing, Permission Rules, Question, running bash/search. | `core/toolcall`, `core/approval`, `adapters/bash`, `adapters/search` |
 | Sessions & Workspace | supporting | Session list/resume/title, config and Model Profiles, project files, environment, git worktree. | `core/session`, `core/config`, `adapters/store`, `adapters/fs`, `adapters/git` |
@@ -82,7 +82,7 @@ Each step is small, keeps `bun test` green and can land alone.
 1. ~~**Glossary**~~ — done.
 2. ~~**Architecture test**~~ — done as dependency-cruiser rules (`bun run depcruise`, type-only imports count); known violations are the rules' `pathNot` exceptions.
 3. ~~**Ports at the Gate**~~ — done: `Clipboard` and `Branches` declared in `ui/gate/types.ts` (adapters match them structurally); the Gate's texts (`errorText`, `count`, `formatTokens`, `titleOf`, `thinkingLabel`) moved to `ui/gate/text.ts`. The Gate rules have no exceptions left.
-4. **Extract `src/gate/`** (F1) — move the workflow slices (kernel, send, tool-loop, policy, compaction, edits, rules, settings, git, commands); leave selection, marks and Kind Filter in `ui/`. The Gate announces "focus this block" instead of calling `follow`. Workflow tests move from frames to plain unit tests. Record as ADR (keeps solid-js signals as the Gate's reactive state; see Q2).
+4. ~~**Extract `src/gate/`**~~ — done (ADR 0003): the workflow slices in `src/gate/`, selection, marks and Kind Filters in `ui/selection.ts`, composed in `ui/screen.ts`; the Gate drives the view through its `View` port. First plain unit tests in `src/gate/index.test.ts`. Open: move more workflow tests from frames to unit tests; narrow `View` towards focus announcements.
 5. **`core/tools/`** (F4) — split `toolcall/bash.ts` into catalog (definitions, Tools Block content), call (parse, arguments, result text) and the `Runner` port.
 6. **Slim the kernel** (F3) — `fold` returns the domain Context; the Gate derives its view (changed since the last request, missing files, titles) on top.
 7. **ACL only** (F5) — `compactionRequest` moves into `core/render`.

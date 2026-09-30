@@ -4,8 +4,8 @@ import { createSignal, For, Show } from 'solid-js';
 import type { SessionStore, StoredSession } from '../adapters/store/sessions';
 import { fold } from '../core/log/fold';
 import { ago, around, cell, right } from './format';
-import { errorText, formatTokens, titleOf } from './gate/text';
-import type { Status } from './gate';
+import { errorText, formatTokens, titleOf } from '../gate/text';
+import type { Status } from '../gate';
 import { Footer, footerLines, HeaderBand, type Hint } from './parts';
 import { ACCENT, BG, KIND_COLOR, MUTED, SELECTED_BG, TEXT, TONE } from './theme';
 

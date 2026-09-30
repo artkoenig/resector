@@ -20,8 +20,8 @@ import { BUILT_IN, DEFAULT_POLICY } from '../core/policy/built-in';
 import type { Policy } from '../core/policy/policy';
 import { inWorktree, newSession, summarize, type SessionRef } from '../core/session/session';
 import { App } from './app';
-import { errorText } from './gate/text';
-import type { AutoApprove, Clipboard, GateOptions, Git, Policies, Status } from './gate';
+import { errorText } from '../gate/text';
+import type { AutoApprove, Clipboard, GateOptions, Git, Policies, Status } from '../gate';
 import { Sessions } from './sessions';
 import { Setup } from './setup';
 

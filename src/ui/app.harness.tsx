@@ -18,8 +18,8 @@ import type { Tool } from '../core/log/events';
 import type { Policy } from '../core/policy/policy';
 import { createSignal } from 'solid-js';
 import { App } from './app';
-import { formatTokens } from './gate/text';
-import type { GateOptions } from './gate';
+import { formatTokens } from '../gate/text';
+import type { GateOptions } from '../gate';
 
 export let fake: ReturnType<typeof startFakeLlamaCpp>;
 export let ui: Awaited<ReturnType<typeof testRender>>;

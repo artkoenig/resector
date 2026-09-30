@@ -3,40 +3,40 @@
 module.exports = {
   forbidden: [
     {
-      name: 'core-not-to-ui-or-adapters',
-      comment: 'Core has no I/O and never imports UI or adapters; adapters are injected.',
+      name: 'core-not-to-outer-layers',
+      comment: 'Core has no I/O and never imports the Gate, UI or adapters; adapters are injected.',
       severity: 'error',
       from: { path: '^src/core' },
-      to: { path: '^src/(ui|adapters)' },
+      to: { path: '^src/(ui|gate|adapters)' },
     },
     // Layers of docs/strategic-design.md: ui → gate → core, adapters → core. Exceptions list the known violations;
-    // they only shrink (roadmap steps 3 and 4).
+    // they only shrink.
     {
-      name: 'adapters-not-to-ui',
-      comment: 'Adapters implement ports of core and the Gate; they never import the UI.',
+      name: 'adapters-not-to-ui-or-gate',
+      comment: 'Adapters implement ports of core and the Gate (structurally); they import neither.',
       severity: 'error',
       from: { path: '^src/adapters' },
-      to: { path: '^src/ui' },
+      to: { path: '^src/(ui|gate)' },
     },
     {
       name: 'gate-not-to-adapters',
       comment: 'The Review Gate declares its ports; the composition root wires adapters in.',
       severity: 'error',
-      from: { path: '^src/ui/gate' },
+      from: { path: '^src/gate' },
       to: { path: '^src/adapters' },
     },
     {
       name: 'gate-not-to-ui',
       comment: 'The Review Gate is the application layer below the views.',
       severity: 'error',
-      from: { path: '^src/ui/gate' },
-      to: { path: '^src/ui/', pathNot: '^src/ui/gate/' },
+      from: { path: '^src/gate' },
+      to: { path: '^src/ui' },
     },
     {
       name: 'ui-not-to-adapters',
       comment: 'Views get adapters through the Gate; only the composition root (launch, start) imports them.',
       severity: 'error',
-      from: { path: '^src/ui/', pathNot: '^src/ui/(gate/|launch\\.tsx$|start\\.tsx$|setup\\.tsx$|sessions\\.tsx$)' },
+      from: { path: '^src/ui/', pathNot: '^src/ui/(launch\\.tsx$|start\\.tsx$|setup\\.tsx$|sessions\\.tsx$)' },
       to: { path: '^src/adapters' },
     },
     {

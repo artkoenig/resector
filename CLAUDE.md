@@ -12,8 +12,9 @@ TUI harness for local LLMs (Bun + TypeScript, UI with OpenTUI/Solid). No build s
 
 - `src/core/` — domain logic, no I/O. One folder per concept (`approval`, `cache`, `compaction`, `config`, `context`, `log`, `notes`, `policy`, `render`, `session`, `tokens`, `toolcall`), `backend.ts` is the backend port.
 - `src/adapters/` — I/O: model servers (`backend/`), bash runner, file system, git, session store, clipboard, editor, search.
+- `src/gate/` — the Review Gate (ADR 0003): the request cycle as feature slices over a shared `kernel.ts`, composed in `index.ts`; slash commands in `commands.ts`; its ports (incl. `View`, the view's selection it acts on) in `types.ts`, its texts (titles, token numbers, errors) in `text.ts`. Imports neither adapters nor `ui/` (`bun run depcruise`). Unit tests against fake ports and a stub view: `index.test.ts`.
 - `src/ui/` — the terminal UI:
-  - `gate/` — state and actions of the main screen (the Review Gate): feature slices over a shared `kernel.ts`, composed in `index.ts`; slash commands in `commands.ts`; its ports in `types.ts`, its texts (titles, token numbers, errors) in `text.ts`. Imports neither adapters nor views (`bun run depcruise`).
+  - `screen.ts` — the main screen's state: the Gate plus `selection.ts` (rows, selection, marks, Kind Filters).
   - `app.tsx` — composition of the main screen; its parts: `table.tsx`, `header.tsx`, `prompt.tsx`, `suggestions.tsx`, `dock-view.tsx`, `preview.tsx`; key maps in `keys.ts`, key hints in `hints.ts`.
   - `parts.tsx` (header, prompt band, footer), `format.ts` (view helpers: flags, cells), `launch.tsx`/`start.tsx` (startup), `setup.tsx`, `sessions.tsx`, `dock.ts` (Question dock), `theme.ts`.
 - `test/` — shared test support: fake model servers (`fake-llamacpp.ts`, `fake-omlx.ts`), `frames.ts` (`frameMatching`), `requests.ts`, golden fixtures.

@@ -5,9 +5,10 @@ import { createEffect, createMemo, createSignal, on, onCleanup, Show } from 'sol
 import type { Verdict } from '../core/approval/approval';
 import type { DockState } from './dock';
 import { Dock, createDockControl } from './dock-view';
-import { type Compaction, createGate, type GateOptions } from './gate';
+import type { Compaction } from '../gate';
+import { createScreen, type ScreenOptions } from './screen';
 import { around } from './format';
-import { count } from './gate/text';
+import { count } from '../gate/text';
 import { FilterLine, Header } from './header';
 import { dockMode, type KeyMode, keysOf } from './hints';
 import { createKeys, modifierOf } from './keys';
@@ -18,8 +19,8 @@ import { createSuggestions, Suggestions } from './suggestions';
 import { BlockTable, createRows, isSelected, type Row, SPINNER } from './table';
 import { ACCENT, BG, FAINT, KIND_COLOR, MUTED, PANEL_BG, TEXT, TONE } from './theme';
 
-export function App(props: GateOptions & { onQuit: () => void }) {
-  const gate = createGate(props);
+export function App(props: ScreenOptions & { onQuit: () => void }) {
+  const gate = createScreen(props);
   const renderer = useRenderer();
   const size = useTerminalDimensions();
   const [mode, setMode] = createSignal<Mode>('context');

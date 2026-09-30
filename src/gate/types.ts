@@ -1,13 +1,32 @@
-// Types of the Review Gate: its options (the ports it runs on) and the state it shows.
-import type { Backend } from '../../core/backend';
-import type { Rule, Split } from '../../core/approval/approval';
-import type * as ops from '../../core/context/operations';
-import type { Kind, SessionEvent, SessionLog } from '../../core/log/events';
-import type { Block } from '../../core/log/fold';
-import type { ReadFile } from '../../core/notes/files';
-import type { Policy } from '../../core/policy/policy';
-import type { Runner } from '../../core/toolcall/bash';
-import type { Question } from '../../core/toolcall/question';
+// Types of the Review Gate: its options (the ports it runs on), the view it drives and the state it shows.
+import type { Backend } from '../core/backend';
+import type { Rule, Split } from '../core/approval/approval';
+import type * as ops from '../core/context/operations';
+import type { Kind, SessionEvent, SessionLog } from '../core/log/events';
+import type { Block } from '../core/log/fold';
+import type { ReadFile } from '../core/notes/files';
+import type { Policy } from '../core/policy/policy';
+import type { Runner } from '../core/toolcall/bash';
+import type { Question } from '../core/toolcall/question';
+
+// The view's selection and marks, which the Gate acts on and moves (ADR 0003): the rows shown, the selected block,
+// the marked ones. follow moves the selection unless the user reads an older row; release makes it follow again;
+// keepSelection moves it onto a shown row. /filter switches a Kind Filter of the view.
+export type View = {
+  rows: () => number[];
+  shown: () => number[];
+  hiding: () => boolean;
+  selected: () => number;
+  selectedBlock: () => Block | undefined;
+  setSelected: (id: number) => void;
+  selectAt: (index: number) => void;
+  keepSelection: () => void;
+  follow: (id: number) => void;
+  release: () => void;
+  marked: () => ReadonlySet<number>;
+  setMarked: (ids: ReadonlySet<number>) => void;
+  filterBy: (name: string) => void;
+};
 
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
 // events: the Session Log so far (new or resumed); openSessions: shows /sessions; notice: initial status line.
@@ -30,8 +49,6 @@ export type GateOptions = {
   compactor?: () => Promise<Compactor | null>;
   policies?: Policies;
   autoApprove?: AutoApprove;
-  // The Kind Filters off at start.
-  hidden?: readonly string[];
   // Absent outside a git repository: the /git: commands are then not offered.
   git?: Git | null;
 };

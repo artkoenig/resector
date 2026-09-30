@@ -1,10 +1,10 @@
-// Gate rows: the sent blocks and live rows in order, the Kind Filters, the selection and the marks.
+// The main screen's rows: the sent blocks and live rows in order, the Kind Filters, the selection and the marks;
+// the Gate acts on them through its View port.
 import { createEffect, createMemo, createSignal } from 'solid-js';
-import type { Kind } from '../../core/log/events';
-import { afterCalls, type Block } from '../../core/log/fold';
-import { count } from './text';
-import type { Kernel } from './kernel';
-import type { Compaction, Live, Streaming } from './types';
+import type { Kind } from '../core/log/events';
+import { afterCalls, type Block } from '../core/log/fold';
+import type { Compaction, Kernel, Live, Streaming } from '../gate';
+import { count } from '../gate/text';
 
 // The proposal row goes before the first source, so each source's row number is one more than its place.
 export function proposalRow(k: Kernel, c: Compaction): Live {
@@ -28,7 +28,7 @@ export const FILTERS: readonly Filter[] = [
 export type Selection = ReturnType<typeof createSelection>;
 
 export function createSelection(k: Kernel, hiddenAtStart: readonly string[]) {
-  const { context, sent, nextId, streaming, running, compacting } = k;
+  const { context, sent, nextId, streaming, running, compacting, setStatus } = k;
   const [selected, setSelected] = createSignal(1);
   // Marked blocks (Space) for Compaction; UI state, not logged.
   const [marked, setMarked] = createSignal<ReadonlySet<number>>(new Set());
@@ -99,11 +99,24 @@ export function createSelection(k: Kernel, hiddenAtStart: readonly string[]) {
   // Not while a Kind Filter hides neighbours the block would move past.
   const hiding = () => shown().length < rows().length;
 
+  // /filter <kind> switches that Kind Filter on or off, /filter all shows every block; alone it lists them.
+  // Marks on blocks now hidden are cleared: none stay hidden.
+  function filterBy(name: string) {
+    const values = `all ${FILTERS.map(f => f.name).join(' ')}`;
+    const state = FILTERS.map(f => `${f.name} ${hidden().includes(f) ? 'off' : 'on'}`).join(', ');
+    if (!name) return setStatus({ text: `filter: ${state} · /filter ${values}`, tone: 'info' });
+    const chosen = FILTERS.find(f => f.name === name.toLowerCase());
+    if (name.toLowerCase() === 'all') setHidden([]);
+    else if (!chosen) return setStatus({ text: `unknown filter ${name}: ${values}`, tone: 'error' });
+    else setHidden(hidden().includes(chosen) ? hidden().filter(f => f !== chosen) : FILTERS.filter(f => f === chosen || hidden().includes(f)));
+    setMarked(new Set([...marked()].filter(id => shown().includes(id))));
+  }
+
   return {
     live, rows, shown, passes, hides, hiding,
     selected, setSelected, selectedBlock, select, selectAt, keepSelection, follow,
     // The selection follows the loop again.
     release: () => void (reading = false),
-    marked, setMarked, hidden, setHidden,
+    marked, setMarked, hidden, setHidden, filterBy,
   };
 }

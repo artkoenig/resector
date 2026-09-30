@@ -1,15 +1,14 @@
 // Context Policy (ADR 0001) at the Gate: the active policy edits the Context before a request; /policy switches it.
-import * as compaction from '../../core/compaction/compaction';
-import { applyPolicy, summary, type Policy, type Ports } from '../../core/policy/policy';
-import { renderPrefixes, type Request } from '../../core/render/native';
+import * as compaction from '../core/compaction/compaction';
+import { applyPolicy, summary, type Policy, type Ports } from '../core/policy/policy';
+import { renderPrefixes, type Request } from '../core/render/native';
 import { errorText, formatTokens } from './text';
 import type { Kernel } from './kernel';
-import type { Selection } from './selection';
-import type { Compactor, Policies } from './types';
+import type { Compactor, Policies, View } from './types';
 
 export type PolicySlice = ReturnType<typeof createPolicy>;
 
-export function createPolicy(k: Kernel, sel: Selection, policies: Policies, compactor: () => Promise<Compactor | null>) {
+export function createPolicy(k: Kernel, sel: View, policies: Policies, compactor: () => Promise<Compactor | null>) {
   const { backend, setStatus } = k;
   // What the policy did before the request being sent, for its status line.
   let ran: string | null = null;

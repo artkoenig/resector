@@ -1,14 +1,13 @@
 // The user's Compaction at the Gate: the instruction is written, the proposal streams, then it is reviewed.
-import type * as ops from '../../core/context/operations';
-import * as compaction from '../../core/compaction/compaction';
-import { fold } from '../../core/log/fold';
-import { renderPrefixes, sentBlocks, type Request } from '../../core/render/native';
+import type * as ops from '../core/context/operations';
+import * as compaction from '../core/compaction/compaction';
+import { fold } from '../core/log/fold';
+import { renderPrefixes, sentBlocks, type Request } from '../core/render/native';
 import { errorText, formatTokens } from './text';
 import type { Kernel } from './kernel';
-import type { Selection } from './selection';
-import type { Compaction, Compactor, Live, Review, Status } from './types';
+import type { Compaction, Compactor, Live, Review, Status, View } from './types';
 
-export function createCompaction(k: Kernel, sel: Selection, deps: { editor: ops.Editor; instruction: () => string; compactor: () => Promise<Compactor | null> }) {
+export function createCompaction(k: Kernel, sel: View, deps: { editor: ops.Editor; instruction: () => string; compactor: () => Promise<Compactor | null> }) {
   const { context, nextId, setStatus, backend, compacting, setCompacting, tokensOf } = k;
   const { editor, instruction } = deps;
   const update = (change: Partial<Compaction>) => setCompacting({ ...compacting()!, ...change });
