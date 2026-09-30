@@ -47,8 +47,8 @@ test('AGENTS.md and CLAUDE.md of the project, then those of the personal directo
   expect(projectInstructions(root, personal, '/elsewhere').at(-1)!.file).toBe(join(personal, 'CLAUDE.md'));
 });
 
-test('the personal instructions of a project lie next to the global config, named after the project path', () => {
-  expect(personalInstructionsDir({ global: '/h/.config/resector/config.jsonc', project: '' }, '/Users/a/my.app')).toBe('/h/.config/resector/projects/-Users-a-my-app');
+test('the personal instructions of a project lie next to the global config, named after the project directory', () => {
+  expect(personalInstructionsDir({ global: '/h/.config/resector/config.jsonc', project: '' }, '/Users/a/my.app')).toBe('/h/.config/resector/projects/my.app');
 });
 
 const at = new Date(2026, 8, 26, 23, 30);
