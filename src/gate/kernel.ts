@@ -1,9 +1,8 @@
 // Gate kernel: the Session Log in memory, Context = fold(events), its token split, the status line and the step under way.
 import { createEffect, createMemo, createSignal } from 'solid-js';
-import type { Backend, Counted } from '../core/backend';
 import { commonPrefix, warmRows } from '../core/cache/cache';
 import * as ops from '../core/context/operations';
-import type { SessionEvent, SessionLog } from '../core/log/events';
+import type { SessionEvent } from '../core/log/events';
 import { fold, type Block } from '../core/log/fold';
 import { peekReferences } from '../core/notes/files';
 import { review } from './review';
@@ -11,6 +10,7 @@ import { renderPrefixes, type Request } from '../core/render/native';
 import { budget, lastDrift, type Budget } from '../core/tokens/budget';
 import { toolsIn } from '../core/tools/catalog';
 import type { Compaction, Project, Running, Status, Streaming } from './types';
+import type { Backend, Counted, SessionLog } from './ports';
 
 export const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 

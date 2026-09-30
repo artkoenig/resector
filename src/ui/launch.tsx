@@ -12,7 +12,7 @@ import { loadPolicies, policiesDir } from '../adapters/fs/policies';
 import { listProjectFiles, personalInstructionsDir, probeEnvironment, projectFiles, projectInstructions } from '../adapters/fs/project';
 import type { OpenSession, SessionStore } from '../adapters/store/sessions';
 import type { Split } from '../core/approval/approval';
-import type { Editor } from '../core/context/operations';
+import type { Editor } from '../gate/ports';
 import type { SessionEvent } from '../core/log/events';
 import { fold } from '../core/log/fold';
 import { environmentText } from '../core/notes/environment';

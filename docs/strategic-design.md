@@ -15,7 +15,7 @@ Resector lets the user see, measure and edit everything sent to a local LLM with
 | Measurement | supporting | Needed to judge the Context, but its numbers come from the backend's tokenizer and cache; the product decides nothing on its own there. | `core/tokens`, `core/cache` |
 | Tooling | supporting | Needed, not differentiating: tool catalog, Tool Call parsing, Permission Rules, Question, running bash/search. | `core/tools`, `core/approval`, `adapters/bash`, `adapters/search` |
 | Sessions & Workspace | supporting | Session list/resume/title, config and Model Profiles, project files, environment, git worktree. | `core/session`, `core/config`, `adapters/store`, `adapters/fs`, `adapters/git` |
-| Inference | generic | OpenAI-compatible chat, chat templates, tokenizers, server slots. Others solve it; we conform. | `core/render` (incl. inline `<think>` split), `core/backend.ts`, `adapters/backend` |
+| Inference | generic | OpenAI-compatible chat, chat templates, tokenizers, server slots. Others solve it; we conform. | `core/render` (incl. inline `<think>` split), `gate/ports.ts` (`Backend`), `adapters/backend` |
 
 ## Bounded contexts
 
@@ -66,14 +66,14 @@ src/core/        domain, no I/O (rule unchanged)
   log/ context/ compaction/ policy/ notes/     Context Curation (+ shared kernel in log/)
   tokens/ cache/                               Measurement
   tools/ approval/                             Tooling (tools/ was toolcall/)
-  render/ backend.ts                           Inference ACL + port
+  render/                                      Inference ACL
   session/ config/                             Sessions & Workspace
 src/gate/        Review Gate application layer: workflow, its state, its ports. No TSX, no adapters, no ui/.
 src/adapters/    implement ports of core and gate
 src/ui/          OpenTUI views and view state (selection, marks, Kind Filter, keys, hints)
 ```
 
-Dependency rules: `ui → gate → core`, `adapters → core | gate` (types only), composition root (`ui/launch.tsx`, `ui/start.tsx`) wires adapters into the Gate. `core` imports nothing outside `core`.
+Dependency rules: `ui → gate → core`, `adapters → core | gate/ports.ts` (types only; a port belongs to the Gate, which calls it), composition root (`ui/launch.tsx`, `ui/start.tsx`) wires adapters into the Gate. `core` imports nothing outside `core`.
 
 ## Roadmap
 
@@ -86,6 +86,7 @@ Each step is small, keeps `bun test` green and can land alone.
 5. ~~**`core/tools/`**~~ (F4) — done: `toolcall/` is `tools/`, `bash.ts` split into `catalog.ts` (definitions, Tools Block content), `call.ts` (parse, arguments, result text) and `runner.ts` (the `Runner` port); `thinking.ts` (inline `<think>` in answers) moved to `core/render/`, it is Inference.
 6. ~~**Slim the kernel**~~ (F3) — done: `fold` returns the domain Context, the blocks sent next (removed ones are gone); `gate/review.ts` derives what the Gate shows on top of it from the Session Log: blocks removed since the last request struck through in place, `moved`/`revised` since then, titles (Rename), unreadable references (`missing`, now returned beside the Context by `peekReferences`). `sentBlocks` is gone.
 7. ~~**ACL only**~~ (F5) — done: the Compaction requests (`sourcesRequest`, `inContextRequest`) are built in `core/render/compaction.ts`; `core/compaction` picks the sources and the system prompt only.
+8. ~~**Ports at the caller**~~ — done: `Backend`, `Runner`, `Editor`, `SessionLog` and `Clipboard` in `gate/ports.ts`, since the Gate calls them and core calls nothing; core keeps the data crossing them (`ChatResult` in `tools/answer.ts`, `RunResult` in `tools/call.ts`). Adapters may import `gate/ports.ts` only.
 
 ## Open questions
 

@@ -1,11 +1,13 @@
 // A Tool Call as the model sends it: parsed into tool and content, sent back with its arguments; its result as text.
-import type { Tool } from '../log/events';
+import type { Stopped, Tool } from '../log/events';
 import { TOOL_NAMES } from './catalog';
 import { parseQuestions } from './question';
-import type { RunResult } from './runner';
 
 // The one argument of bash and search: a Tool Call's content. A question's content is all its arguments.
 const ARGUMENT: Record<Exclude<Tool, 'question'>, string> = { bash: 'command', search: 'query' };
+
+// A run's output; exit: null when the run was stopped.
+export type RunResult = { output: string; exit: number | null; stopped: Stopped | null };
 
 // A tool call as the model sent it: arguments are a JSON string.
 export type RawCall = { name: string; arguments: string };

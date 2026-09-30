@@ -1,5 +1,5 @@
 // llama.cpp server backend: exact token counts via /apply-template + /tokenize (requires --jinja).
-import type { Backend } from '../../core/backend';
+import type { Backend } from '../../gate/ports';
 import { commonPrefix } from '../../core/cache/cache';
 import type { Thinking } from '../../core/log/events';
 import { EMPTY_REQUEST as EMPTY, withoutThinking, type AssistantMessage, type Message, type Request } from '../../core/render/native';

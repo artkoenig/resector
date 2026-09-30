@@ -18,6 +18,7 @@ import type { Kernel } from './kernel';
 import type { AutoApprove, GateOptions, Policies, Status, View } from './types';
 
 export * from './types';
+export type * from './ports';
 export { COMMANDS } from './commands';
 export type { Kernel } from './kernel';
 

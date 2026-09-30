@@ -2,7 +2,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { encodeEvent } from '../../core/log/codec';
-import type { SessionLog } from '../../core/log/events';
+import type { SessionLog } from '../../gate/ports';
 
 export function projectSessionsDir(home: string, projectRoot: string): string {
   const hash = new Bun.CryptoHasher('sha256').update(projectRoot).digest('hex').slice(0, 16);

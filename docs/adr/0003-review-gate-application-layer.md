@@ -6,7 +6,7 @@ The Review Gate's request cycle (send, Tool Loop, Tool Approval, Context Policy 
 
 - The Gate acts on the user's selection and moves it, so it drives the view through a port, `View` (the rows shown, the selected and marked blocks, follow/release/keep). The view implements it; the Gate gets it from a factory, since the selection is built over the Gate's kernel.
 - The Gate keeps solid-js signals as its reactive state: the views read them directly, and the workflow runs unchanged. The Gate therefore needs a reactive root, but no renderer: its tests (`src/gate/*.test.ts`) run against fake ports and a stub view in milliseconds.
-- Adapters match the Gate's ports structurally and import nothing from it; the composition root (`ui/launch.tsx`, `ui/start.tsx`) wires them in.
+- A port belongs to the Gate, which calls it; core only holds the data crossing it (`ChatResult`, `RunResult`). Adapters import the ports they implement from `gate/ports.ts` and nothing else of the Gate; the composition root (`ui/launch.tsx`, `ui/start.tsx`) wires them in.
 
 ## Considered Options
 

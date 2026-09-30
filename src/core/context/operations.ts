@@ -3,7 +3,7 @@ import type { SessionEvent, Tool } from '../log/events';
 import { undone, type Block, type Context } from '../log/fold';
 import * as catalog from '../tools/catalog';
 import { resultText } from '../tools/call';
-import type { RunResult } from '../tools/runner';
+import type { RunResult } from '../tools/call';
 
 export type Outcome<E extends SessionEvent = SessionEvent> = { event: E } | { error: string };
 type Undo = Extract<SessionEvent, { type: 'Undo' }>;
@@ -76,9 +76,6 @@ export function removeAll(blocks: Block[]): Outcome {
   const [first, ...others] = blocks.map(b => b.id);
   return first === undefined ? { error: 'nothing marked' } : { event: { type: 'Remove', id: first, others } };
 }
-
-// Editor port (adapters/editor): the user edits a text; resolves to the saved text.
-export type Editor = (text: string) => Promise<string>;
 
 // The content a block is added with.
 const FIRST_REVISION = 1;

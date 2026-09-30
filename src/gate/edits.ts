@@ -7,12 +7,13 @@ import { parseReference } from '../core/notes/files';
 import { errorText } from './text';
 import type { Kernel } from './kernel';
 import type { ToolLoop } from './tool-loop';
-import type { Clipboard, Project, View } from './types';
+import type { Project, View } from './types';
+import type { Clipboard, Editor } from './ports';
 
 // Undone operations whose event type does not read as one.
 const UNDONE: Partial<Record<SessionEvent['type'], string>> = { PairToNote: 'Tool Pair → Note' };
 
-export function createEdits(k: Kernel, sel: View, loop: ToolLoop, deps: { editor: ops.Editor; clipboard: Clipboard; project: Project }) {
+export function createEdits(k: Kernel, sel: View, loop: ToolLoop, deps: { editor: Editor; clipboard: Clipboard; project: Project }) {
   const { context, events, nextId, apply, setStatus, blockOf } = k;
   const { selectedBlock, setSelected, shown, marked, setMarked } = sel;
   // Moving a Tool Pair asks first: the operation and block awaiting the same key again.

@@ -13,10 +13,10 @@ module.exports = {
     // they only shrink.
     {
       name: 'adapters-not-to-ui-or-gate',
-      comment: 'Adapters implement ports of core and the Gate (structurally); they import neither.',
+      comment: 'Adapters implement the Gate ports of gate/ports.ts; nothing else of the Gate or UI.',
       severity: 'error',
       from: { path: '^src/adapters' },
-      to: { path: '^src/(ui|gate)' },
+      to: { path: '^src/(ui|gate)', pathNot: '^src/gate/ports\\.ts$' },
     },
     {
       name: 'gate-not-to-adapters',

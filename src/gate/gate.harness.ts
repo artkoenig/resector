@@ -2,14 +2,15 @@
 import { createRoot, createSignal } from 'solid-js';
 import { BASH_TOOLS, withTools } from '../../test/requests';
 import { permissionRules, type Permissions, type Split } from '../core/approval/approval';
-import type { Backend, ChatResult } from '../core/backend';
+import type { ChatResult } from '../core/tools/answer';
 import type { SessionEvent, Thinking, Tool } from '../core/log/events';
 import type { Policy } from '../core/policy/policy';
 import type { Request } from '../core/render/native';
 import { newSession } from '../core/session/session';
 import type { RawCall } from '../core/tools/call';
-import type { RunOptions, RunResult } from '../core/tools/runner';
+import type { RunResult } from '../core/tools/call';
 import { createGate, type Compactor, type Gate, type Kernel, type View } from '.';
+import type { Backend, RunOptions } from './ports';
 
 // One simple command per line, its words as arguments: enough for the rules to decide.
 const split: Split = command => command.split('\n').map(text => ({ text, args: text.split(' ').slice(1), writes: [] }));

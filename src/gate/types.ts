@@ -1,13 +1,11 @@
 // Types of the Review Gate: its options (the ports it runs on), the view it drives and the state it shows.
-import type { Backend } from '../core/backend';
 import type { Rule, Split } from '../core/approval/approval';
-import type * as ops from '../core/context/operations';
-import type { Kind, SessionEvent, SessionLog } from '../core/log/events';
+import type { Kind, SessionEvent } from '../core/log/events';
 import type { Block } from '../core/log/fold';
 import type { ReadFile } from '../core/notes/files';
 import type { Policy } from '../core/policy/policy';
-import type { Runner } from '../core/tools/runner';
 import type { Question } from '../core/tools/question';
+import type { Backend, Clipboard, Editor, Runner, SessionLog } from './ports';
 
 // The view's selection and marks, which the Gate acts on and moves (ADR 0003): the rows shown, the selected block,
 // the marked ones. follow moves the selection unless the user reads an older row; release makes it follow again;
@@ -37,7 +35,7 @@ export type GateOptions = {
   runner: Runner;
   searcher: Runner;
   approval: Approval;
-  editor: ops.Editor;
+  editor: Editor;
   clipboard: Clipboard;
   log: SessionLog;
   events: SessionEvent[];
@@ -64,8 +62,6 @@ export type Project = { read: ReadFile; list: () => string[]; environment: () =>
 // when the session opened (ignored: project allow patterns).
 export type Approval = { split: Split; root: string; permissions: () => { rules: Rule[]; ignored: string[] } };
 
-// Copies a text to the system clipboard.
-export type Clipboard = (text: string) => Promise<void>;
 // The local branches, the current one (null when detached) and those checked out in another worktree, with its path.
 export type Branches = { current: string | null; all: string[]; elsewhere: Record<string, string> };
 

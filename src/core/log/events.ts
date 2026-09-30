@@ -59,5 +59,3 @@ export type SessionEvent =
   | { type: 'Undo'; eventId: number }
   | { type: 'ResponseReceived'; usage: Usage | null; cached: number | null };
 
-// Session Log port: where events are persisted (adapters/store).
-export type SessionLog = { append: (event: SessionEvent) => void };

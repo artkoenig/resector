@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Editor } from '../../core/context/operations';
+import type { Editor } from '../../gate/ports';
 
 // suspend/resume: hand the terminal to the editor and take it back. dir: where the temporary file goes.
 export type EditorOptions = { env: Record<string, string | undefined>; suspend: () => void; resume: () => void; dir?: string };

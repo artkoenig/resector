@@ -1,11 +1,11 @@
 // The tool loop: an answer's calls are decided in order, run, answered by the user or held; then the results are sent.
 import { batch, createMemo, createSignal } from 'solid-js';
 import { quoted, sessionRules } from '../core/approval/approval';
-import type { ChatResult } from '../core/backend';
+import type { ChatResult } from '../core/tools/answer';
 import * as ops from '../core/context/operations';
 import type { Block } from '../core/log/fold';
 import { answerBlocks } from '../core/tools/answer';
-import type { Runner } from '../core/tools/runner';
+import type { Runner } from './ports';
 import { answerText, parseQuestions, type Answer } from '../core/tools/question';
 import { errorText, titleOf } from './text';
 import type { GitSlice } from './git';
