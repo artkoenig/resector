@@ -12,7 +12,7 @@ TUI harness for local LLMs (Bun + TypeScript, UI with OpenTUI/Solid). No build s
 
 - `src/core/` — domain logic, no I/O. One folder per concept (`approval`, `cache`, `compaction`, `config`, `context`, `log`, `notes`, `policy`, `render`, `session`, `tokens`, `tools`), `backend.ts` is the backend port. `tools/`: `catalog.ts` (tool definitions, Tools Block content), `call.ts` (parse a Tool Call, its arguments, result text), `runner.ts` (the `Runner` port), `question.ts`, `answer.ts`.
 - `src/adapters/` — I/O: model servers (`backend/`), bash runner, file system, git, session store, clipboard, editor, search.
-- `src/gate/` — the Review Gate (ADR 0003): the request cycle as feature slices over a shared `kernel.ts`, composed in `index.ts`; slash commands in `commands.ts`; its ports (incl. `View`, the view's selection it acts on) in `types.ts`, its texts (titles, token numbers, errors) in `text.ts`. `review.ts`: the Context as the Gate shows it (removed blocks struck through, changes since the last request, titles) on top of `fold`, which yields only the blocks sent next. Imports neither adapters nor `ui/` (`bun run depcruise`). Unit tests against fake ports and a stub view: `index.test.ts`.
+- `src/gate/` — the Review Gate (ADR 0003): the request cycle as feature slices over a shared `kernel.ts`, composed in `index.ts`; slash commands in `commands.ts`; its ports (incl. `View`, the view's selection it acts on) in `types.ts`, its texts (titles, token numbers, errors) in `text.ts`. `review.ts`: the Context as the Gate shows it (removed blocks struck through, changes since the last request, titles) on top of `fold`, which yields only the blocks sent next. Imports neither adapters nor `ui/` (`bun run depcruise`). Workflow unit tests per slice (`tool-loop.test.ts`, `policy.test.ts`, `send.test.ts`, …) on `gate.harness.ts`: scripted backend and runner, stub view.
 - `src/ui/` — the terminal UI:
   - `screen.ts` — the main screen's state: the Gate plus `selection.ts` (rows, selection, marks, Kind Filters).
   - `app.tsx` — composition of the main screen; its parts: `table.tsx`, `header.tsx`, `prompt.tsx`, `suggestions.tsx`, `dock-view.tsx`, `preview.tsx`; key maps in `keys.ts`, key hints in `hints.ts`.
@@ -22,6 +22,7 @@ TUI harness for local LLMs (Bun + TypeScript, UI with OpenTUI/Solid). No build s
 
 ## Tests
 
+- Workflow behaviour (what is logged, sent, run; status texts) is tested at the Gate (`src/gate/*.test.ts`); UI tests check what frames show and key wiring.
 - UI tests are split by feature (`src/ui/app.<feature>.test.tsx`, `launch.test.tsx`, `launch.sessions.test.tsx`). Shared helpers (`start`, `write`, `press`, `escape`, …) live in `app.harness.tsx` / `launch.harness.tsx`; each test file calls `useHarness()`. Helpers used by one file only stay near its tests. Copy the pattern of a neighbouring test instead of studying the helpers.
 - When behaviour changes, change the tests that assert the old behaviour; keep test names describing the behaviour.
 - Do not work out expected UI text from the code. Write the test with your best guess and run it: frames are 80×20, long texts wrap, and a `frameMatching` that finds nothing fails with the last frame printed; take the actual text from there.

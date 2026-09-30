@@ -102,7 +102,7 @@ test('x discards the proposal; i runs again from the sources with a changed inst
   expect(events().at(-1)).toEqual({ type: 'Compact', sources: [4], instruction: 'shorter!', noteId: 5, content: '2nd edited', by: 'user' });
 });
 
-test('a request too big for the compaction window is blocked; Compaction runs on compactionProfile, leaving the session cache', async () => {
+test('the instruction header says when the request does not fit the compaction window of compactionProfile', async () => {
   const small = startFakeLlamaCpp({ nCtx: 80 });
   try {
     const backend = await connectLlamaCpp(small.url);
@@ -111,22 +111,11 @@ test('a request too big for the compaction window is blocked; Compaction runs on
     await press('down');
     await press('c');
     await frameMatching(ui, f => /◇ Compact 1 block \(\d+ tok\) · small · request \d+ ≥ window 80 – does not fit/.test(f));
-    ui.mockInput.pressEnter();
-    let frame = await frameMatching(ui, f => /compaction request \d+ ≥ window 80 of small – shrink the selection/.test(f));
-    expect(small.chatRequests).toEqual([]);
     await escape();
     await press('down');
     await frameMatching(ui, f => previewed(f) === 'short');
     await press('c');
-    frame = await frameMatching(ui, f => /request \d+ \/ 80/.test(f));
-    const request = Number(/request (\d+) \/ 80/.exec(frame)![1]);
-    small.reply({ chunks: ['s'] });
-    ui.mockInput.pressEnter();
-    frame = await frameMatching(ui, f => f.includes('session cache untouched'));
-    expect(small.chatRequests).toHaveLength(1);
-    // The proposal may use the rest of the Compaction profile's window.
-    expect(small.chatRequests[0]).toMatchObject({ max_tokens: 80 - request });
-    expect(fake.chatRequests).toEqual([]);
+    await frameMatching(ui, f => /request \d+ \/ 80/.test(f));
   } finally {
     small.stop();
   }

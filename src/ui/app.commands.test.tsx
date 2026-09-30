@@ -6,16 +6,15 @@ import { bash, fake, line, messages, press, type Sent, start, ui, until, useHarn
 
 useHarness();
 
-test('/thinking sets the thinking mode, shown in the header, logged and sent with the next request', async () => {
-  const { events } = await withUsers('question');
+test('/thinking sets the thinking mode, shown in the header', async () => {
+  await withUsers('question');
   expect(line(await frameMatching(ui, f => f.includes('default')), /default/)).toContain('default · thinking off');
   await write('/thinking on');
-  const frame = await frameMatching(ui, f => f.includes('default · thinking on'));
-  expect(frame).toContain('thinking on');
-  expect(events().slice(-1)).toEqual([{ type: 'ThinkingSet', thinking: 'on' }]);
+  await frameMatching(ui, f => f.includes('default · thinking on'));
   fake.reply({ chunks: ['ok'] });
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('answer complete'));
+  // The adapter turns it into the chat template's switch.
   expect(fake.chatRequests[0]).toMatchObject({ chat_template_kwargs: { enable_thinking: true } });
   await write('/thinking off');
   await frameMatching(ui, f => f.includes('default · thinking off'));
@@ -117,21 +116,4 @@ test('/tools completes the tool names and switches one off and on; off, it is no
   await frameMatching(ui, f => f.includes('tools: bash · /tools <tool> switches one'));
   await write('/tools python');
   await frameMatching(ui, f => f.includes('unknown tool python – bash search'));
-});
-
-test('search, switched on with /tools, runs without asking; its call and result are sent as search', async () => {
-  const { events } = await start();
-  await write('/tools search');
-  await frameMatching(ui, f => f.includes('search on · u = undo'));
-  fake.reply({ chunks: [], calls: [{ name: 'search', arguments: '{"query":"bun runtime"}' }] });
-  fake.reply({ chunks: ['ok'] });
-  await write('go');
-  const frame = await frameMatching(ui, f => f.includes('answer complete'));
-  expect(frame).not.toContain('? approve');
-  expect(frame).toMatch(/Tool Call\s+search bun runtime/);
-  expect(frame).toMatch(/Tool Result\s+→ search bun runtime/);
-  expect(events().find(e => e.kind === 'Tool Call')).toMatchObject({ tool: 'search', content: 'bun runtime' });
-  expect(events().find(e => e.kind === 'Tool Result')).toMatchObject({ content: 'results for bun runtime\n[exit 0]' });
-  const [call] = (fake.chatRequests[1] as { messages: { tool_calls?: { function: object }[] }[] }).messages.flatMap(m => m.tool_calls ?? []);
-  expect(call!.function).toEqual({ name: 'search', arguments: '{"query":"bun runtime"}' });
 });
