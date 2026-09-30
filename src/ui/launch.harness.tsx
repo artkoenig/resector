@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { testRender } from '@opentui/solid';
 import { startFakeLlamaCpp } from '../../test/fake-llamacpp';
 import type { LocalServer } from '../adapters/backend/discover';
-import { configPaths } from '../adapters/fs/config';
+import { configPaths, type ConfigPaths } from '../adapters/fs/config';
 import { personalInstructionsDir } from '../adapters/fs/project';
 import { openSessionStore } from '../adapters/store/sessions';
 import type { SessionEvent } from '../core/log/events';
@@ -32,23 +32,33 @@ export function put(path: string, text: string) {
 // policies: Context Policy modules by name, in policies/ next to the global config.
 export type Setup = { config?: (url: string) => string; systemMd?: string; compactionMd?: string; policies?: Record<string, string>; servers?: (url: string) => LocalServer[]; sessions?: Record<string, SessionEvent[]>; locks?: Record<string, number>; resume?: true | string; files?: Record<string, string>; personal?: Record<string, string>; git?: true };
 
-export async function launch({ config, systemMd, compactionMd, policies = {}, servers, sessions = {}, locks = {}, resume, files = {}, personal = {}, git }: Setup = {}) {
+// The project directory with its files; with git a repository with one commit on main.
+function writeProject(project: string, files: Record<string, string>, git?: true) {
+  mkdirSync(project, { recursive: true });
+  for (const [name, text] of Object.entries(files)) put(join(project, name), text);
+  if (!git) return;
+  put(join(project, 'a.txt'), 'a\n');
+  for (const args of [['init', '-q', '-b', 'main'], ['add', '.'], ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init']]) Bun.spawnSync(['git', ...args], { cwd: project });
+}
+
+// The global config and the files next to it; the personal instructions.
+function writeConfig(paths: ConfigPaths, project: string, { config, systemMd, compactionMd, policies = {}, personal = {} }: Setup) {
+  const dir = dirname(paths.global);
+  if (config) put(paths.global, config(fake.url));
+  for (const [name, text] of Object.entries(personal)) put(join(personalInstructionsDir(paths, project), name), text);
+  if (systemMd) put(join(dir, 'system.md'), systemMd);
+  if (compactionMd) put(join(dir, 'compaction.md'), compactionMd);
+  for (const [name, text] of Object.entries(policies)) put(join(dir, 'policies', `${name}.ts`), text);
+}
+
+export async function launch(setup: Setup = {}) {
+  const { servers, sessions = {}, locks = {}, resume, files = {}, git } = setup;
   fake = startFakeLlamaCpp({ nCtx: 4096, model: 'qwen3-8b.gguf' });
   const root = mkdtempSync(join(tmpdir(), 'resector-launch-'));
   const project = join(root, 'project');
-  mkdirSync(project, { recursive: true });
-  for (const [name, text] of Object.entries(files)) put(join(project, name), text);
-  // git: the project is a repository with one commit on main.
-  if (git) {
-    put(join(project, 'a.txt'), 'a\n');
-    for (const args of [['init', '-q', '-b', 'main'], ['add', '.'], ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init']]) Bun.spawnSync(['git', ...args], { cwd: project });
-  }
+  writeProject(project, files, git);
   const paths = configPaths({ home: join(root, 'home'), cwd: project, env: {} });
-  if (config) put(paths.global, config(fake.url));
-  for (const [name, text] of Object.entries(personal)) put(join(personalInstructionsDir(paths, project), name), text);
-  if (systemMd) put(join(dirname(paths.global), 'system.md'), systemMd);
-  if (compactionMd) put(join(dirname(paths.global), 'compaction.md'), compactionMd);
-  for (const [name, text] of Object.entries(policies)) put(join(dirname(paths.global), 'policies', `${name}.ts`), text);
+  writeConfig(paths, project, setup);
   const fatal: string[] = [];
   let created = 0;
   const store = openSessionStore(join(root, 'sessions'), { id: () => (created++ ? `ses_new${created - 1}` : 'ses_test') });
