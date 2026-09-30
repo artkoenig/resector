@@ -33,6 +33,11 @@ function otherWorktrees(root: string): Record<string, string> {
   return elsewhere;
 }
 
+// Whether the working tree has uncommitted changes.
+export function status(root: string): boolean {
+  return git(root, 'status', '--porcelain') !== '';
+}
+
 // Only an existing local branch: git would otherwise create one from a remote of the same name.
 export function switchBranch(root: string, name: string) {
   if (!listBranches(root).all.includes(name)) throw new Error(`no branch ${name}`);

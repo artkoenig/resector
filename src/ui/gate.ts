@@ -64,6 +64,7 @@ export type Approval = { split: Split; root: string; permissions: () => { rules:
 // (or the project directory) and returns it, reopen shows the Gate again running there, with a status.
 export type Git = {
   branches: () => Branches;
+  status: () => boolean;
   switchBranch: (name: string) => void;
   watch: (onChange: () => void) => () => void;
   worktree: (on: boolean) => string;
@@ -281,12 +282,25 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   };
   const branchNow = () => branchesNow().current;
   const [branch, setBranch] = createSignal(branchNow());
-  // Switched outside the Gate too (another terminal): the header follows.
-  const unwatch = git?.watch(() => setBranch(branchNow()));
+  // The working tree's dirtiness, as of the last look: tool calls may change it too.
+  const dirtyNow = () => {
+    try {
+      return git?.status() ?? false;
+    } catch {
+      return false;
+    }
+  };
+  const [dirty, setDirty] = createSignal(dirtyNow());
+  // Switched or dirtied outside the Gate too (another terminal): the header follows.
+  const unwatch = git?.watch(() => {
+    setBranch(branchNow());
+    setDirty(dirtyNow());
+  });
   if (unwatch) onCleanup(unwatch);
   // The environment Note, refreshed when the environment changed.
   function refresh() {
     setBranch(branchNow());
+    setDirty(dirtyNow());
     const edit = refreshEnvironment(events(), context(), project.environment());
     if (edit) append(edit);
   }
@@ -517,6 +531,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
       follow(nextId());
       append(ops.toolResult(call, nextId(), result, tool.timeout));
       setBranch(branchNow());
+      setDirty(dirtyNow());
       if (result.stopped) held = true;
       goOn(result.stopped ? [...notes, `⚠ ${result.stopped}`] : notes);
     } catch (e) {
@@ -1041,6 +1056,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     // Git where the session runs (null outside a repository): the branch, all branches with the other worktree holding
     // one, the worktree on or off.
     branch,
+    dirty,
     branches: () => {
       const { all, elsewhere } = branchesNow();
       return all.map(name => ({ name, elsewhere: elsewhere[name] ?? null }));
