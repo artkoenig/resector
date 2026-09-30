@@ -11,7 +11,7 @@ TUI harness for local LLMs (Bun + TypeScript, UI with OpenTUI/Solid). No build s
 ## Layout
 
 - `src/core/` — domain logic, no I/O. One folder per concept (`approval`, `cache`, `compaction`, `config`, `context`, `log`, `notes`, `policy`, `render`, `session`, `tokens`, `toolcall`), `backend.ts` is the backend port.
-- `src/adapters/` — I/O: model servers (`backend/`), bash runner, file system, session store, clipboard, editor, search.
+- `src/adapters/` — I/O: model servers (`backend/`), bash runner, file system, git, session store, clipboard, editor, search.
 - `src/ui/` — the terminal UI:
   - `gate.ts` — state and actions of the main screen (the Review Gate); slash commands are defined here.
   - `app.tsx` — rendering of the main screen and its key bindings.

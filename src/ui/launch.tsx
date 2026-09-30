@@ -8,6 +8,7 @@ import { createSearcher } from '../adapters/search/ddgr';
 import { createSplit } from '../adapters/bash/split';
 import type { Clipboard } from '../adapters/clipboard/clipboard';
 import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
+import { ensureWorktree, isRepository, listBranches, switchBranch, watchHead } from '../adapters/git/git';
 import { loadPolicies, policiesDir } from '../adapters/fs/policies';
 import { listProjectFiles, probeEnvironment, projectFiles, projectInstructions } from '../adapters/fs/project';
 import type { OpenSession, SessionStore } from '../adapters/store/sessions';
@@ -18,10 +19,10 @@ import { fold } from '../core/log/fold';
 import { environmentText } from '../core/notes/environment';
 import { BUILT_IN } from '../core/policy/built-in';
 import type { Policy } from '../core/policy/policy';
-import { newSession, summarize, type SessionRef } from '../core/session/session';
+import { inWorktree, newSession, summarize, type SessionRef } from '../core/session/session';
 import { App } from './app';
 import { errorText } from './format';
-import type { AutoApprove, GateOptions, Policies, Status } from './gate';
+import type { AutoApprove, GateOptions, Git, Policies, Status } from './gate';
 import { Sessions } from './sessions';
 import { Setup } from './setup';
 
@@ -29,7 +30,7 @@ export type LaunchOptions = {
   paths: ConfigPaths;
   servers?: LocalServer[];
   store: SessionStore;
-  // Project root: where bash runs (FR-21); default the working directory.
+  // Project root: where bash runs (FR-21) unless the session runs in its worktree; default the working directory.
   cwd?: string;
   // $EDITOR for `e` (FR-8), and on a file itself (`e` on an @path reference, FR-27).
   editor: Editor;
@@ -65,8 +66,11 @@ export function Launch(props: LaunchOptions) {
   // Policies that failed to load, reported once in the first status line.
   let failed: string[] = [];
   const root = props.cwd ?? process.cwd();
-  const environment = () => environmentText(probeEnvironment(root));
-  const project = { read: projectFiles(root), list: () => listProjectFiles(root), environment, open: (path: string) => props.openFile(resolve(root, path)) };
+  const repository = isRepository(root);
+  // The project as seen from where a session runs: the project root or its worktree.
+  const projectAt = (dir: string) => ({
+    read: projectFiles(dir), list: () => listProjectFiles(dir), environment: () => environmentText(probeEnvironment(dir)), open: (path: string) => props.openFile(resolve(dir, path)),
+  });
 
   const load = () => {
     const loaded = loadConfig(props.paths);
@@ -86,7 +90,7 @@ export function Launch(props: LaunchOptions) {
     const opened = props.store.create();
     const profile = loaded.profile();
     // The project instructions are read once, now (FR-29).
-    const events = newSession(profile.name, loaded.systemPrompt(profile), { environment: environment(), instructions: projectInstructions(root) });
+    const events = newSession(profile.name, loaded.systemPrompt(profile), { environment: projectAt(root).environment(), instructions: projectInstructions(root) });
     events.forEach(opened.log.append);
     // A new session starts with the configured policy on; without one, and when resumed, the app's stays.
     const name = loaded.config.defaultPolicy;
@@ -126,12 +130,38 @@ export function Launch(props: LaunchOptions) {
     session = opened;
     setCurrent(opened.id);
     setFound(null);
-    const runner = createRunner({ cwd: root, timeout: loaded.config.bash?.timeout ?? DEFAULT_TIMEOUT });
-    const searcher = createSearcher({ cwd: root, timeout: SEARCH_TIMEOUT });
-    const approval = { split, root, permissions: () => config.permissions };
+    const { dir, warning } = sessionDir(events, opened.id);
     const instruction = () => config.compactionInstruction();
-    setGate({ backend, runner, searcher, approval, editor: props.editor, clipboard: props.clipboard, log: opened.log, events, project, notice: withFailed(notice), openSessions: () => setView('sessions'), instruction, compactor: compactor(profile, opened.id), policies, autoApprove });
+    setGate({ backend, ...runningIn(dir, opened.id), editor: props.editor, clipboard: props.clipboard, log: opened.log, events, notice: withFailed(withWarning(notice, warning)), openSessions: () => setView('sessions'), instruction, compactor: compactor(profile, opened.id), policies, autoApprove });
   }
+  // Where the session runs: its worktree, created again if it is gone; the project root if that fails.
+  function sessionDir(events: SessionEvent[], id: string): { dir: string; warning: string | null } {
+    if (!repository || !inWorktree(events)) return { dir: root, warning: null };
+    try {
+      return { dir: ensureWorktree(root, id), warning: null };
+    } catch (e) {
+      return { dir: root, warning: `worktree: ${errorText(e)} – runs in ${root}` };
+    }
+  }
+  // What depends on where the session runs: bash and search (FR-21), the arguments' root (FR-22), the project, git.
+  function runningIn(dir: string, id: string): Pick<GateOptions, 'runner' | 'searcher' | 'approval' | 'project' | 'git'> {
+    const git: Git = {
+      branches: () => listBranches(dir),
+      switchBranch: name => switchBranch(dir, name),
+      watch: onChange => watchHead(dir, onChange),
+      worktree: on => (on ? ensureWorktree(root, id) : root),
+      // The Gate again, running in the session's directory now; its events as logged.
+      reopen: notice => setGate({ ...gate()!, ...runningIn(sessionDir(props.store.read(id), id).dir, id), events: props.store.read(id), notice }),
+    };
+    return {
+      runner: createRunner({ cwd: dir, timeout: config.config.bash?.timeout ?? DEFAULT_TIMEOUT }),
+      searcher: createSearcher({ cwd: dir, timeout: SEARCH_TIMEOUT }),
+      approval: { split: split!, root: dir, permissions: () => config.permissions },
+      project: projectAt(dir),
+      git: repository ? git : null,
+    };
+  }
+  const withWarning = (notice: Status, warning: string | null): Status => (warning ? { text: `${notice.text} · ${warning}`, tone: 'warn' } : notice);
   function withFailed(notice: Status): Status {
     const text = failed.map(f => `policy ${f} – not loaded`);
     failed = [];

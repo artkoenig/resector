@@ -1,6 +1,7 @@
 // Review Gate state: the Session Log in memory, Context = fold(events), token split, streaming answer.
-import { batch, createEffect, createMemo, createSignal } from 'solid-js';
+import { batch, createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 import type { Clipboard } from '../adapters/clipboard/clipboard';
+import type { Branches } from '../adapters/git/git';
 import type { Backend, ChatResult, Counted } from '../core/backend';
 import { deniedTools, quoted, sessionAllowed, sessionRules, verdictOf as decide, type Rule, type Split, type Verdict } from '../core/approval/approval';
 import { warmRows } from '../core/cache/cache';
@@ -12,7 +13,7 @@ import { refreshEnvironment } from '../core/notes/environment';
 import { parseReference, peekReferences, readReferences, references, type ReadFile } from '../core/notes/files';
 import { applyPolicy, summary, type Policy, type Ports } from '../core/policy/policy';
 import { renderNative, renderPrefixes, sentBlocks, type Request } from '../core/render/native';
-import { openingBlocks } from '../core/session/session';
+import { inWorktree, openingBlocks } from '../core/session/session';
 import { DEFAULT_MODES } from '../core/render/template';
 import { budget, lastDrift, type Budget } from '../core/tokens/budget';
 import { answerBlocks } from '../core/toolcall/answer';
@@ -41,6 +42,8 @@ export type GateOptions = {
   compactor?: () => Promise<Compactor | null>;
   policies?: Policies;
   autoApprove?: AutoApprove;
+  // Absent outside a git repository: the /git: commands are then not offered.
+  git?: Git | null;
 };
 // Context Policies (ADR 0001): the ones loaded at start, and the active one, which belongs to the app, not the session.
 export type Policies = { all: Policy[]; active: () => Policy | null; set: (policy: Policy | null) => void };
@@ -55,6 +58,16 @@ export type Project = { read: ReadFile; list: () => string[]; environment: () =>
 // when the session opened (ignored: project allow patterns).
 export type Approval = { split: Split; root: string; permissions: () => { rules: Rule[]; ignored: string[] } };
 
+// Git where the session runs: the branches, switching to one and watching for switches; worktree(on) prepares the session's own worktree
+// (or the project directory) and returns it, reopen shows the Gate again running there, with a status.
+export type Git = {
+  branches: () => Branches;
+  switchBranch: (name: string) => void;
+  watch: (onChange: () => void) => () => void;
+  worktree: (on: boolean) => string;
+  reopen: (notice: Status) => void;
+};
+
 // Slash commands (FR-6), in suggestion order.
 export const COMMANDS = [
   { name: '/sessions', arg: '', description: 'list, resume, rename, delete sessions' },
@@ -64,6 +77,8 @@ export const COMMANDS = [
   { name: '/policy', arg: '<name>', description: 'switch a Context Policy on or off' },
   { name: '/auto', arg: '', description: 'switch auto-approve of Tool Calls on or off' },
   { name: '/thinking', arg: '<mode>', description: 'set thinking for the next requests' },
+  { name: '/git:branch', arg: '<branch>', description: 'show or switch the git branch' },
+  { name: '/git:worktree', arg: '<on|off>', description: 'run the session in its own git worktree' },
 ] as const;
 // What a Kind Filter takes (FR-51), in glossary order: the Kinds each shows; a Tool Call never without its Tool Result.
 export type Filter = { name: string; kinds: readonly Kind[] };
@@ -125,7 +140,7 @@ function ownAutoApprove(): AutoApprove {
   return { on, set };
 }
 
-export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, policies = NO_POLICIES, autoApprove = ownAutoApprove(), ...options }: GateOptions) {
+export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, policies = NO_POLICIES, autoApprove = ownAutoApprove(), git = null, ...options }: GateOptions) {
   const [events, setEvents] = createSignal(options.events);
   const [counted, setCounted] = createSignal<{ prefixes: Request[]; split: Counted } | null>(null);
   const [streaming, setStreaming] = createSignal<Streaming | null>(null);
@@ -236,8 +251,22 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     );
   });
 
+  // The git branch where the session runs, as of the last look: tool calls may switch it too.
+  const branchesNow = (): Branches => {
+    try {
+      return git?.branches() ?? { current: null, all: [], elsewhere: {} };
+    } catch {
+      return { current: null, all: [], elsewhere: {} };
+    }
+  };
+  const branchNow = () => branchesNow().current;
+  const [branch, setBranch] = createSignal(branchNow());
+  // Switched outside the Gate too (another terminal): the header follows.
+  const unwatch = git?.watch(() => setBranch(branchNow()));
+  if (unwatch) onCleanup(unwatch);
   // The environment Note, refreshed when the environment changed (FR-28).
   function refresh() {
+    setBranch(branchNow());
     const edit = refreshEnvironment(events(), context(), project.environment());
     if (edit) append(edit);
   }
@@ -466,6 +495,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
       setRunning(null);
       follow(nextId());
       append(ops.toolResult(call, nextId(), result, tool.timeout));
+      setBranch(branchNow());
       if (result.stopped) held = true;
       goOn(result.stopped ? [...notes, `⚠ ${result.stopped}`] : notes);
     } catch (e) {
@@ -871,15 +901,55 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     setFilter(chosen);
   }
 
+  // Git (only in a repository) -------------------------------------------------------------------------------
+  // /git:branch <name> switches to an existing branch where the session runs; alone it shows the current one.
+  function switchBranch(name: string) {
+    const { current, all } = git!.branches();
+    if (!name) return setStatus({ text: `branch ${current ?? '(detached)'} · /git:branch ${all.filter(b => b !== current).join(' ')}`, tone: 'info' });
+    if (!idle()) return setStatus({ text: 'busy – switch the branch at the Gate', tone: 'info' });
+    try {
+      git!.switchBranch(name);
+    } catch (e) {
+      return setStatus({ text: `git: ${errorText(e)}`, tone: 'error' });
+    }
+    refresh();
+    setStatus({ text: `switched to branch ${name}`, tone: 'ok' });
+  }
+  // /git:worktree on runs the session in its own worktree, off in the project again; the worktree stays for the
+  // next on. Alone it says where the session runs.
+  function switchWorktree(value: string) {
+    const refusal = worktreeRefusal(value);
+    if (refusal) return setStatus(refusal);
+    try {
+      const dir = git!.worktree(value === 'on');
+      append({ type: 'WorktreeSet', on: value === 'on' });
+      git!.reopen({ text: value === 'on' ? `worktree on – session runs in ${dir}` : `worktree off – session runs in ${dir}, worktree kept`, tone: 'ok' });
+    } catch (e) {
+      setStatus({ text: `git: ${errorText(e)}`, tone: 'error' });
+    }
+  }
+  // Why /git:worktree <value> does not switch: no value, an unknown one, already so, or busy; null when it switches.
+  function worktreeRefusal(value: string): Status | null {
+    const now = inWorktree(events()) ? 'on' : 'off';
+    if (!value) return { text: `worktree ${now} · runs in ${approval.root} · /git:worktree ${now === 'on' ? 'off' : 'on'}`, tone: 'info' };
+    if (!['on', 'off'].includes(value)) return { text: `unknown value ${value}: /git:worktree on off`, tone: 'error' };
+    if (value === now) return { text: `worktree already ${value}`, tone: 'info' };
+    if (!idle()) return { text: 'busy – switch the worktree at the Gate', tone: 'info' };
+    return null;
+  }
+
   const commands: Record<CommandName, (arg: string) => void> = {
     '/sessions': openSessions, '/rename': renameSession, '/tools': toggleTool, '/filter': filterBy, '/policy': switchPolicy, '/auto': switchAutoApprove, '/thinking': setThinking,
+    '/git:branch': switchBranch, '/git:worktree': switchWorktree,
   };
+  // The commands offered: the /git: ones only in a git repository.
+  const offered = COMMANDS.filter(c => git || !c.name.startsWith('/git:'));
   // Input text: a known command runs with the rest as argument; an unknown `/word` is an error; anything else becomes
   // a User block and is sent right away – if sending is blocked, the block stays and the status says why (FR-6).
   function submit(text: string) {
     const name = text.trim().split(/\s/)[0]!;
-    if (name in commands) commands[name as CommandName](text.trim().slice(name.length).trim());
-    else if (/^\/\w+$/.test(name)) setStatus({ text: `unknown command ${name}: ${COMMANDS.map(c => c.name).join(' ')}`, tone: 'error' });
+    if (offered.some(c => c.name === name)) commands[name as CommandName](text.trim().slice(name.length).trim());
+    else if (/^\/[\w:]+$/.test(name)) setStatus({ text: `unknown command ${name}: ${offered.map(c => c.name).join(' ')}`, tone: 'error' });
     else if (text.trim()) addInput(text);
   }
   // `@path` references become rows of their own before the text; only a text is sent right away (FR-27).
@@ -940,6 +1010,15 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     policyNames: () => policies.all.map(p => p.name),
     policyDescription: (name: string) => policies.all.find(p => p.name === name)?.description ?? null,
     autoApprove: autoApprove.on,
+    commands: offered,
+    // Git where the session runs (null outside a repository): the branch, all branches with the other worktree holding
+    // one, the worktree on or off.
+    branch,
+    branches: () => {
+      const { all, elsewhere } = branchesNow();
+      return all.map(name => ({ name, elsewhere: elsewhere[name] ?? null }));
+    },
+    worktree: () => inWorktree(events()),
     thinking,
     thinkingOptions,
     submit,

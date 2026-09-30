@@ -28,14 +28,19 @@ function put(path: string, text: string) {
 }
 
 // policies: Context Policy modules by name, in policies/ next to the global config.
-type Setup = { config?: (url: string) => string; systemMd?: string; compactionMd?: string; policies?: Record<string, string>; servers?: (url: string) => LocalServer[]; sessions?: Record<string, SessionEvent[]>; locks?: Record<string, number>; resume?: true | string; files?: Record<string, string> };
+type Setup = { config?: (url: string) => string; systemMd?: string; compactionMd?: string; policies?: Record<string, string>; servers?: (url: string) => LocalServer[]; sessions?: Record<string, SessionEvent[]>; locks?: Record<string, number>; resume?: true | string; files?: Record<string, string>; git?: true };
 
-async function launch({ config, systemMd, compactionMd, policies = {}, servers, sessions = {}, locks = {}, resume, files = {} }: Setup = {}) {
+async function launch({ config, systemMd, compactionMd, policies = {}, servers, sessions = {}, locks = {}, resume, files = {}, git }: Setup = {}) {
   fake = startFakeLlamaCpp({ nCtx: 4096, model: 'qwen3-8b.gguf' });
   const root = mkdtempSync(join(tmpdir(), 'resector-launch-'));
   const project = join(root, 'project');
   mkdirSync(project, { recursive: true });
   for (const [name, text] of Object.entries(files)) put(join(project, name), text);
+  // git: the project is a repository with one commit on main.
+  if (git) {
+    put(join(project, 'a.txt'), 'a\n');
+    for (const args of [['init', '-q', '-b', 'main'], ['add', '.'], ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init']]) Bun.spawnSync(['git', ...args], { cwd: project });
+  }
   const paths = configPaths({ home: join(root, 'home'), cwd: project, env: {} });
   if (config) put(paths.global, config(fake.url));
   if (systemMd) put(join(dirname(paths.global), 'system.md'), systemMd);
@@ -480,4 +485,27 @@ test('auto-approve belongs to the app: it stays when switching sessions and is n
   await key('enter');
   expect(await frameMatching(ui, f => f.includes('resumed "fix the build"'))).toMatch(/local · thinking off · auto-approve/);
   expect(JSON.stringify(log())).not.toContain('auto');
+});
+
+test('/git:worktree on runs the session in its own worktree on its own branch; off back in the project, the worktree kept', async () => {
+  const { log, root } = await launch({ config: url => profileConfig(url), git: true });
+  await frameMatching(ui, f => f.includes('/ 2k'));
+  expect(line(ui.captureCharFrame(), /local/)).toMatch(/local · thinking off · ⎇ main /);
+  await command('/git:worktree on');
+  const worktree = join(root, 'project/.resector/worktrees/ses_test');
+  const frame = await frameMatching(ui, f => f.includes('worktree on – session runs in'));
+  expect(line(frame, /local/)).toMatch(/local · thinking off · ⎇ resector\/ses_test · worktree/);
+  expect(existsSync(join(worktree, 'a.txt'))).toBe(true);
+  expect(log().filter(e => e.type === 'WorktreeSet')).toEqual([{ type: 'WorktreeSet', on: true }]);
+  // The environment Note says where the session runs now.
+  expect(log().findLast(e => e.type === 'Edit')?.content).toContain(`cwd: ${worktree}\n`);
+  await command('/git:worktree off');
+  expect(line(await frameMatching(ui, f => f.includes('worktree off – session runs in')), /local/)).toMatch(/local · thinking off · ⎇ main /);
+  expect(existsSync(join(worktree, 'a.txt'))).toBe(true);
+});
+
+test('a session resumed with the worktree on runs in its worktree again, created anew if it is gone', async () => {
+  await launch({ config: url => profileConfig(url), git: true, sessions: { ses_a: [...chat('local'), { type: 'WorktreeSet', on: true }] }, resume: true });
+  const frame = await frameMatching(ui, f => f.includes('resumed "hi there"'));
+  expect(line(frame, /local/)).toMatch(/⎇ resector\/ses_a · worktree/);
 });

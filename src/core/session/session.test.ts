@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { TOOLS } from '../toolcall/bash';
-import { newSession, openingBlocks, summarize } from './session';
+import { inWorktree, newSession, openingBlocks, summarize } from './session';
 
 const start = newSession('qwen', 'You are an agent.');
 const user = (id: number, content: string): SessionEvent => ({ type: 'BlockAdded', id, kind: 'User', origin: 'user', content });
@@ -61,4 +61,11 @@ test('the blocks a session starts with are those newSession added, not file refe
   expect([...openingBlocks(events)]).toEqual([1, 2, 3, 4]);
   expect([...openingBlocks([...newSession('qwen', 'sys'), user(3, 'hi'), user(4, 'again')])]).toEqual([1, 2]);
   expect([...openingBlocks(newSession('qwen', 'sys'))]).toEqual([1, 2]);
+});
+
+test('a session runs in its worktree after the last switch on; a new one in the project', () => {
+  const events = newSession('p', 'sys');
+  expect(inWorktree(events)).toBe(false);
+  expect(inWorktree([...events, { type: 'WorktreeSet', on: true }, { type: 'SessionRenamed', title: 't' }])).toBe(true);
+  expect(inWorktree([...events, { type: 'WorktreeSet', on: true }, { type: 'WorktreeSet', on: false }])).toBe(false);
 });
