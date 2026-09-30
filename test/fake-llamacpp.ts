@@ -83,6 +83,8 @@ export function startFakeLlamaCpp({ jinja = true, nCtx = 4096, model = 'qwen3-8b
   // One slot's prompt cache: the last prompt and its answer. Unless scripted, cache_n is the common
   // prefix with it, less the last prompt token, which llama.cpp always evaluates.
   let slot: number[] = [];
+  // While held, /tokenize answers only once released: counts stay pending.
+  let held: Promise<void> | null = null;
   const reuse = (prompt: number[]) => Math.min(commonPrefix(prompt, slot), prompt.length - 1);
 
   const server = Bun.serve({
@@ -97,7 +99,10 @@ export function startFakeLlamaCpp({ jinja = true, nCtx = 4096, model = 'qwen3-8b
         if (body.tools && !jinja) return error('tools param requires --jinja flag');
         return Response.json({ prompt: applyTemplate(body.messages, body.add_generation_prompt !== false, body.tools) });
       }
-      if (url.pathname === '/tokenize') return Response.json({ tokens: tokenize(body.content, body.add_special === true) });
+      if (url.pathname === '/tokenize') {
+        await held;
+        return Response.json({ tokens: tokenize(body.content, body.add_special === true) });
+      }
       if (url.pathname === '/v1/chat/completions') {
         chatRequests.push(body);
         const reply = replies.shift();
@@ -116,6 +121,15 @@ export function startFakeLlamaCpp({ jinja = true, nCtx = 4096, model = 'qwen3-8b
     reply: (r: Reply) => replies.push(r),
     chatRequests,
     templateRequests,
+    // Holds token counts until the returned release is called.
+    holdCounts: () => {
+      let release!: () => void;
+      held = new Promise(resolve => (release = resolve));
+      return () => {
+        held = null;
+        release();
+      };
+    },
     stop: () => server.stop(true),
   };
 }
