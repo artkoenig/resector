@@ -2,6 +2,7 @@
 import { type MouseEvent, type ScrollBoxRenderable, TextAttributes } from '@opentui/core';
 import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/solid';
 import { createEffect, createMemo, createSignal, For, type JSX, on, onCleanup, Show } from 'solid-js';
+import { basename } from 'node:path';
 import { quoted, sessionRules, type Action, type Verdict } from '../core/approval/approval';
 import type { Kind } from '../core/log/events';
 import type { Block } from '../core/log/fold';
@@ -10,7 +11,7 @@ import { TOOL_NAMES } from '../core/toolcall/bash';
 import { isRecommended, shownAnswer } from '../core/toolcall/question';
 import * as dock from './dock';
 import type { DockState } from './dock';
-import { COMMANDS, type Compaction, createGate, FILTERS, type Gate, type GateOptions, type Status } from './gate';
+import { type Compaction, createGate, FILTERS, type Gate, type GateOptions, type Status } from './gate';
 import { around, cell, count, flagsOf, formatTokens, right, thinkingLabel, titleOf } from './format';
 import { Band, ErrorBand, errorBandLines, Footer, footerLines, HeaderBand, type Hint, PROMPT_LINES, PromptBand } from './parts';
 import { ACCENT, BG, BORDER, FAINT, KIND_COLOR, MUTED, PANEL_BG, SELECTED_BG, TEXT, TONE } from './theme';
@@ -77,7 +78,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
   const suggestions = createMemo((): Suggestion[] => {
     if (mode() !== 'input') return [];
     if (/^\/\S*$/.test(draft())) {
-      return COMMANDS.filter(c => c.name.startsWith(draft())).map(c => ({
+      return gate.commands.filter(c => c.name.startsWith(draft())).map(c => ({
         label: `${c.name} ${c.arg}`, description: c.description, draft: c.name + (c.arg ? ' ' : ''), run: c.arg && draft() !== c.name ? null : c.name,
       }));
     }
@@ -92,11 +93,12 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     const found = fileCompletions(draft(), files());
     return found ? found.paths.map(path => ({ label: path, description: '', draft: `${draft().slice(0, found.at)}${path} `, run: null })) : [];
   });
-  // The values after `/filter ` (FR-51), `all` first while one is off, and `/policy `, `off` first while one is on; null for any other draft.
+  // The values after `/filter ` (FR-51), `all` first while one is off, `/policy `, `off` first while one is on, `/thinking `
+  // and the /git: commands; null for any other draft.
   function valueSuggestions(text: string): Suggestion[] | null {
-    const [, command, typed] = /^\/(filter|policy|thinking) (\S*)$/.exec(text) ?? [];
-    if (!command) return null;
-    const values = command === 'filter' ? filterValues() : command === 'policy' ? policyValues() : thinkingValues();
+    const [, command, typed] = /^\/(filter|policy|thinking|git:branch|git:worktree) (\S*)$/.exec(text) ?? [];
+    if (!command || !gate.commands.some(c => c.name === `/${command}`)) return null;
+    const values = { filter: filterValues, policy: policyValues, thinking: thinkingValues, 'git:branch': branchValues, 'git:worktree': worktreeValues }[command]!();
     return values
       .filter(v => v.name.toLowerCase().startsWith(typed!.toLowerCase()))
       .map(v => ({ label: v.name, description: v.description, draft: `/${command} ${v.name}`, run: `/${command} ${v.name}` }));
@@ -113,6 +115,17 @@ export function App(props: GateOptions & { onQuit: () => void }) {
     }),
   ];
   const thinkingValues = () => gate.thinkingOptions().map(o => ({ name: o.name, description: o.value === gate.thinking() ? 'active' : 'switch on' }));
+  // Branches in another worktree last: git refuses to switch to them.
+  const branchValues = () =>
+    gate
+      .branches()
+      .sort((a, b) => Number(!!a.elsewhere) - Number(!!b.elsewhere))
+      .map(({ name, elsewhere }) => ({
+      name,
+      description: name === gate.branch() ? 'current' : elsewhere ? `in worktree ${basename(elsewhere)}` : 'switch to',
+    }));
+  const worktreeValues = () =>
+    gate.worktree() ? [{ name: 'off', description: 'run in the project directory, keep the worktree' }] : [{ name: 'on', description: 'run in .resector/worktrees/<session>' }];
   const chosen = () => Math.min(suggested(), suggestions().length - 1);
   const suggestion = () => suggestions()[chosen()];
   const editDraft = (text: string) => {
@@ -634,9 +647,11 @@ function Header(props: { gate: Gate; width: number }) {
   };
   const tone = () => ({ ok: undefined, warn: TONE.warn, over: TONE.error })[budget()?.tone ?? 'ok'];
   const profile = () => props.gate.profile();
-  // The active Context Policy follows the thinking mode (ADR 0001), then auto-approve (FR-23).
+  // The active Context Policy follows the thinking mode (ADR 0001), then auto-approve (FR-23), then the git branch
+  // and the worktree.
+  const git = () => (props.gate.branch() ? ` · ⎇ ${props.gate.branch()}` : '') + (props.gate.worktree() ? ' · worktree' : '');
   const thinking = () =>
-    ` · thinking ${thinkingLabel(props.gate.thinking())}${props.gate.policy() ? ` · policy ${props.gate.policy()}` : ''}${props.gate.autoApprove() ? ' · auto-approve' : ''}`;
+    ` · thinking ${thinkingLabel(props.gate.thinking())}${props.gate.policy() ? ` · policy ${props.gate.policy()}` : ''}${props.gate.autoApprove() ? ' · auto-approve' : ''}${git()}`;
   return (
     <HeaderBand
       width={props.width}

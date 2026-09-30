@@ -53,6 +53,8 @@ export type SessionEvent =
   | { type: 'AllowRuleAdded'; pattern: string }
   // Thinking for the following requests of the session, instead of the Model Profile's (FR-49).
   | { type: 'ThinkingSet'; thinking: Thinking }
+  // The session runs in its own git worktree (on) or in the project directory (off), also after resume.
+  | { type: 'WorktreeSet'; on: boolean }
   // Counter-event (NFR-3): cancels the event at index `eventId` of the Session Log.
   | { type: 'Undo'; eventId: number }
   | { type: 'ResponseReceived'; usage: Usage | null; cached: number | null };
