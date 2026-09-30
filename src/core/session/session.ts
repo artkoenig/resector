@@ -45,6 +45,9 @@ export function openingBlocks(events: SessionEvent[]): Set<number> {
   return ids;
 }
 
+// Whether the session runs in its own git worktree: the last switch wins, a new session runs in the project.
+export const inWorktree = (events: SessionEvent[]): boolean => events.findLast(e => e.type === 'WorktreeSet')?.on === true;
+
 // Title = the last session rename, else the first line of the first User message (FR-34).
 function sessionTitle(events: SessionEvent[]): Pick<SessionSummary, 'title' | 'renamed'> {
   const renamed = events.findLast(e => e.type === 'SessionRenamed')?.title;

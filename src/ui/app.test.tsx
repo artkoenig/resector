@@ -49,8 +49,8 @@ let openedFiles: string[];
 // `tools`: the Tools Block (default bash only, so token counts stay put). `users`: User blocks already in the Session Log, not yet sent; `global`, `project`: permission rules of the config.
 // `calls`: pending Tool Calls after them, as at a resume (a string: a bash command). `template`: the chat template the server reports.
 // `window`: the server's context size; `exact`: false counts like an inexact tokenizer (Ollama, LM Studio).
-type Start = { tools?: string; template?: string; window?: number; exact?: boolean; notes?: SessionNotes; timeout?: number; compactor?: GateOptions['compactor']; policies?: Policy[]; users?: string[]; calls?: (string | { tool: Tool; content: string })[]; global?: Permissions; project?: Permissions };
-async function start({ tools = BASH_TOOLS, template, window = 4096, exact = true, notes, timeout = 120, compactor, policies = [], users = [], calls = [], global, project: own }: Start = {}) {
+type Start = { tools?: string; template?: string; window?: number; exact?: boolean; notes?: SessionNotes; timeout?: number; compactor?: GateOptions['compactor']; policies?: Policy[]; users?: string[]; calls?: (string | { tool: Tool; content: string })[]; global?: Permissions; project?: Permissions; git?: GateOptions['git'] };
+async function start({ tools = BASH_TOOLS, template, window = 4096, exact = true, notes, timeout = 120, compactor, policies = [], users = [], calls = [], global, project: own, git }: Start = {}) {
   editor = async text => text;
   copied = [];
   environment = notes?.environment ?? '';
@@ -73,7 +73,7 @@ async function start({ tools = BASH_TOOLS, template, window = 4096, exact = true
   const files = { read: projectFiles(project), list: () => listProjectFiles(project), environment: () => environment, open: async (path: string) => void openedFiles.push(path) };
   const [active, setActive] = createSignal<Policy | null>(null);
   ui = await testRender(
-    () => <App backend={backend} runner={runner} searcher={searcher} approval={approval} editor={text => editor(text)} project={files} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} policies={{ all: policies, active, set: setActive }} openSessions={() => opened.push('sessions')} onQuit={() => {}} />,
+    () => <App backend={backend} runner={runner} searcher={searcher} approval={approval} editor={text => editor(text)} project={files} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} policies={{ all: policies, active, set: setActive }} openSessions={() => opened.push('sessions')} git={git} onQuit={() => {}} />,
     { width: 80, height: 20 },
   );
   const size = ` / ${formatTokens(window)}`;
@@ -2041,4 +2041,80 @@ test('a request failing after the policy ran still says what the policy did', as
   fake.reply({ chunks: [], error: 'server overloaded' });
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('backend error') && f.includes('trim: 1 User removed'));
+});
+
+// Git as the Gate sees it: branches main and feature/x, busy in another worktree; switching, the worktree and reopening are recorded.
+function fakeGit() {
+  const calls: string[] = [];
+  let current = 'main';
+  let switched = () => {};
+  // Another tool switches the branch.
+  const switchOutside = (name: string) => ((current = name), switched());
+  const git: NonNullable<GateOptions['git']> = {
+    branches: () => ({ current, all: ['busy', 'feature/x', 'main'], elsewhere: { busy: '/p/.resector/worktrees/ses_other' } }),
+    switchBranch: name => {
+      if (name === 'dirty') throw new Error('error: your local changes would be overwritten');
+      calls.push(`switch ${name}`);
+      current = name;
+    },
+    watch: onChange => ((switched = onChange), () => (switched = () => {})),
+    worktree: on => (calls.push(`worktree ${on}`), on ? '/p/.resector/worktrees/ses_test' : '/p'),
+    reopen: notice => void calls.push(`reopen ${notice.text}`),
+  };
+  return { git, calls, switchOutside };
+}
+
+test('outside a git repository the /git: commands are neither offered nor run', async () => {
+  await start();
+  ui.mockInput.pressTab();
+  await ui.flush();
+  await ui.mockInput.typeText('/');
+  const frame = await frameMatching(ui, f => f.includes('/sessions'));
+  expect(frame).not.toContain('/git:');
+  await escape();
+  await escape();
+  await write('/git:branch');
+  await frameMatching(ui, f => f.includes('unknown command /git:branch'));
+});
+
+test('/git:branch shows the branch, suggests the others, marks those in another worktree and switches to one; the header shows it', async () => {
+  const { git, calls } = fakeGit();
+  await start({ git });
+  expect(line(ui.captureCharFrame(), /default/)).toMatch(/default · thinking off · ⎇ main +52/);
+  await write('/git:branch');
+  await frameMatching(ui, f => f.includes('branch main · /git:branch busy feature/x'));
+  ui.mockInput.pressTab();
+  await ui.flush();
+  await ui.mockInput.typeText('/git:branch ');
+  const frame = await frameMatching(ui, f => f.includes('switch to'));
+  expect(line(frame, /feature\/x/)).toMatch(/feature\/x +switch to/);
+  expect(line(frame, /main +current/)).toBeDefined();
+  expect(line(frame, /busy/)).toMatch(/busy +in worktree ses_other/);
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('switched to branch feature/x') && /thinking off · ⎇ feature\/x/.test(f));
+  expect(calls).toEqual(['switch feature/x']);
+  await write('/git:branch dirty');
+  await frameMatching(ui, f => f.includes('your local changes would be overwritten'));
+});
+
+test('a branch switched by another tool shows in the header', async () => {
+  const { git, switchOutside } = fakeGit();
+  await start({ git });
+  switchOutside('feature/x');
+  await frameMatching(ui, f => /thinking off · ⎇ feature\/x/.test(f));
+});
+
+test('/git:worktree on prepares the worktree, logs the switch and reopens the Gate there', async () => {
+  const { git, calls } = fakeGit();
+  const { events } = await start({ git });
+  await write('/git:worktree');
+  await frameMatching(ui, f => f.includes('worktree off · runs in') && f.includes('/git:worktree on'));
+  await write('/git:worktree maybe');
+  await frameMatching(ui, f => f.includes('unknown value maybe') && f.includes('/git:worktree on off'));
+  await write('/git:worktree on');
+  await frameMatching(ui, f => f.includes('worktree · ') || f.includes('· worktree'));
+  expect(calls).toEqual(['worktree true', 'reopen worktree on – session runs in /p/.resector/worktrees/ses_test']);
+  expect(events().at(-1)).toEqual({ type: 'WorktreeSet', on: true });
+  await write('/git:worktree on');
+  await frameMatching(ui, f => f.includes('worktree already on'));
 });
