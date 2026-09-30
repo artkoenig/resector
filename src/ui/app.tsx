@@ -1,5 +1,5 @@
 // The one screen: header band · block table · preview · prompt band · footer.
-import { type MouseEvent, type ScrollBoxRenderable, TextAttributes } from '@opentui/core';
+import { type MouseEvent, type ScrollBoxRenderable } from '@opentui/core';
 import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/solid';
 import { createEffect, createMemo, createSignal, For, type JSX, on, onCleanup, Show } from 'solid-js';
 import { basename } from 'node:path';
@@ -14,6 +14,7 @@ import type { DockState } from './dock';
 import { type Compaction, createGate, FILTERS, type Gate, type GateOptions, type Status } from './gate';
 import { around, cell, count, flagsOf, formatTokens, right, thinkingLabel, titleOf } from './format';
 import { Band, ErrorBand, errorBandLines, Footer, footerLines, HeaderBand, type Hint, PROMPT_LINES, PromptBand } from './parts';
+import { Preview, type Shown } from './preview';
 import { ACCENT, BG, BORDER, FAINT, KIND_COLOR, MUTED, PANEL_BG, SELECTED_BG, TEXT, TONE } from './theme';
 
 const SPINNER = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
@@ -344,6 +345,11 @@ export function App(props: GateOptions & { onQuit: () => void }) {
       cursorColor={ACCENT}
     />
   );
+  // Live rows stream and have no block yet.
+  const shown = (row: Row): Shown => {
+    const block = row.live ? undefined : gate.context().blocks.find(b => b.id === row.id);
+    return { kind: row.kind, content: row.content, tool: block?.tool, file: block?.file, live: row.live };
+  };
   const selectedRow = () => rows().find(r => r.id === gate.selected() && !r.removed);
   const isSelected = (row: Row) => !row.removed && row.id === gate.selected();
   // Copy on select: the text selected with the mouse goes to the clipboard on release.
@@ -407,12 +413,7 @@ export function App(props: GateOptions & { onQuit: () => void }) {
                     {(verdict: () => Verdict) => <Checks verdict={verdict()} />}
                   </Show>
                   <ReferenceHint block={row().live ? undefined : gate.context().blocks.find(b => b.id === row().id)} />
-                  {/* Two elements: opentui keeps italic once set on a span. */}
-                  <Show when={row().kind === 'Thinking'} fallback={<text fg={MUTED}>{row().content}</text>}>
-                    <text fg={MUTED} attributes={TextAttributes.ITALIC}>
-                      {row().content}
-                    </text>
-                  </Show>
+                  <Preview shown={shown(row())} />
                 </scrollbox>
               </Band>
             </>

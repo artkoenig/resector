@@ -144,9 +144,8 @@ test('first start without any local model server fails with a hint', async () =>
 
 test('the Gate opens with the default Model Profile, its window and the system.md prompt', async () => {
   await launch({ config: url => profileConfig(url), systemMd: 'You are terse.' });
-  const frame = await frameMatching(ui, f => f.includes('/ 2k'));
+  const frame = await frameMatching(ui, f => f.includes('/ 2k') && f.includes('You are terse.'));
   expect(frame).toMatch(/^ {2}resector {2}local +/m);
-  expect(frame).toContain('You are terse.');
 });
 
 test('a Model Profile whose backend cannot be opened fails before the Gate', async () => {
