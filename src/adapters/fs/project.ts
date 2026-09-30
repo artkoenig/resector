@@ -2,7 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, resolve, sep } from 'node:path';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 import type { Environment } from '../../core/notes/environment';
 import type { ReadFile } from '../../core/notes/files';
 import type { Instructions } from '../../core/session/session';
@@ -42,10 +42,10 @@ export function listProjectFiles(root: string, limit = 20000): string[] {
 
 const INSTRUCTIONS = ['AGENTS.md', 'CLAUDE.md'];
 
-// The user's own instructions for a project, outside its repository: `projects/<path>/` next to the global config,
-// the project path with every other character than letters and digits as `-` (like ~/.claude/projects).
+// The user's own instructions for a project, outside its repository: `projects/<name>/` next to the global config,
+// the project's directory name.
 export const personalInstructionsDir = (paths: ConfigPaths, root: string) =>
-  join(dirname(paths.global), 'projects', root.replace(/[^a-zA-Z0-9]/g, '-'));
+  join(dirname(paths.global), 'projects', basename(root));
 
 // `AGENTS.md` and `CLAUDE.md` in the project root, then in the personal directory (named with `~` for the home
 // directory, so its file name fits the Gate). A file with the same content as one before (e.g. CLAUDE.md a symlink
