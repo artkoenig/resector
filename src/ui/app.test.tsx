@@ -100,7 +100,7 @@ async function write(text: string) {
 
 test('the Gate shows every Context Block with its exact tokens and the Template row', async () => {
   const { events } = await start();
-  const frame = ui.captureCharFrame();
+  const frame = await frameMatching(ui, f => previewed(f) === 'You are an agent.');
   expect(line(frame, /default/)).toMatch(/^ {2}resector {2}default · thinking off +52 \/ 4k/);
   expect(frame.split('\n')[1]).toMatch(/^ {2}▀+/);
   expect(line(frame, /Type/)).toMatch(/#\s+Type\s+Content\s+Tokens\s+Cache\s+Flags/);
@@ -327,6 +327,44 @@ test('the preview shows every block muted, Thinking in italics', async () => {
   await frameMatching(ui, f => previewed(f) === 'hi there');
   expect(fg('hi there')).toBe('138,138,138');
   expect(ui.captureSpans().lines.flatMap(l => l.spans).filter(s => s.text.includes('hi there')).some(s => (s.attributes & TextAttributes.ITALIC) !== 0)).toBe(false);
+});
+
+// The colour of the last span holding `text`, once it is not the muted one: tree-sitter highlights in the background.
+async function highlighted(text: string) {
+  const fg = () => {
+    const span = ui.captureSpans().lines.flatMap(l => l.spans).findLast(s => s.text.includes(text));
+    return span ? Array.from(span.fg.buffer.slice(0, 3)).join() : '';
+  };
+  await until(() => fg() !== '' && fg() !== '138,138,138');
+  return fg();
+}
+
+test('the preview renders Markdown: markers hidden, headings and bold stand out', async () => {
+  await start();
+  fake.reply({ chunks: ['# Plan\n\nfirst **bold** step\n\n- one\n- two'] });
+  await write('hi there');
+  const frame = await frameMatching(ui, f => f.includes('answer complete') && /^┃ Plan\s/m.test(f));
+  expect(frame).toMatch(/^┃ first bold step\s/m);
+  expect(frame).not.toContain('**');
+  const bold = ui.captureSpans().lines.flatMap(l => l.spans).findLast(s => s.text.includes('bold'))!;
+  expect(bold.attributes & TextAttributes.BOLD).not.toBe(0);
+});
+
+test('a file Note is highlighted by its file type', async () => {
+  writeFileSync(join(project, 'code.ts'), 'const answer = "yes";\n');
+  await start();
+  await write('@code.ts');
+  await frameMatching(ui, f => f.includes('[code.ts]'));
+  expect(await highlighted('const')).toBe('157,124,216');
+  expect(await highlighted('"yes"')).toBe('127,216,143');
+});
+
+test('a bash Tool Call is highlighted as bash', async () => {
+  await ran('echo "hi"');
+  await press('up');
+  await press('up');
+  await frameMatching(ui, f => f.includes('┃ Tool Call'));
+  expect(await highlighted('"hi"')).toBe('127,216,143');
 });
 
 test('while the answer streams, ↑↓ select and the preview scrolls; the Context stays as sent', async () => {
@@ -880,8 +918,7 @@ test('reading an older row, the tool loop leaves the selection there; back on th
   await ui.flush();
   await ui.mockInput.typeText('more');
   ui.mockInput.pressEnter();
-  frame = await frameMatching(ui, f => f.includes('answer complete') && /Assistant\s+end/.test(f));
-  expect(previewed(frame)).toBe('end');
+  await frameMatching(ui, f => f.includes('answer complete') && /Assistant\s+end/.test(f) && previewed(f) === 'end');
 });
 
 test('Esc while the answer streams: it completes, its calls wait, even allowed ones; Enter runs them', async () => {
@@ -1158,7 +1195,7 @@ test('an editor that fails leaves the block unchanged', async () => {
 
 test('text selected with the mouse is copied to the clipboard on release', async () => {
   await start();
-  const frame = ui.captureCharFrame();
+  const frame = await frameMatching(ui, f => f.includes('You are an agent.'));
   const y = frame.split('\n').findIndex(l => l.includes('You are an agent.'));
   const x = frame.split('\n')[y]!.indexOf('You');
   await ui.mockMouse.drag(x, y, x + 6, y);
