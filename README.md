@@ -143,8 +143,6 @@ mkdir -p ~/.config/resector/projects/-Users-me-resector
 $EDITOR ~/.config/resector/projects/-Users-me-resector/AGENTS.md
 ```
 
-Session Logs are written to `~/.config/resector/projects/<project>/sessions/`, next to your personal `AGENTS.md`/`CLAUDE.md` for the project.
-
 ```jsonc
 {
   "$schema": "https://raw.githubusercontent.com/artkoenig/resector/main/config.schema.json",
