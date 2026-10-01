@@ -1,5 +1,5 @@
 // Startup: read the config (or run the first-start setup), open a new or resumed session, then show the Gate.
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { createSignal, onMount, Show } from 'solid-js';
 import { connect } from '../adapters/backend/connect';
 import { discover, LOCAL_SERVERS, type DiscoveredModel, type LocalServer } from '../adapters/backend/discover';
@@ -7,7 +7,7 @@ import { createRunner } from '../adapters/bash/runner';
 import { createSearcher } from '../adapters/search/ddgr';
 import { createSplit } from '../adapters/bash/split';
 import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
-import { ensureWorktree, isRepository, listBranches, status, switchBranch, watchHead } from '../adapters/git/git';
+import { ensureWorktree, isRepository, listBranches, removeWorktree, status, switchBranch, watchHead, worktreeDirty } from '../adapters/git/git';
 import { loadPolicies } from '../adapters/fs/policies';
 import { listProjectFiles, probeEnvironment, projectFiles, projectInstructions } from '../adapters/fs/project';
 import type { OpenSession, SessionStore } from '../adapters/store/sessions';
@@ -66,9 +66,14 @@ export function Launch(props: LaunchOptions) {
   let failed: string[] = [];
   const root = props.cwd ?? process.cwd();
   const repository = isRepository(root);
+  // Session Worktrees live in the Project Home's data root (ADR 0004).
+  const worktrees = join(props.paths.projectHome.data, 'worktrees');
   // The project as seen from where a session runs: the project root or its worktree.
   const projectAt = (dir: string) => ({
-    read: projectFiles(dir), list: () => listProjectFiles(dir), environment: () => environmentText(probeEnvironment(dir)), open: (path: string) => props.openFile(resolve(dir, path)),
+    read: projectFiles(dir),
+    list: () => listProjectFiles(dir),
+    environment: () => environmentText({ ...probeEnvironment(dir), worktree: dir !== root }),
+    open: (path: string) => props.openFile(resolve(dir, path)),
   });
 
   const load = () => {
@@ -137,7 +142,7 @@ export function Launch(props: LaunchOptions) {
   function sessionDir(events: SessionEvent[], id: string): { dir: string; warning: string | null } {
     if (!repository || !inWorktree(events)) return { dir: root, warning: null };
     try {
-      return { dir: ensureWorktree(root, id), warning: null };
+      return { dir: ensureWorktree(root, worktrees, id), warning: null };
     } catch (e) {
       return { dir: root, warning: `worktree: ${errorText(e)} – runs in ${root}` };
     }
@@ -149,7 +154,7 @@ export function Launch(props: LaunchOptions) {
       status: () => status(dir),
       switchBranch: name => switchBranch(dir, name),
       watch: onChange => watchHead(dir, onChange),
-      worktree: on => (on ? ensureWorktree(root, id) : root),
+      worktree: on => (on ? ensureWorktree(root, worktrees, id) : root),
       // The Gate again, running in the session's directory now; its events as logged.
       reopen: notice => setGate({ ...gate()!, ...runningIn(sessionDir(props.store.read(id), id).dir, id), events: props.store.read(id), notice }),
     };
@@ -175,14 +180,16 @@ export function Launch(props: LaunchOptions) {
     setGate({ ...gate()!, events, notice: undefined });
     setView('gate');
   };
-  // Deleting the current session first switches to the newest other one, or a new empty session.
-  async function remove(id: string): Promise<string> {
+  // Deleting the current session first switches to the newest other one, or a new empty session. Its worktree goes
+  // first, with its uncommitted changes only when the user confirmed them (force); its branch only if merged.
+  async function remove(id: string, force: boolean): Promise<string> {
     const titleOf = (id: string) => summarize(props.store.read(id)).title;
     const title = titleOf(id);
     const switched = id === current();
     if (switched) await open(load(), props.store.list().find(s => !s.locked && s.id !== id)?.id);
+    const removed = repository ? removeWorktree(root, worktrees, id, force) : null;
     props.store.delete(id);
-    return `deleted "${title}"` + (switched ? ` · switched to "${titleOf(current())}"` : '');
+    return [`deleted "${title}"`, ...(switched ? [`switched to "${titleOf(current())}"`] : []), ...(removed?.kept ? [`branch ${removed.branch} kept – not merged`] : [])].join(' · ');
   }
   const rename = (id: string, title: string) => {
     const event: SessionEvent = { type: 'SessionRenamed', title };
@@ -236,6 +243,7 @@ export function Launch(props: LaunchOptions) {
           open={id => (id === current() ? Promise.resolve(back()) : switchTo(id))}
           create={() => switchTo()}
           remove={remove}
+          worktreeDirty={id => repository && worktreeDirty(worktrees, id)}
           rename={rename}
           back={back}
         />

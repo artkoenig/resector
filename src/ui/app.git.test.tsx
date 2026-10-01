@@ -18,7 +18,7 @@ function fakeGit() {
   // Another tool dirties or cleans the working tree.
   const dirtyOutside = (d: boolean) => ((dirty = d), dirtyChanged());
   const git: NonNullable<GateOptions['git']> = {
-    branches: () => ({ current, all: ['busy', 'feature/x', 'main'], elsewhere: { busy: '/p/.resector/worktrees/ses_other' } }),
+    branches: () => ({ current, all: ['busy', 'feature/x', 'main'], elsewhere: { busy: '/data/worktrees/ses_other' } }),
     status: () => dirty,
     switchBranch: name => {
       if (name === 'dirty') throw new Error('error: your local changes would be overwritten');
@@ -27,9 +27,9 @@ function fakeGit() {
     },
     watch: onChange => ((branchChanged = dirtyChanged = onChange), () => (branchChanged = dirtyChanged = () => {})),
     worktree: on => {
-      if (current === 'locked') throw new Error("fatal: '/p/.resector/worktrees/ses_test' is a missing but locked worktree");
+      if (current === 'locked') throw new Error("fatal: '/data/worktrees/ses_test' is a missing but locked worktree");
       calls.push(`worktree ${on}`);
-      return on ? '/p/.resector/worktrees/ses_test' : '/p';
+      return on ? '/data/worktrees/ses_test' : '/p';
     },
     reopen: notice => void calls.push(`reopen ${notice.text}`),
   };
@@ -95,7 +95,7 @@ test('/git:worktree on prepares the worktree, logs the switch and reopens the Ga
   await frameMatching(ui, f => f.includes('unknown value maybe') && f.includes('/git:worktree on off'));
   await write('/git:worktree on');
   await frameMatching(ui, f => f.includes('worktree · ') || f.includes('· worktree'));
-  expect(calls).toEqual(['worktree true', 'reopen worktree on – session runs in /p/.resector/worktrees/ses_test']);
+  expect(calls).toEqual(['worktree true', 'reopen worktree on – session runs in /data/worktrees/ses_test']);
   expect(events().at(-1)).toEqual({ type: 'WorktreeSet', on: true });
   await write('/git:worktree on');
   await frameMatching(ui, f => f.includes('worktree already on'));

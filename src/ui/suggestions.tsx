@@ -65,7 +65,7 @@ export function createSuggestions(gate: Screen, draft: () => string, mode: () =>
       description: name === gate.branch() ? 'current' : elsewhere ? `in worktree ${basename(elsewhere)}` : 'switch to',
     }));
   const worktreeValues = () =>
-    gate.worktree() ? [{ name: 'off', description: 'run in the project directory, keep the worktree' }] : [{ name: 'on', description: 'run in .resector/worktrees/<session>' }];
+    gate.worktree() ? [{ name: 'off', description: 'run in the project directory, keep the worktree' }] : [{ name: 'on', description: 'run in its own worktree in the Project Home' }];
   const chosen = () => Math.min(suggested(), suggestions().length - 1);
   return {
     suggestions,

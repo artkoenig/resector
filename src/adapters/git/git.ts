@@ -1,6 +1,6 @@
 // Git in the project: its branches, switching the branch, and a session's own worktree.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, watch, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, watch } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 // current: null on a detached HEAD. elsewhere: the branches checked out in another worktree, with its directory;
@@ -66,20 +66,38 @@ export function watchHead(root: string, onChange: () => void): () => void {
 
 export const worktreeBranch = (session: string) => `resector/${session}`;
 
-// The session's worktree under `.resector/worktrees/<session>` on branch `resector/<session>`, created from HEAD the
-// first time and reused afterwards; returns the directory the session runs in (the project's subdirectory in it).
-export function ensureWorktree(root: string, session: string): string {
-  const dir = join(root, '.resector/worktrees');
-  const path = join(dir, session);
+const hasBranch = (root: string, branch: string) =>
+  spawnSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], { cwd: root }).status === 0;
+
+// The session's worktree under worktrees/<session> (the Project Home's data root, outside the repository) on branch
+// `resector/<session>`, created from HEAD the first time and reused afterwards; returns the directory the session
+// runs in (the project's subdirectory in it). Entries of worktrees deleted by hand are pruned first.
+export function ensureWorktree(root: string, worktrees: string, session: string): string {
+  const path = join(worktrees, session);
   const prefix = git(root, 'rev-parse', '--show-prefix');
+  git(root, 'worktree', 'prune');
   if (!existsSync(join(path, '.git'))) {
-    mkdirSync(dir, { recursive: true });
-    // Ignored in the project itself, without touching its .gitignore.
-    writeFileSync(join(dir, '.gitignore'), '*\n');
-    git(root, 'worktree', 'prune');
+    mkdirSync(worktrees, { recursive: true });
     const branch = worktreeBranch(session);
-    const exists = spawnSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], { cwd: root }).status === 0;
-    git(root, 'worktree', 'add', '--quiet', ...(exists ? [path, branch] : ['-b', branch, path]));
+    git(root, 'worktree', 'add', '--quiet', ...(hasBranch(root, branch) ? [path, branch] : ['-b', branch, path]));
   }
   return resolve(path, prefix);
+}
+
+// Whether the session's worktree has uncommitted changes; false without one.
+export function worktreeDirty(worktrees: string, session: string): boolean {
+  const path = join(worktrees, session);
+  return existsSync(join(path, '.git')) && status(path);
+}
+
+// Removes the session's worktree (with force also its uncommitted changes, which git refuses otherwise) and its
+// branch only if merged (kept: true otherwise). Null when the session has neither.
+export function removeWorktree(root: string, worktrees: string, session: string, force = false): { branch: string; kept: boolean } | null {
+  const path = join(worktrees, session);
+  const branch = worktreeBranch(session);
+  git(root, 'worktree', 'prune');
+  if (existsSync(join(path, '.git'))) git(root, 'worktree', 'remove', ...(force ? ['--force'] : []), path);
+  if (!hasBranch(root, branch)) return null;
+  const kept = spawnSync('git', ['branch', '-d', branch], { cwd: root }).status !== 0;
+  return { branch, kept };
 }

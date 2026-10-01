@@ -15,9 +15,13 @@ const FIXED_COLUMNS = 60;
 const KEYS: Hint[] = [['↑↓', 'select'], ['enter', 'open'], ['r', 'rename'], ['d', 'delete'], ['n', 'new'], ['/', 'filter'], ['esc', 'back']];
 const EDIT_KEYS: Hint[] = [['enter', 'apply'], ['esc', 'cancel']];
 
+const deleteQuestion = (dirty: boolean) =>
+  dirty ? 'Delete this session? Its worktree has uncommitted changes – y removes them / N' : 'Delete this session? y / N';
+
 type Editing = { kind: 'rename'; session: StoredSession } | { kind: 'filter' };
 
-// open/create/remove switch the current session (remove returns the status text); back returns to the Gate.
+// open/create/remove switch the current session (remove returns the status text; force: remove the worktree's
+// uncommitted changes too); back returns to the Gate. worktreeDirty: whether deleting would lose changes.
 export type SessionsProps = {
   store: SessionStore;
   current: () => string;
@@ -25,7 +29,8 @@ export type SessionsProps = {
   windowOf: (profile: string) => number | undefined;
   open: (id: string) => Promise<void>;
   create: () => Promise<void>;
-  remove: (id: string) => Promise<string>;
+  remove: (id: string, force: boolean) => Promise<string>;
+  worktreeDirty: (id: string) => boolean;
   rename: (id: string, title: string) => void;
   back: () => void;
 };
@@ -36,7 +41,8 @@ export function Sessions(props: SessionsProps) {
   const [filter, setFilter] = createSignal('');
   const [editing, setEditing] = createSignal<Editing | null>(null);
   const [draft, setDraft] = createSignal('');
-  const [confirm, setConfirm] = createSignal<StoredSession | null>(null);
+  // The session to delete, and whether its worktree has uncommitted changes.
+  const [confirm, setConfirm] = createSignal<{ session: StoredSession; dirty: boolean } | null>(null);
   const [status, setStatus] = createSignal<Status | null>(null);
   const list = () => all().filter(s => s.title.toLowerCase().includes(filter().toLowerCase()));
   const [selectedId, setSelectedId] = createSignal(props.current());
@@ -51,8 +57,8 @@ export function Sessions(props: SessionsProps) {
   const fail = (e: unknown) => setStatus({ text: errorText(e), tone: 'error' });
   const refused = (s: StoredSession, text: string) => s.locked && (setStatus({ text, tone: 'error' }), true);
 
-  function remove(s: StoredSession) {
-    props.remove(s.id).then(text => {
+  function remove(s: StoredSession, force: boolean) {
+    props.remove(s.id, force).then(text => {
       refresh();
       setStatus({ text, tone: 'info' });
     }, fail);
@@ -84,7 +90,7 @@ export function Sessions(props: SessionsProps) {
     },
     d: () => {
       const s = selected();
-      if (s && !refused(s, '⊘ cannot delete: open in another instance')) setConfirm(s);
+      if (s && !refused(s, '⊘ cannot delete: open in another instance')) setConfirm({ session: s, dirty: props.worktreeDirty(s.id) });
     },
     n: () => void props.create().catch(fail),
     '/': () => {
@@ -97,7 +103,7 @@ export function Sessions(props: SessionsProps) {
     const pending = confirm();
     if (pending) {
       setConfirm(null);
-      if (key.name === 'y') remove(pending);
+      if (key.name === 'y') remove(pending.session, pending.dirty);
       else setStatus({ text: 'delete cancelled', tone: 'info' });
     } else if (editing()) {
       if (key.name === 'return' || key.name === 'escape') finishEditing(key.name === 'return');
@@ -115,7 +121,7 @@ export function Sessions(props: SessionsProps) {
 
   const titleWidth = () => Math.max(8, size().width - FIXED_COLUMNS);
   const hints = () => (editing() ? EDIT_KEYS : KEYS);
-  const footerStatus = (): Status | null => (editing() ? null : confirm() ? { text: 'Delete this session? y / N', tone: 'error' } : status());
+  const footerStatus = (): Status | null => (editing() ? null : confirm() ? { text: deleteQuestion(confirm()!.dirty), tone: 'error' } : status());
   // Session rows that fit: the screen less header band, column header, blank line, preview (header + blocks),
   // the input line while editing and the footer. Lines never shrink, so rows cannot overlap.
   const capacity = () =>
@@ -146,7 +152,7 @@ export function Sessions(props: SessionsProps) {
       <box flexDirection="column" flexGrow={1} overflow="hidden">
         <For each={visible()}>
           {s => (
-            <text flexShrink={0} bg={isSelected(s) ? SELECTED_BG : undefined} fg={confirm() === s ? TONE.error : TEXT}>
+            <text flexShrink={0} bg={isSelected(s) ? SELECTED_BG : undefined} fg={confirm()?.session === s ? TONE.error : TEXT}>
               <span style={{ fg: ACCENT }}>{`${isSelected(s) ? '┃' : ' '}${s.id === props.current() ? '●' : ' '}`}</span>
               <span style={{ fg: TONE.error }}>{`${s.locked ? '⊘' : ' '}  `}</span>
               <span>{`${cell(s.title, titleWidth())} `}</span>
