@@ -54,7 +54,7 @@ scripts/install-dev.sh   # `resector` in ~/.local/bin, running this checkout
 ```bash
 llama-server -m your-model.gguf --jinja   # or Ollama, LM Studio, oMLX
 cd your-project
-resector                                  # -c continues the last session
+resector                                  # -c continues the project's last session
 ```
 
 On first start resector finds the model server, lets you pick a model and writes `~/.config/resector/config.jsonc`.
@@ -156,7 +156,7 @@ resector keeps what belongs to a project outside it ([ADR 0004](docs/adr/0004-pr
 
 `/git:worktree on` runs a session in its own git worktree, `worktrees/<session>` on branch `resector/<session>`, so its tools leave your checkout alone; `node_modules` and other untracked files are not linked in. Deleting the session removes the worktree (after a warning if it has uncommitted changes) and its branch if merged; an unmerged branch is kept.
 
-`<key>` is the real path of the main checkout with every non-alphanumeric character replaced by `-`; without git, the start directory. It is the same from every subdirectory and every worktree of a repository; a submodule has its own. `RESECTOR_CONFIG` moves only the global config file, not the Project Homes or `policies/`.
+`<key>` is the real path of the main checkout with every non-alphanumeric character replaced by `-`; without git, the start directory. It is the same from every subdirectory and every worktree of a repository; a submodule has its own. So sessions are shared by all worktrees: `-c` continues the project's newest one, and a resumed session runs in the checkout it started in (the current one if that is gone); `/sessions` names the branch and directory of a session started elsewhere. `RESECTOR_CONFIG` moves only the global config file, not the Project Homes or `policies/`.
 
 Personal instructions for `/Users/me/resector`:
 

@@ -4,7 +4,7 @@ import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { frameMatching } from '../../test/frames';
 import type { SessionEvent } from '../core/log/events';
-import { command, key, launch, line, profileConfig, titled, ui, useHarness } from './launch.harness';
+import { command, key, launch, line, profileConfig, startedIn, titled, ui, useHarness } from './launch.harness';
 
 useHarness();
 
@@ -211,4 +211,17 @@ test('/sessions with more sessions than fit: rows never overlap, the list follow
   expect(titles(frame).at(-1)).toBe('topic 8');
   expect(titles(frame)).not.toContain('(new session)');
   expect(frame.split('\n')[2]).toMatch(/^ {5}Title/);
+});
+
+test('the preview names the branch and directory of a session started in another checkout of the Project', async () => {
+  const sessions = ({ project }: { project: string }) => ({ ses_a: startedIn(project, titled('local', 'from main')), ses_b: startedIn('/gone/checkout', titled('local', 'from gone')) });
+  const { project } = await launch({ config: url => profileConfig(url), elsewhere: true, sessions });
+  await frameMatching(ui, f => f.includes('/ 2k'));
+  await openSessions();
+  expect(line(ui.captureCharFrame(), /Preview/)).toMatch(/Preview · ses_test · last blocks *$/);
+  await key('down');
+  const frame = await frameMatching(ui, f => f.includes('Preview · ses_a'));
+  expect(frame.replace(/\s+/g, '')).toContain(`Preview·ses_a·lastblocks·⎇mainin${project}`.replace(/\s+/g, ''));
+  await key('down');
+  expect(line(await frameMatching(ui, f => f.includes('Preview · ses_b')), /Preview/)).toContain('· /gone/checkout (gone)');
 });

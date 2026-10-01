@@ -55,7 +55,8 @@ export function projectInstructions(root: string, personal?: string, home = home
   return found;
 }
 
-const tilde = (path: string, home: string) => (path.startsWith(home + sep) ? `~${path.slice(home.length)}` : path);
+// A path under the home directory with `~` for it.
+export const tilde = (path: string, home = homedir()) => (path.startsWith(home + sep) ? `~${path.slice(home.length)}` : path);
 
 const pad = (n: number) => String(n).padStart(2, '0');
 // The local date, no time: it changes once a day.

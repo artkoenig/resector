@@ -1,6 +1,6 @@
 // Launch test harness: starts the app from config files, sessions and project files against a fake llama.cpp server.
 import { afterEach } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { testRender } from '@opentui/solid';
@@ -29,8 +29,10 @@ export function put(path: string, text: string) {
   writeFileSync(path, text);
 }
 
-// policies: Context Policy modules by name, in policies/ under the config root.
-export type Setup = { config?: (url: string) => string; systemMd?: string; compactionMd?: string; policies?: Record<string, string>; servers?: (url: string) => LocalServer[]; sessions?: Record<string, SessionEvent[]>; locks?: Record<string, number>; resume?: true | string; files?: Record<string, string>; personal?: Record<string, string>; git?: true };
+// policies: Context Policy modules by name, in policies/ under the config root. elsewhere: start in another
+// worktree of the git project, on branch `other`; sessions may then refer to both checkouts.
+type Checkouts = { project: string; other: string };
+export type Setup = { config?: (url: string) => string; systemMd?: string; compactionMd?: string; policies?: Record<string, string>; servers?: (url: string) => LocalServer[]; sessions?: Record<string, SessionEvent[]> | ((dirs: Checkouts) => Record<string, SessionEvent[]>); locks?: Record<string, number>; resume?: true | string; files?: Record<string, string>; personal?: Record<string, string>; git?: true; elsewhere?: true };
 
 // The project directory with its files; with git a repository with one commit on main.
 function writeProject(project: string, files: Record<string, string>, git?: true) {
@@ -52,12 +54,16 @@ function writeConfig(paths: ConfigPaths, { config, systemMd, compactionMd, polic
 }
 
 export async function launch(setup: Setup = {}) {
-  const { servers, sessions = {}, locks = {}, resume, files = {}, git } = setup;
+  const { servers, locks = {}, resume, files = {}, git, elsewhere } = setup;
   fake = startFakeLlamaCpp({ nCtx: 4096, model: 'qwen3-8b.gguf' });
-  const root = mkdtempSync(join(tmpdir(), 'resector-launch-'));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'resector-launch-')));
   const project = join(root, 'project');
-  writeProject(project, files, git);
-  const paths = configPaths({ home: join(root, 'home'), cwd: project, env: {} });
+  const other = join(root, 'other');
+  writeProject(project, files, git || elsewhere);
+  if (elsewhere) Bun.spawnSync(['git', 'worktree', 'add', '-q', '-b', 'other', other], { cwd: project });
+  const cwd = elsewhere ? other : project;
+  const sessions = typeof setup.sessions === 'function' ? setup.sessions({ project, other }) : (setup.sessions ?? {});
+  const paths = configPaths({ home: join(root, 'home'), cwd, env: {} });
   writeConfig(paths, setup);
   const sessionsDir = projectSessionsDir(paths);
   const fatal: string[] = [];
@@ -80,7 +86,7 @@ export async function launch(setup: Setup = {}) {
         store={store}
         editor={async text => text}
         openFile={async () => {}}
-        cwd={project}
+        cwd={cwd}
         clipboard={async () => {}}
         resume={resume}
         onQuit={() => quit.push('quit')}
@@ -90,7 +96,7 @@ export async function launch(setup: Setup = {}) {
     { width: 80, height: 16 },
   );
   const log = () => readFileSync(join(sessionsDir, 'ses_test.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
-  return { paths, fatal, log, store, quit, root, project, sessionsDir };
+  return { paths, fatal, log, store, quit, root, project, other, sessionsDir };
 }
 
 export const profileConfig = (url: string, extra = '') => `{
@@ -106,6 +112,9 @@ export const chat = (profile: string): SessionEvent[] => [
   { type: 'BlockAdded', id: 4, kind: 'Assistant', origin: 'model', content: 'hello' },
   { type: 'ResponseReceived', usage: null, cached: null },
 ];
+
+// A chat started in the checkout `dir`.
+export const startedIn = (dir: string, events = chat('local')): SessionEvent[] => events.map(e => (e.type === 'SessionCreated' ? { ...e, checkout: dir } : e));
 
 export const titled = (profile: string, title: string, tokens = 20) =>
   chat(profile).map(e => (e.type === 'BlockAdded' && e.kind === 'User' ? { ...e, content: title } : e.type === 'RequestSent' ? { ...e, tokens } : e));

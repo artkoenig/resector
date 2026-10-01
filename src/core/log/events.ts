@@ -19,7 +19,8 @@ type By = { by?: string };
 export type Usage = { prompt_tokens: number; completion_tokens: number };
 
 export type SessionEvent =
-  | { type: 'SessionCreated'; profile: string; protocol: ToolProtocol }
+  // checkout: the directory the session started in; resumed there from any worktree. Absent in older logs.
+  | { type: 'SessionCreated'; profile: string; protocol: ToolProtocol; checkout?: string }
   // Resume with a Model Profile missing from the config: the session continues on this one.
   | { type: 'ProfileFallback'; profile: string }
   // Session title; empty = reset to the first User message.
