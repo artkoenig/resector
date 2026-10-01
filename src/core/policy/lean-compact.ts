@@ -33,7 +33,7 @@ export default function leanCompact({ window, used, blocks: all }: PolicyContext
   const compact = (from: PolicyBlock[]): PolicyOperation => ({ op: 'compact', sources: from.map(b => b.id), instruction: DEFAULT_INSTRUCTION });
   if (sources.some(b => b.origin !== 'compaction')) return [...removals, compact(sources)];
   // No work but reads and short Thinking: removing them would lose all the model learned, so they are compacted.
-  if (removals.length) return [compact(blocks.filter(b => compactable(b) && (gone.has(b.id) || sources.includes(b))))];
+  if (removals.length) return [compact(blocks.filter(compactable))];
   // Only the Note of an earlier Compaction left: compacting it again would not free the window.
   return [];
 }

@@ -36,15 +36,13 @@ test('read-only Tool Pairs and short Thinking are removed, the rest compacted', 
   ]);
 });
 
-// The operations for one Tool Pair between two User blocks.
-const opsFor = (command: string) => leanCompact({ window: 100, used: 60, blocks: blocks('User', call(command), 'Tool Result', 'User') });
+// The operations for one Tool Pair and other work (so a read is removed, not compacted) between two User blocks.
+const opsFor = (command: string) => leanCompact({ window: 100, used: 60, blocks: blocks('User', call(command), 'Tool Result', 'Assistant', 'User') });
 
 test('read-only commands, alone or chained, with quoted arguments and output sent to stderr or /dev/null, are reads', () => {
   const commands = ['ls', 'tree', 'cat a', 'head a', 'tail a', 'wc a', 'grep x a', 'rg x', 'find .', 'sed -n 1p a', 'git status', 'git diff', 'git log',
     'git show HEAD', 'pwd', 'cd src', 'stat a', 'file a', 'echo hi', 'ls | wc -l', 'ls; pwd', 'ls\npwd', 'ls || pwd', "grep 'a|b' x", 'grep "ab|c" x',
     'grep "a b" x', "grep '$(x)' x", 'ls>&2', 'ls >&2', 'ls 2>&1', 'ls>/dev/null', 'ls > /dev/null', 'ls 2>/dev/null'];
-  // With other work, so the read is removed rather than compacted.
-  const opsFor = (command: string) => leanCompact({ window: 100, used: 60, blocks: blocks('User', call(command), 'Tool Result', 'Assistant', 'User') });
   for (const command of commands) expect(opsFor(command), command).toEqual([{ op: 'remove', id: 2 }, compact(4)]);
 });
 
@@ -58,11 +56,11 @@ test('a command that writes or runs something is not a read', () => {
   const commands = ['sed -i s/a/b/ x', 'sed -n -i s/a/b/ x', 'sed -n -nEi p x', 'sed -n --in-place p x', 'find . -delete', 'find . -delete -name x',
     'find . -exec rm {} +', 'git diff --output=x', 'git diff --output x', 'git log --output', 'rg --pre=cat x', 'rg --pre cat x', 'rg x --pre',
     'cat x > y', 'echo "$(rm x)"', 'echo "`rm x`"', 'echo `rm x`', 'ls && rm x', "'x'cat f"];
-  for (const command of commands) expect(opsFor(command), command).toEqual([compact(2, 3)]);
+  for (const command of commands) expect(opsFor(command), command).toEqual([compact(2, 3, 4)]);
 });
 
 test('a Tool Pair the user answered (a Question) or a Tool Call without result is not a read', () => {
-  expect(leanCompact({ window: 100, used: 60, blocks: blocks('User', call('ls'), ['Tool Result', { origin: 'user' }], 'User') })).toEqual([compact(2, 3)]);
+  expect(leanCompact({ window: 100, used: 60, blocks: blocks('User', call('ls'), ['Tool Result', { origin: 'user' }], 'Assistant', 'User') })).toEqual([compact(2, 3, 4)]);
   expect(leanCompact({ window: 100, used: 60, blocks: blocks('User', call('ls'), 'Assistant', 'User') })).toEqual([compact(2, 3)]);
   expect(leanCompact({ window: 100, used: 60, blocks: blocks('User', ['Assistant', { content: 'ls' }], call('x'), ['Tool Result', { content: 'ls' }], 'User') })).toEqual([compact(2, 3, 4)]);
 });
