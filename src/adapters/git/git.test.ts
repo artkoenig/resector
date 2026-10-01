@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ensureWorktree, isRepository, listBranches, removeWorktree, status, switchBranch, watchHead, worktreeDirty } from './git';
+import { ensureWorktree, isRepository, locateCheckout, mainCheckout, topLevel, listBranches, removeWorktree, status, switchBranch, watchHead, worktreeDirty } from './git';
 
 // A repository with one commit on main.
 function repository(): string {
@@ -140,4 +140,20 @@ test('started in a subdirectory, the session runs in the same subdirectory of it
   const worktrees = worktreesDir();
   expect(ensureWorktree(join(root, 'pkg'), worktrees, 'ses_2')).toBe(join(worktrees, 'ses_2/pkg'));
   expect(existsSync(join(root, 'pkg/.resector'))).toBe(false);
+});
+
+test("a session's checkout now: its real path, its top level when only a subdirectory is gone, none when gone", () => {
+  const root = repository();
+  const project = mainCheckout(root);
+  mkdirSync(join(root, 'sub'));
+  const link = join(realpathSync(mkdtempSync(join(tmpdir(), 'resector-link-'))), 'repo');
+  Bun.spawnSync(['ln', '-s', root, link]);
+  expect(locateCheckout(join(link, 'sub'), project)).toBe(join(root, 'sub'));
+  expect(locateCheckout(join(root, 'sub/gone'), project)).toBe(root);
+  expect(locateCheckout(join(root, 'sub/gone'), mainCheckout(repository()))).toBeNull();
+  expect(locateCheckout(join(root, 'sub/gone'), null)).toBeNull();
+  expect(locateCheckout('/gone/checkout', project)).toBeNull();
+  expect(topLevel(join(root, 'sub'))).toBe(root);
+  const plain = realpathSync(mkdtempSync(join(tmpdir(), 'resector-plain-')));
+  expect(topLevel(plain)).toBe(plain);
 });

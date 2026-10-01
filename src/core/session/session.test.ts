@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { TOOLS } from '../tools/catalog';
-import { inWorktree, newSession, openingBlocks, summarize } from './session';
+import { checkoutOf, inWorktree, newSession, openingBlocks, summarize } from './session';
 
 const start = newSession('qwen', 'You are an agent.');
 const user = (id: number, content: string): SessionEvent => ({ type: 'BlockAdded', id, kind: 'User', origin: 'user', content });
@@ -68,4 +68,13 @@ test('a session runs in its worktree after the last switch on; a new one in the 
   expect(inWorktree(events)).toBe(false);
   expect(inWorktree([...events, { type: 'WorktreeSet', on: true }, { type: 'SessionRenamed', title: 't' }])).toBe(true);
   expect(inWorktree([...events, { type: 'WorktreeSet', on: true }, { type: 'WorktreeSet', on: false }])).toBe(false);
+});
+
+test('a session records the checkout it started in; older logs have none', () => {
+  const events = newSession('p', 'sys', { checkout: '/repo/sub' });
+  expect(events[0]).toEqual({ type: 'SessionCreated', profile: 'p', protocol: 'native', checkout: '/repo/sub' });
+  expect(checkoutOf(events)).toBe('/repo/sub');
+  expect(checkoutOf(newSession('p', 'sys'))).toBeUndefined();
+  expect(checkoutOf([user(3, 'hi'), ...events])).toBe('/repo/sub');
+  expect(checkoutOf([])).toBeUndefined();
 });

@@ -14,7 +14,7 @@ test('the environment Note holds cwd, OS and shell, date and git branch', () => 
 
 test('in a Session Worktree the Note names it with its branch', () => {
   expect(environmentText({ ...env, cwd: '/data/worktrees/ses_1', branch: 'resector/ses_1', worktree: true })).toBe(
-    '[environment]\ncwd: /data/worktrees/ses_1\nos: linux x64 · shell: bash\ndate: 2026-09-26\ngit branch: resector/ses_1 (Session Worktree, not the main checkout)',
+    '[environment]\ncwd: /data/worktrees/ses_1\nos: linux x64 · shell: bash\ndate: 2026-09-26\ngit branch: resector/ses_1 (Session Worktree, not the session\'s checkout)',
   );
 });
 

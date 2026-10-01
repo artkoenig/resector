@@ -7,7 +7,8 @@ import { frameMatching } from '../../test/frames';
 import { startFakeOmlx } from '../../test/fake-omlx';
 import { SCHEMA_URL } from '../core/config/config';
 import { DEFAULT_SYSTEM_PROMPT } from '../core/config/system-prompt';
-import { chat, command, fake, key, launch, line, profileConfig, titled, ui, useHarness } from './launch.harness';
+import { newSession } from '../core/session/session';
+import { type Checkouts, chat, command, fake, key, launch, line, profileConfig, startedIn, titled, ui, useHarness } from './launch.harness';
 
 useHarness();
 
@@ -272,10 +273,10 @@ test('/git:worktree on runs the session in its own worktree in the Project Home 
   expect(existsSync(join(project, '.resector'))).toBe(false);
   expect(existsSync(join(project, '.gitignore'))).toBe(false);
   expect(log().filter(e => e.type === 'WorktreeSet')).toEqual([{ type: 'WorktreeSet', on: true }]);
-  // The environment Note says where the session runs now: the worktree on its branch, not the main checkout.
+  // The environment Note says where the session runs now: the worktree on its branch, not the session's checkout.
   const note = log().findLast(e => e.type === 'Edit')?.content;
   expect(note).toContain(`cwd: ${worktree}\n`);
-  expect(note).toContain('git branch: resector/ses_test (Session Worktree, not the main checkout)');
+  expect(note).toContain('git branch: resector/ses_test (Session Worktree, not the session\'s checkout)');
   await command('/git:worktree off');
   expect(line(await frameMatching(ui, f => f.includes('worktree off – session runs in')), /local/)).toMatch(/local · thinking off · ⎇ main /);
   expect(existsSync(join(worktree, 'a.txt'))).toBe(true);
@@ -290,4 +291,50 @@ test('a session resumed with the worktree on runs in its worktree again, created
   await launch({ config: url => profileConfig(url), git: true, sessions: { ses_a: [...chat('local'), { type: 'WorktreeSet', on: true }] }, resume: true });
   const frame = await frameMatching(ui, f => f.includes('resumed "hi there"'));
   expect(line(frame, /local/)).toMatch(/⎇ resector\/ses_a · worktree/);
+});
+
+test('a new session records the checkout it started in', async () => {
+  const { log, project } = await launch({ config: url => profileConfig(url) });
+  await frameMatching(ui, f => f.includes('/ 2k'));
+  expect(log()[0]).toEqual({ type: 'SessionCreated', profile: 'local', protocol: 'native', checkout: project });
+});
+
+test('-c in another worktree resumes the Project\'s newest session in the checkout it started in', async () => {
+  const sessions = ({ project }: Checkouts) => ({ ses_test: newSession('local', 'You are terse.', { environment: '[environment]', checkout: project }) });
+  const { log, project } = await launch({ config: url => profileConfig(url), otherWorktree: true, sessions, resume: true });
+  const frame = await frameMatching(ui, f => f.includes('resumed'));
+  expect(line(frame, /local/)).toMatch(/⎇ main /);
+  fake.reply({ chunks: ['ok'] });
+  await command('where am I');
+  await frameMatching(ui, f => f.includes('answer complete'));
+  expect(log().find(e => e.type === 'Edit' && e.harness)?.content).toContain(`cwd: ${project}\n`);
+});
+
+test('a session whose checkout is gone runs in the current one, with a hint', async () => {
+  await launch({ config: url => profileConfig(url), otherWorktree: true, sessions: { ses_a: startedIn('/gone/checkout') }, resume: true });
+  const frame = await frameMatching(ui, f => f.includes('resumed "hi there"'));
+  expect(frame).toContain('checkout /gone/checkout gone – runs in');
+  expect(line(frame, /local/)).toMatch(/⎇ other /);
+});
+
+test('started in a subdirectory, a new session records it and reads the instructions from the checkout\'s top level', async () => {
+  const { log, project } = await launch({ config: url => profileConfig(url), git: true, subdirectory: 'pkg', files: { 'AGENTS.md': '# Agents' } });
+  await frameMatching(ui, f => f.includes('/ 2k'));
+  expect(log()[0].checkout).toBe(join(project, 'pkg'));
+  expect(log().some(e => e.file === 'AGENTS.md')).toBe(true);
+});
+
+test('a session whose subdirectory is gone runs in the top level of its checkout, without a hint', async () => {
+  const sessions = ({ project }: Checkouts) => ({ ses_a: startedIn(join(project, 'gone')) });
+  await launch({ config: url => profileConfig(url), otherWorktree: true, sessions, resume: true });
+  const frame = await frameMatching(ui, f => f.includes('resumed "hi there"'));
+  expect(frame).not.toContain('gone');
+  expect(line(frame, /local/)).toMatch(/⎇ main /);
+});
+
+test('an older session without a checkout resumes in the current one, without a hint', async () => {
+  await launch({ config: url => profileConfig(url), otherWorktree: true, sessions: { ses_a: chat('local') }, resume: true });
+  const frame = await frameMatching(ui, f => f.includes('resumed "hi there"'));
+  expect(frame).not.toContain('gone');
+  expect(line(frame, /local/)).toMatch(/⎇ other /);
 });

@@ -8,7 +8,7 @@ export type Environment = { cwd: string; os: string; shell: string; date: string
 
 // In a Session Worktree the model must not mistake it for the main checkout.
 export const environmentText = ({ cwd, os, shell, date, branch, worktree }: Environment) =>
-  `[environment]\ncwd: ${cwd}\nos: ${os} · shell: ${shell}\ndate: ${date}\ngit branch: ${branch ?? '(none)'}${worktree ? ' (Session Worktree, not the main checkout)' : ''}`;
+  `[environment]\ncwd: ${cwd}\nos: ${os} · shell: ${shell}\ndate: ${date}\ngit branch: ${branch ?? '(none)'}${worktree ? " (Session Worktree, not the session's checkout)" : ''}`;
 
 type Edit = Extract<SessionEvent, { type: 'Edit' }>;
 type Written = Edit | Extract<SessionEvent, { type: 'BlockAdded' }>;

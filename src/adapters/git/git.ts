@@ -1,7 +1,7 @@
 // Git in the project: its branches, switching the branch, and a session's own worktree.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, watch } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, mkdirSync, realpathSync, watch } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 
 // current: null on a detached HEAD. elsewhere: the branches checked out in another worktree, with its directory;
 // git refuses to switch to them.
@@ -24,6 +24,22 @@ export function mainCheckout(dir: string): string | null {
   };
   const main = out(dir, 'worktree', 'list', '--porcelain')?.match(/^worktree (.+)$/m)?.[1];
   return main ? (out(main, 'rev-parse', '--show-toplevel') ?? main) : null;
+}
+
+// The checkout's top level, where its instructions live; the directory itself outside git.
+export function topLevel(dir: string): string {
+  const run = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, encoding: 'utf8' });
+  return run.status === 0 ? run.stdout.trim() : dir;
+}
+
+// Where a session started in `started` runs now, as a real path: there, or the top level of its checkout when only a
+// subdirectory is gone and that checkout still belongs to the Project (its main checkout `project`); null when gone.
+export function locateCheckout(started: string, project: string | null): string | null {
+  if (existsSync(started)) return realpathSync(started);
+  let up = dirname(started);
+  while (!existsSync(up)) up = dirname(up);
+  const top = topLevel(up);
+  return project && mainCheckout(top) === project ? realpathSync(top) : null;
 }
 
 export function isRepository(root: string): boolean {
