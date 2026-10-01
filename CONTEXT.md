@@ -38,7 +38,7 @@ _Avoid_: mention, attachment
 Note describing where the Session runs (working directory, OS and shell, date, branch), right after the Tools Block. The harness refreshes it in place, as a new Revision, when it changes.
 
 **Project Instructions**:
-Notes holding the project's `AGENTS.md` and `CLAUDE.md`, then the user's own instructions for the project, one per file, read once when the Session starts.
+Notes holding `AGENTS.md` and `CLAUDE.md` at the root of the checkout the Session runs in, then the user's own from the Project Home, one per file, read once when the Session starts.
 
 **Compaction**:
 Rewrite of selected Context Blocks by the LLM, following an instruction, into one Note at the position of the first source. The model sees only the selected blocks and the instruction. Started by the user, who reviews the proposal and accepts, discards or refines it (refine starts again from the sources), or by a Context Policy, whose result is accepted without review. On accept the sources count as removed; undo brings them back.
@@ -81,7 +81,7 @@ Decision whether a Tool Call the model requested may run, taken before execution
 _Avoid_: permission prompt
 
 **Permission Rule**:
-Pattern over a bash sub-command with an action (`allow`, `ask`, `deny`) and a source: built-in, global config, project config, or Session Rule. The last matching rule decides; none matching means `ask`. Project config may only tighten: its `allow` rules are ignored.
+Pattern over a bash sub-command with an action (`allow`, `ask`, `deny`) and a source, in this order: built-in, global config, project config (from the Project Home), Session Rule. The last matching rule decides; none matching means `ask`.
 
 **Session Rule**:
 Permission Rule with action `allow` the user adds while approving a Tool Call, valid for the rest of the Session, also after resume.
@@ -97,15 +97,22 @@ _Avoid_: prompt, ask, approval
 
 ### Sessions & Workspace
 
+**Project**:
+A git repository with all its worktrees, identified by its main checkout wherever resector starts inside it; without git, the directory resector starts in. A moved repository is a new Project.
+_Avoid_: workspace, repo (for the unit)
+
+**Project Home**:
+The user's own directory for a Project, outside it and named after its main checkout's path: the user's instructions, config, Session Logs and Session Worktrees for the Project. Nothing in the Project itself is written by resector.
+
 **Session**:
-One conversation in a project, recorded in its own Session Log. Can be listed, resumed, renamed and deleted as a whole; there is no forking. Its title is the first user message unless renamed.
+One conversation in a Project, recorded in its own Session Log. Can be listed, resumed, renamed and deleted as a whole; there is no forking. Shared by all checkouts of the Project; resumed, it runs in the checkout it ran in, or the current one when that is gone. Its title is the first user message unless renamed.
 
 **Session Log**:
 Complete, append-only sequence of events of a session: blocks added (by user, model or tool) and Context operations (edit, move, remove, compact). The Context is derived by replaying it; undo is a counter-event. Nothing is ever deleted.
 _Avoid_: history, transcript
 
 **Session Worktree**:
-Git worktree of its own in which a Session runs instead of the project directory, so its tools change nothing there. Switched per Session and kept after resume.
+Git worktree of its own, in the Project Home, in which a Session runs instead of the project directory, so its tools change nothing there. Switched per Session and kept after resume; removed with its Session, its branch only when merged.
 
 **Model Profile**:
 Per-model settings: backend, endpoint, tokenizer, window size, Tool Protocol, tool result format, sampling, thinking at session start (off, on or effort level; switchable at the Review Gate), and optionally another Model Profile used for Compaction (default: the same). Fixed for a session; only when it is gone from the config at resume does the session fall back to the default Model Profile.
