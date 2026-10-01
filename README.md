@@ -152,7 +152,9 @@ resector keeps what belongs to a project outside it ([ADR 0004](docs/adr/0004-pr
 | Root | Holds |
 | --- | --- |
 | `$XDG_CONFIG_HOME/resector/projects/<key>/` (default `~/.config`) | what you edit: `config.jsonc`, `system.md`, `compaction.md`, your personal `AGENTS.md`/`CLAUDE.md` for the project; resector never creates it |
-| `$XDG_DATA_HOME/resector/projects/<key>/` (default `~/.local/share`) | what resector writes: `sessions/` |
+| `$XDG_DATA_HOME/resector/projects/<key>/` (default `~/.local/share`) | what resector writes: `sessions/`, `worktrees/` |
+
+`/git:worktree on` runs a session in its own git worktree, `worktrees/<session>` on branch `resector/<session>`, so its tools leave your checkout alone; `node_modules` and other untracked files are not linked in. Deleting the session removes the worktree (after a warning if it has uncommitted changes) and its branch if merged; an unmerged branch is kept.
 
 `<key>` is the real path of the main checkout with every non-alphanumeric character replaced by `-`; without git, the start directory. It is the same from every subdirectory and every worktree of a repository; a submodule has its own. `RESECTOR_CONFIG` moves only the global config file, not the Project Homes or `policies/`.
 

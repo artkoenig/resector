@@ -12,6 +12,12 @@ test('the environment Note holds cwd, OS and shell, date and git branch', () => 
   expect(environmentText({ ...env, branch: null })).toBe('[environment]\ncwd: /p\nos: linux x64 · shell: bash\ndate: 2026-09-26\ngit branch: (none)');
 });
 
+test('in a Session Worktree the Note names it with its branch', () => {
+  expect(environmentText({ ...env, cwd: '/data/worktrees/ses_1', branch: 'resector/ses_1', worktree: true })).toBe(
+    '[environment]\ncwd: /data/worktrees/ses_1\nos: linux x64 · shell: bash\ndate: 2026-09-26\ngit branch: resector/ses_1 (Session Worktree, not the main checkout)',
+  );
+});
+
 const start = newSession('qwen', 'sys', { environment: text });
 const refresh = (events: SessionEvent[], now: string) => refreshEnvironment(events, fold(events), now);
 const tomorrow = environmentText({ ...env, date: '2026-09-27' });

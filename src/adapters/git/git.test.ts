@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ensureWorktree, isRepository, listBranches, status, switchBranch, watchHead } from './git';
+import { ensureWorktree, isRepository, listBranches, removeWorktree, status, switchBranch, watchHead, worktreeDirty } from './git';
 
 // A repository with one commit on main.
 function repository(): string {
@@ -15,6 +15,9 @@ function repository(): string {
   return root;
 }
 const gitIn = (root: string, ...args: string[]) => Bun.spawnSync(['git', ...args], { cwd: root }).stdout.toString().trim();
+// Where the Session Worktrees go: the Project Home's data root, outside the repository.
+const worktreesDir = () => join(realpathSync(mkdtempSync(join(tmpdir(), 'resector-data-'))), 'worktrees');
+const commit = (dir: string, message: string) => gitIn(dir, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-am', message);
 
 test('a directory is a repository only inside a git work tree', () => {
   expect(isRepository(realpathSync(mkdtempSync(join(tmpdir(), 'resector-plain-'))))).toBe(false);
@@ -48,22 +51,61 @@ test('the status: dirty with uncommitted changes, clean without', () => {
   expect(status(root)).toBe(true);
   gitIn(root, 'add', '.');
   expect(status(root)).toBe(true);
-  gitIn(root, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-am', 'dirty');
+  commit(root, 'dirty');
   expect(status(root)).toBe(false);
 });
 
-test("a session's worktree: created on its own branch, ignored by the project, reused and recreated", () => {
+test("a session's worktree: created on its own branch outside the project, reused and recreated", () => {
   const root = repository();
-  const path = ensureWorktree(root, 'ses_1');
-  expect(path).toBe(join(root, '.resector/worktrees/ses_1'));
+  const worktrees = worktreesDir();
+  const path = ensureWorktree(root, worktrees, 'ses_1');
+  expect(path).toBe(join(worktrees, 'ses_1'));
   expect(listBranches(path).current).toBe('resector/ses_1');
   expect(existsSync(join(path, 'a.txt'))).toBe(true);
-  expect(gitIn(root, 'status', '--porcelain')).toBe('');
+  expect(gitIn(root, 'status', '--porcelain', '--ignored')).toBe('');
+  expect(existsSync(join(worktrees, '.gitignore'))).toBe(false);
   writeFileSync(join(path, 'b.txt'), 'b\n');
-  expect(ensureWorktree(root, 'ses_1')).toBe(path);
+  expect(ensureWorktree(root, worktrees, 'ses_1')).toBe(path);
   expect(existsSync(join(path, 'b.txt'))).toBe(true);
-  rmSync(join(root, '.resector/worktrees/ses_1'), { recursive: true });
-  expect(listBranches(ensureWorktree(root, 'ses_1')).current).toBe('resector/ses_1');
+  // Deleted by hand: the stale entry is pruned, the worktree created anew on its branch.
+  rmSync(path, { recursive: true });
+  expect(listBranches(ensureWorktree(root, worktrees, 'ses_1')).current).toBe('resector/ses_1');
+});
+
+test('removing a clean worktree deletes its branch when merged', () => {
+  const root = repository();
+  const worktrees = worktreesDir();
+  const path = ensureWorktree(root, worktrees, 'ses_1');
+  expect(worktreeDirty(worktrees, 'ses_1')).toBe(false);
+  expect(removeWorktree(root, worktrees, 'ses_1')).toEqual({ branch: 'resector/ses_1', kept: false });
+  expect(existsSync(path)).toBe(false);
+  expect(listBranches(root).all).toEqual(['main']);
+  expect(gitIn(root, 'worktree', 'list')).not.toContain('ses_1');
+});
+
+test('a worktree with uncommitted changes is removed only with force; an unmerged branch is kept', () => {
+  const root = repository();
+  const worktrees = worktreesDir();
+  const path = ensureWorktree(root, worktrees, 'ses_1');
+  writeFileSync(join(path, 'a.txt'), 'changed\n');
+  commit(path, 'unmerged');
+  writeFileSync(join(path, 'b.txt'), 'b\n');
+  expect(worktreeDirty(worktrees, 'ses_1')).toBe(true);
+  expect(() => removeWorktree(root, worktrees, 'ses_1')).toThrow('--force');
+  expect(existsSync(join(path, 'b.txt'))).toBe(true);
+  expect(removeWorktree(root, worktrees, 'ses_1', true)).toEqual({ branch: 'resector/ses_1', kept: true });
+  expect(existsSync(path)).toBe(false);
+  expect(listBranches(root).all).toEqual(['main', 'resector/ses_1']);
+});
+
+test('a session without worktree or branch has nothing to remove; a worktree deleted by hand leaves its branch', () => {
+  const root = repository();
+  const worktrees = worktreesDir();
+  expect(worktreeDirty(worktrees, 'ses_1')).toBe(false);
+  expect(removeWorktree(root, worktrees, 'ses_1')).toBeNull();
+  rmSync(ensureWorktree(root, worktrees, 'ses_2'), { recursive: true });
+  expect(removeWorktree(root, worktrees, 'ses_2')).toEqual({ branch: 'resector/ses_2', kept: false });
+  expect(listBranches(root).all).toEqual(['main']);
 });
 
 test('watching HEAD: a branch switch outside is reported until stopped', async () => {
@@ -83,7 +125,7 @@ test('watching HEAD: a branch switch outside is reported until stopped', async (
 
 test('branches checked out in another worktree are marked with its directory', () => {
   const root = repository();
-  const path = ensureWorktree(root, 'ses_3');
+  const path = ensureWorktree(root, worktreesDir(), 'ses_3');
   expect(listBranches(root).elsewhere).toEqual({ 'resector/ses_3': path });
   expect(listBranches(path).elsewhere).toEqual({ main: root });
   expect(() => switchBranch(path, 'main')).toThrow('already used by worktree');
@@ -95,5 +137,7 @@ test('started in a subdirectory, the session runs in the same subdirectory of it
   writeFileSync(join(root, 'pkg/p.txt'), '');
   gitIn(root, 'add', '.');
   gitIn(root, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'pkg');
-  expect(ensureWorktree(join(root, 'pkg'), 'ses_2')).toBe(join(root, 'pkg/.resector/worktrees/ses_2/pkg'));
+  const worktrees = worktreesDir();
+  expect(ensureWorktree(join(root, 'pkg'), worktrees, 'ses_2')).toBe(join(worktrees, 'ses_2/pkg'));
+  expect(existsSync(join(root, 'pkg/.resector'))).toBe(false);
 });

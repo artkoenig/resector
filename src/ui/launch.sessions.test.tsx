@@ -1,6 +1,6 @@
 // UI tests: the /sessions view: listing, opening, deleting, renaming.
 import { expect, test } from 'bun:test';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { frameMatching } from '../../test/frames';
 import type { SessionEvent } from '../core/log/events';
@@ -82,6 +82,71 @@ test('d asks before deleting; deleting the current session switches to the newes
   const frame = await frameMatching(ui, f => f.includes('switched to "keep me"'));
   expect(line(frame, /keep me/)).toMatch(/^[ ┃]●/);
   expect(existsSync(join(sessionsDir, 'ses_test.jsonl'))).toBe(false);
+});
+
+// The current session in its worktree, with another session to switch to when it is deleted.
+async function inWorktree() {
+  const started = await launch({ config: url => profileConfig(url), git: true, sessions: { ses_a: titled('local', 'keep me') } });
+  await frameMatching(ui, f => f.includes('/ 2k'));
+  await command('/git:worktree on');
+  await frameMatching(ui, f => f.includes('worktree on – session runs in'));
+  const worktree = join(started.paths.projectHome.data, 'worktrees/ses_test');
+  const branches = () => Bun.spawnSync(['git', 'branch', '--format=%(refname:short)'], { cwd: started.project }).stdout.toString().trim().split('\n');
+  return { ...started, worktree, branches };
+}
+const openSessions = async () => {
+  await command('/sessions');
+  await frameMatching(ui, f => f.includes('Sessions ·'));
+};
+
+test('deleting a session removes its clean worktree and its merged branch', async () => {
+  const { worktree, branches } = await inWorktree();
+  await openSessions();
+  await key('d');
+  await frameMatching(ui, f => f.includes('Delete this session? y / N'));
+  await key('y');
+  await frameMatching(ui, f => f.includes('switched to "keep me"'));
+  expect(existsSync(worktree)).toBe(false);
+  expect(branches()).toEqual(['main']);
+});
+
+test('deleting a session keeps an unmerged branch and says so', async () => {
+  const { worktree, branches } = await inWorktree();
+  writeFileSync(join(worktree, 'a.txt'), 'changed\n');
+  Bun.spawnSync(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-am', 'unmerged'], { cwd: worktree });
+  await openSessions();
+  await key('d');
+  await key('y');
+  await frameMatching(ui, f => /branch resector\/ses_test\s+kept – not merged/.test(f));
+  expect(existsSync(worktree)).toBe(false);
+  expect(branches()).toEqual(['main', 'resector/ses_test']);
+});
+
+test('deleting a session whose worktree has uncommitted changes warns; y removes it anyway', async () => {
+  const { worktree } = await inWorktree();
+  writeFileSync(join(worktree, 'b.txt'), 'b\n');
+  await openSessions();
+  await key('d');
+  await frameMatching(ui, f => f.includes('worktree has uncommitted changes'));
+  await key('n');
+  await frameMatching(ui, f => f.includes('delete cancelled'));
+  expect(existsSync(join(worktree, 'b.txt'))).toBe(true);
+  await key('d');
+  await key('y');
+  await frameMatching(ui, f => f.includes('switched to "keep me"'));
+  expect(existsSync(worktree)).toBe(false);
+});
+
+test('changes made after the delete question keep the worktree and the session', async () => {
+  const { worktree, sessionsDir } = await inWorktree();
+  await openSessions();
+  await key('d');
+  await frameMatching(ui, f => f.includes('Delete this session? y / N'));
+  writeFileSync(join(worktree, 'b.txt'), 'b\n');
+  await key('y');
+  await frameMatching(ui, f => f.includes('use --force'));
+  expect(existsSync(join(worktree, 'b.txt'))).toBe(true);
+  expect(existsSync(join(sessionsDir, 'ses_test.jsonl'))).toBe(true);
 });
 
 test('when the next session cannot be opened, the current one is not deleted', async () => {

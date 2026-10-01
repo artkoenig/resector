@@ -1,6 +1,6 @@
 // UI tests: first start, Model Profiles, resume, project instructions, policies and the worktree.
 import { expect, test } from 'bun:test';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { startFakeLlamaCpp } from '../../test/fake-llamacpp';
 import { frameMatching } from '../../test/frames';
@@ -260,20 +260,29 @@ test('auto-approve belongs to the app: it stays when switching sessions and is n
   expect(JSON.stringify(log())).not.toContain('auto');
 });
 
-test('/git:worktree on runs the session in its own worktree on its own branch; off back in the project, the worktree kept', async () => {
-  const { log, root } = await launch({ config: url => profileConfig(url).replace('"defaultProfile"', '"defaultPolicy": "off", "defaultProfile"'), git: true });
+test('/git:worktree on runs the session in its own worktree in the Project Home on its own branch; off back in the project, the worktree kept', async () => {
+  const { log, paths, project } = await launch({ config: url => profileConfig(url).replace('"defaultProfile"', '"defaultPolicy": "off", "defaultProfile"'), git: true });
   await frameMatching(ui, f => f.includes('/ 2k'));
   expect(line(ui.captureCharFrame(), /local/)).toMatch(/local · thinking off · ⎇ main /);
   await command('/git:worktree on');
-  const worktree = join(root, 'project/.resector/worktrees/ses_test');
+  const worktree = join(paths.projectHome.data, 'worktrees/ses_test');
   const frame = await frameMatching(ui, f => f.includes('worktree on – session runs in'));
   expect(line(frame, /local/)).toMatch(/local · thinking off · ⎇ resector\/ses_test · worktree/);
   expect(existsSync(join(worktree, 'a.txt'))).toBe(true);
+  expect(existsSync(join(project, '.resector'))).toBe(false);
+  expect(existsSync(join(project, '.gitignore'))).toBe(false);
   expect(log().filter(e => e.type === 'WorktreeSet')).toEqual([{ type: 'WorktreeSet', on: true }]);
-  // The environment Note says where the session runs now.
-  expect(log().findLast(e => e.type === 'Edit')?.content).toContain(`cwd: ${worktree}\n`);
+  // The environment Note says where the session runs now: the worktree on its branch, not the main checkout.
+  const note = log().findLast(e => e.type === 'Edit')?.content;
+  expect(note).toContain(`cwd: ${worktree}\n`);
+  expect(note).toContain('git branch: resector/ses_test (Session Worktree, not the main checkout)');
   await command('/git:worktree off');
   expect(line(await frameMatching(ui, f => f.includes('worktree off – session runs in')), /local/)).toMatch(/local · thinking off · ⎇ main /);
+  expect(existsSync(join(worktree, 'a.txt'))).toBe(true);
+  // Deleted by hand, the worktree is created anew despite its stale entry.
+  rmSync(worktree, { recursive: true });
+  await command('/git:worktree on');
+  await frameMatching(ui, f => f.includes('worktree on – session runs in'));
   expect(existsSync(join(worktree, 'a.txt'))).toBe(true);
 });
 

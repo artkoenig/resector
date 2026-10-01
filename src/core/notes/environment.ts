@@ -3,11 +3,12 @@ import { nextRevision } from '../context/operations';
 import type { SessionEvent } from '../log/events';
 import type { Context } from '../log/fold';
 
-// branch: null outside a git repository or on a detached HEAD.
-export type Environment = { cwd: string; os: string; shell: string; date: string; branch: string | null };
+// branch: null outside a git repository or on a detached HEAD. worktree: cwd is in the session's own worktree.
+export type Environment = { cwd: string; os: string; shell: string; date: string; branch: string | null; worktree?: boolean };
 
-export const environmentText = ({ cwd, os, shell, date, branch }: Environment) =>
-  `[environment]\ncwd: ${cwd}\nos: ${os} · shell: ${shell}\ndate: ${date}\ngit branch: ${branch ?? '(none)'}`;
+// In a Session Worktree the model must not mistake it for the main checkout.
+export const environmentText = ({ cwd, os, shell, date, branch, worktree }: Environment) =>
+  `[environment]\ncwd: ${cwd}\nos: ${os} · shell: ${shell}\ndate: ${date}\ngit branch: ${branch ?? '(none)'}${worktree ? ' (Session Worktree, not the main checkout)' : ''}`;
 
 type Edit = Extract<SessionEvent, { type: 'Edit' }>;
 type Written = Edit | Extract<SessionEvent, { type: 'BlockAdded' }>;
