@@ -1,10 +1,10 @@
-// Reads the config files from disk: global, then project; RESECTOR_CONFIG replaces the global path. The Project Home (ADR 0004).
-import { spawnSync } from 'node:child_process';
+// Where resector's files are (global config, policies/, the Project Home of ADR 0004), and reading the config files.
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { DEFAULT_INSTRUCTION } from '../../core/compaction/compaction';
 import { initialConfig, readConfig, type BackendKind, type ConfigFile, type ModelProfile } from '../../core/config/config';
 import { DEFAULT_SYSTEM_PROMPT } from '../../core/config/system-prompt';
+import { mainCheckout } from '../git/git';
 
 // projectHome: what the user edits for the Project (config) and what resector writes for it (data).
 export type ConfigPaths = { global: string; project: string; policies: string; projectHome: { config: string; data: string } };
@@ -29,19 +29,12 @@ const realpath = (path: string) => {
     return resolve(path);
   }
 };
-const gitOut = (cwd: string, ...args: string[]) => {
-  const run = spawnSync('git', args, { cwd, encoding: 'utf8' });
-  return run.status === 0 ? run.stdout.trim() : null;
-};
 
 // The main checkout's realpath, every non-alphanumeric character a `-`: the same from every subdirectory and
-// worktree. A submodule's common dir lies in its superproject's .git, so its own top level is its checkout.
-// Without git, the start directory.
+// worktree. Without git, the start directory.
 export function projectKey(cwd: string): string {
   const start = realpath(cwd);
-  const common = gitOut(start, 'rev-parse', '--path-format=absolute', '--git-common-dir');
-  const root = common === null ? start : basename(common) === '.git' ? realpath(dirname(common)) : (gitOut(start, 'rev-parse', '--show-toplevel') ?? start);
-  return root.replace(/[^a-zA-Z0-9]/g, '-');
+  return realpath(mainCheckout(start) ?? start).replace(/[^a-zA-Z0-9]/g, '-');
 }
 
 // Null when no config file exists yet (first start).

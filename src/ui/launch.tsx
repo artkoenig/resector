@@ -8,7 +8,7 @@ import { createSearcher } from '../adapters/search/ddgr';
 import { createSplit } from '../adapters/bash/split';
 import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
 import { ensureWorktree, isRepository, listBranches, status, switchBranch, watchHead } from '../adapters/git/git';
-import { loadPolicies, policiesDir } from '../adapters/fs/policies';
+import { loadPolicies } from '../adapters/fs/policies';
 import { listProjectFiles, probeEnvironment, projectFiles, projectInstructions } from '../adapters/fs/project';
 import type { OpenSession, SessionStore } from '../adapters/store/sessions';
 import type { Split } from '../core/approval/approval';
@@ -214,7 +214,7 @@ export function Launch(props: LaunchOptions) {
 
   onMount(() => {
     const start = async () => {
-      ({ policies: policies.all, failed } = await loadPolicies(policiesDir(props.paths), BUILT_IN));
+      ({ policies: policies.all, failed } = await loadPolicies(props.paths.policies, BUILT_IN));
       const loaded = loadConfig(props.paths);
       return loaded ? open(loaded, props.resume) : firstStart();
     };

@@ -29,7 +29,7 @@ export function put(path: string, text: string) {
   writeFileSync(path, text);
 }
 
-// policies: Context Policy modules by name, in policies/ next to the global config.
+// policies: Context Policy modules by name, in policies/ under the config root.
 export type Setup = { config?: (url: string) => string; systemMd?: string; compactionMd?: string; policies?: Record<string, string>; servers?: (url: string) => LocalServer[]; sessions?: Record<string, SessionEvent[]>; locks?: Record<string, number>; resume?: true | string; files?: Record<string, string>; personal?: Record<string, string>; git?: true };
 
 // The project directory with its files; with git a repository with one commit on main.
@@ -41,7 +41,7 @@ function writeProject(project: string, files: Record<string, string>, git?: true
   for (const args of [['init', '-q', '-b', 'main'], ['add', '.'], ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init']]) Bun.spawnSync(['git', ...args], { cwd: project });
 }
 
-// The global config and the files next to it; the personal instructions.
+// The global config, system.md and compaction.md next to it, policies/, the personal instructions.
 function writeConfig(paths: ConfigPaths, { config, systemMd, compactionMd, policies = {}, personal = {} }: Setup) {
   const dir = dirname(paths.global);
   if (config) put(paths.global, config(fake.url));

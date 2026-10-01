@@ -1,11 +1,8 @@
 // Context Policies from disk (ADR 0001): `<name>.ts` in `policies/` under the config root, loaded at start only.
 // No project-level policies: a cloned repository must not be able to run code.
 import { existsSync, readdirSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { Policy } from '../../core/policy/policy';
-import type { ConfigPaths } from './config';
-
-export const policiesDir = (paths: ConfigPaths) => paths.policies;
 
 // failed: a policy that could not be loaded and why; it is not offered.
 export type LoadedPolicies = { policies: Policy[]; failed: string[] };

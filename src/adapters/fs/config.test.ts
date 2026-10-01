@@ -38,6 +38,7 @@ test('without any config file there is nothing to load (first start)', () => {
   expect(loadConfig(configPaths({ home, cwd, env: {} }))).toBeNull();
 });
 
+const keyOf = (path: string) => path.replace(/[^a-zA-Z0-9]/g, '-');
 const git = (cwd: string, ...args: string[]) => Bun.spawnSync(['git', ...args], { cwd });
 // A repository with one commit on main.
 function repository(path: string) {
@@ -48,22 +49,35 @@ function repository(path: string) {
 
 test('the project key is the main checkout, the same from a subdirectory, a worktree and a symlink', () => {
   const repo = repository(cwd);
-  const key = repo.replace(/[^a-zA-Z0-9]/g, '-');
+  const key = keyOf(repo);
   expect(projectKey(repo)).toBe(key);
   expect(projectKey(join(repo, 'src'))).toBe(key);
   git(repo, 'worktree', 'add', '-q', '-b', 'other', join(repo, '../wt'));
   expect(projectKey(join(repo, '../wt/src'))).toBe(key);
   symlinkSync(repo, join(repo, '../link'));
   expect(projectKey(join(repo, '../link/src'))).toBe(key);
+  // GIT_DIR of a calling hook does not count.
+  process.env.GIT_DIR = join(dirname(cwd), 'elsewhere/.git');
+  try {
+    expect(projectKey(join(repo, 'src'))).toBe(key);
+  } finally {
+    delete process.env.GIT_DIR;
+  }
 });
 
-test('without git the project key is the start directory; a submodule is a project of its own', () => {
+test('without git the project key is the start directory; a submodule is a project of its own, with its worktrees; so is a bare repository', () => {
   mkdirSync(join(cwd, 'sub'), { recursive: true });
-  expect(projectKey(join(cwd, 'sub'))).toBe(realpathSync(join(cwd, 'sub')).replace(/[^a-zA-Z0-9]/g, '-'));
+  expect(projectKey(join(cwd, 'sub'))).toBe(keyOf(realpathSync(join(cwd, 'sub'))));
   const lib = repository(join(dirname(cwd), 'lib'));
   const repo = repository(cwd);
   git(repo, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', lib, 'vendor/lib');
-  expect(projectKey(join(repo, 'vendor/lib'))).toBe(join(repo, 'vendor/lib').replace(/[^a-zA-Z0-9]/g, '-'));
+  expect(projectKey(join(repo, 'vendor/lib'))).toBe(keyOf(join(repo, 'vendor/lib')));
+  git(join(repo, 'vendor/lib'), 'worktree', 'add', '-q', '-b', 'other', join(repo, '../lib-wt'));
+  expect(projectKey(join(repo, '../lib-wt'))).toBe(keyOf(join(repo, 'vendor/lib')));
+  // A bare repository's worktrees share it.
+  git(dirname(cwd), 'clone', '-q', '--bare', lib, 'b.git');
+  git(join(dirname(cwd), 'b.git'), 'worktree', 'add', '-q', '../bwt', 'main');
+  expect(projectKey(join(dirname(cwd), 'bwt'))).toBe(keyOf(realpathSync(join(dirname(cwd), 'b.git'))));
 });
 
 test('the Project Home: one root under the XDG config home, one under the XDG data home, ~/.config and ~/.local/share by default', () => {

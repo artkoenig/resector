@@ -41,7 +41,7 @@ export function listProjectFiles(root: string, limit = 20000): string[] {
 
 const INSTRUCTIONS = ['AGENTS.md', 'CLAUDE.md'];
 
-// `AGENTS.md` and `CLAUDE.md` in the project root, then in the personal directory (the Project Home's config root) (named with `~` for the home
+// `AGENTS.md` and `CLAUDE.md` in the project root, then in the Project Home's config root (named with `~` for the home
 // directory, so its file name fits the Gate). A file with the same content as one before (e.g. CLAUDE.md a symlink
 // to AGENTS.md) is left out.
 export function projectInstructions(root: string, personal?: string, home = homedir()): Instructions[] {

@@ -13,6 +13,19 @@ function git(root: string, ...args: string[]): string {
   return run.stdout.trim();
 }
 
+// The main worktree, listed first by git: the same from every worktree. A submodule's is listed as its git dir,
+// whose top level is the submodule's checkout; a bare repository has none and stays itself. GIT_DIR and friends
+// from a calling hook must not point elsewhere. Null outside a repository.
+export function mainCheckout(dir: string): string | null {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')));
+  const out = (cwd: string, ...args: string[]) => {
+    const run = spawnSync('git', args, { cwd, encoding: 'utf8', env });
+    return run.status === 0 ? run.stdout.trim() : null;
+  };
+  const main = out(dir, 'worktree', 'list', '--porcelain')?.match(/^worktree (.+)$/m)?.[1];
+  return main ? (out(main, 'rev-parse', '--show-toplevel') ?? main) : null;
+}
+
 export function isRepository(root: string): boolean {
   return spawnSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: root, encoding: 'utf8' }).stdout.trim() === 'true';
 }

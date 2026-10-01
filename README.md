@@ -105,7 +105,7 @@ Compared with compacting everything (same instruction, 5 synthetic sessions):
 
 ### Write your own
 
-A policy is a module in `~/.config/resector/policies/<name>.ts`; one named `lean-compact.ts` replaces the built-in.
+A policy is a module in `~/.config/resector/policies/<name>.ts` (`$XDG_CONFIG_HOME` if set); one named `lean-compact.ts` replaces the built-in.
 
 ```ts
 export const description = 'drops reads and short thinking, compacts at ½';
@@ -123,7 +123,7 @@ Interface: [`src/core/policy/policy.ts`](src/core/policy/policy.ts), design: [AD
 
 ## Configuration
 
-`~/.config/resector/config.jsonc`, then `.resector/config.jsonc` in the project (may only tighten permissions). All options: [`config.schema.json`](config.schema.json).
+`~/.config/resector/config.jsonc` (`$XDG_CONFIG_HOME` if set, `RESECTOR_CONFIG` to use another file), then `.resector/config.jsonc` in the project (may only tighten permissions). All options: [`config.schema.json`](config.schema.json).
 
 ### Project Home
 
