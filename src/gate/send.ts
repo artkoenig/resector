@@ -6,7 +6,7 @@ import { readReferences } from '../core/notes/files';
 import type { Policy } from '../core/policy/policy';
 import { renderNative } from '../core/render/native';
 import { openingBlocks } from '../core/session/session';
-import { errorText, formatTokens } from './text';
+import { errorText, formatTokens, generationRate, speedText } from './text';
 import type { GitSlice } from './git';
 import { same, type Kernel } from './kernel';
 import type { PolicySlice } from './policy';
@@ -98,7 +98,7 @@ export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy:
     const payload = requested.at(-1)!;
     const abort = new AbortController();
     loop.setStopping(false);
-    setStreaming({ thinking: '', text: '', abort });
+    setStreaming({ thinking: '', text: '', abort, tokens: 0, first: null });
     setStatus(null);
     try {
       const { total } = await backend().count(requested);
@@ -113,9 +113,23 @@ export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy:
         if (thinking && !text && sel.selected() === nextId()) follow(nextId() + 1);
         setStreaming({ ...streaming()!, text: text + d });
       };
-      const result = await backend().chat(payload, { signal: abort.signal, onDelta, onThinking, maxTokens: k.budgetOf(total).maxTokens });
+      const onToken = () => {
+        const s = streaming()!;
+        setStreaming({ ...s, tokens: s.tokens + 1, first: s.first ?? Date.now() });
+      };
+      const sent = Date.now();
+      const result = await backend().chat(payload, { signal: abort.signal, onDelta, onThinking, onToken, maxTokens: k.budgetOf(total).maxTokens });
+      // What the server measured; else measured here: generation by the server's token count when it reports one,
+      // without prefill (before the first token); a first token within half a second is not worth telling.
+      const { tokens, first } = streaming()!;
+      const server = result.speed ?? {};
+      const speed = first === null ? speedText(server) : speedText({
+        generation: server.generation ?? generationRate(result.usage?.completion_tokens ?? tokens, Date.now() - first) ?? undefined,
+        prompt: server.prompt,
+        firstToken: server.firstToken ?? (first - sent < 500 ? undefined : first - sent),
+      });
       setStreaming(null);
-      loop.finish(result, did);
+      loop.finish(result, did, speed);
     } catch (e) {
       setStreaming(null);
       setStatus({ text: `backend error: ${errorText(e)}`, tone: 'error' });

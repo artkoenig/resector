@@ -20,6 +20,24 @@ test('a User message is added and sent; the answer becomes an Assistant block, l
   expect(g.gate.status()?.text).toBe('answer complete');
 });
 
+test('without the server\'s timing, a complete answer tells the speed measured: tokens after the first over the time since it', async () => {
+  const g = gateWith();
+  g.reply({ content: 'Hello', usage: { prompt_tokens: 24, completion_tokens: 61 }, delay: 600 });
+  g.gate.submit('hi');
+  await settled(g.gate);
+  const speed = Number(g.gate.status()?.text.match(/^answer complete · (\d+(?:\.\d)?) tok\/s$/)?.[1]);
+  expect(speed).toBeGreaterThan(80);
+  expect(speed).toBeLessThanOrEqual(100);
+});
+
+test('a complete answer tells the speed the server measured: generation, prompt processing, time to the first token', async () => {
+  const g = gateWith();
+  g.reply({ content: 'Hello', speed: { firstToken: 1234, prompt: 851.4, generation: 42.34 } });
+  g.gate.submit('hi');
+  await settled(g.gate);
+  expect(g.gate.status()?.text).toBe('answer complete · 42.3 tok/s · prompt 851 tok/s · first token 1.2s');
+});
+
 test('every request sends max_tokens = window − Context: no answer reserve', async () => {
   const g = gateWith({ users: ['hi'] });
   g.reply({ content: 'ok' });

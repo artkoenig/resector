@@ -96,14 +96,15 @@ export function Preview(props: { shown: Shown }) {
   );
 }
 
+// While live, plain text: re-parsing and highlighting on every token makes the preview flicker.
 function Content(props: { content: string; filetype: string | undefined; live: boolean }) {
   return (
     <Switch fallback={<text fg={MUTED}>{props.content}</text>}>
-      <Match when={props.filetype === 'markdown'}>
-        <markdown content={props.content} syntaxStyle={syntax()} fg={MUTED} streaming={props.live} conceal tableOptions={{ widthMode: 'content', borderColor: BORDER }} />
+      <Match when={!props.live && props.filetype === 'markdown'}>
+        <markdown content={props.content} syntaxStyle={syntax()} fg={MUTED} conceal tableOptions={{ widthMode: 'content', borderColor: BORDER }} />
       </Match>
-      <Match when={props.filetype}>
-        {(ft: () => string) => <code content={props.content} filetype={ft()} syntaxStyle={syntax()} fg={MUTED} streaming={props.live} wrapMode="word" />}
+      <Match when={!props.live && props.filetype}>
+        {(ft: () => string) => <code content={props.content} filetype={ft()} syntaxStyle={syntax()} fg={MUTED} wrapMode="word" />}
       </Match>
     </Switch>
   );

@@ -77,7 +77,8 @@ export type Git = {
 };
 
 // In-flight answer, its reasoning apart; never persisted until complete or aborted.
-export type Streaming = { thinking: string; text: string; abort: AbortController };
+// tokens: stream events with output so far (about one token each); first: when the first came (ms), null before.
+export type Streaming = { thinking: string; text: string; abort: AbortController; tokens: number; first: number | null };
 // Approved Tool Call running; its output so far is shown, the result is logged when it ends. timeout: its tool's.
 export type Running = { call: Block; output: string; started: number; timeout: number; abort: AbortController };
 // A Question awaiting the user's answer in the dock: its Tool Call and questions.

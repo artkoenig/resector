@@ -3,7 +3,7 @@ import { Show } from 'solid-js';
 import type { Compaction, Status } from '../gate';
 import type { Screen } from './screen';
 import { cell } from './format';
-import { count, formatTokens, titleOf } from '../gate/text';
+import { count, formatTokens, rateText, titleOf } from '../gate/text';
 import { ACCENT, KIND_COLOR, MUTED, TONE } from './theme';
 
 export type Mode = 'context' | 'input';
@@ -50,5 +50,6 @@ export function statusOf(gate: Screen, spin: string): Status | null {
   if (gate.compacting()?.phase === 'running') return { text: `${spin} compacting with ${gate.compacting()!.profile}`, tone: 'warn' };
   const s = gate.streaming();
   if (!s) return gate.status();
-  return { text: `${spin} model is ${s.thinking && !s.text ? 'thinking' : 'responding'}${stop('answer')}`, tone: 'warn' };
+  const speed = s.first === null ? null : rateText(s.tokens, Date.now() - s.first);
+  return { text: `${spin} model is ${s.thinking && !s.text ? 'thinking' : 'responding'}${speed ? ` · ${speed}` : ''}${stop('answer')}`, tone: 'warn' };
 }

@@ -146,6 +146,26 @@ test('Esc again aborts streaming; the partial answer is kept as cut off', async 
   ]);
 });
 
+test('while the answer streams, the status shows the generation speed', async () => {
+  await start();
+  fake.reply({ chunks: ['Hal', 'lo', ' there'], hang: true });
+  await write('hi there');
+  const frame = await frameMatching(ui, f => /model is responding · \d+\.\d tok\/s/.test(f));
+  expect(frame).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] model is responding · \d+\.\d tok\/s/);
+  await escape();
+  await escape();
+  await frameMatching(ui, f => f.includes('⚠ cut off'));
+});
+
+test('while the answer streams, the preview shows it as plain text; Markdown renders once it is complete', async () => {
+  await start();
+  fake.reply({ chunks: ['**bold**'], delay: 0.3 });
+  await write('hi there');
+  const streaming = await frameMatching(ui, f => previewed(f) === '**bold**');
+  expect(streaming).toContain('model is responding');
+  await frameMatching(ui, f => f.includes('answer complete') && previewed(f) === 'bold');
+});
+
 test('reasoning streams dimmed into its own Thinking row, the status says thinking; it is logged before the answer', async () => {
   const { events } = await start();
   fake.reply({ thinking: ['plan ', 'it'], chunks: ['hello'] });
