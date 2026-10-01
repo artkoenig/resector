@@ -6,12 +6,13 @@ import { readReferences } from '../core/notes/files';
 import type { Policy } from '../core/policy/policy';
 import { renderNative } from '../core/render/native';
 import { openingBlocks } from '../core/session/session';
-import { errorText, formatTokens } from './text';
+import type { ChatResult } from '../core/tools/answer';
+import { errorText, formatTokens, generationRate, speedText } from './text';
 import type { GitSlice } from './git';
 import { same, type Kernel } from './kernel';
 import type { PolicySlice } from './policy';
 import { APPROVE, QUESTION_HINT, type ToolLoop } from './tool-loop';
-import type { Policies, Project, Status, View } from './types';
+import type { Policies, Project, Status, Streaming, View } from './types';
 
 // The last block: a User message, a Tool Result or a Note (e.g. an @path reference) asks for an answer,
 // not the Notes a new session starts with (environment, project instructions).
@@ -98,7 +99,7 @@ export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy:
     const payload = requested.at(-1)!;
     const abort = new AbortController();
     loop.setStopping(false);
-    setStreaming({ thinking: '', text: '', abort });
+    setStreaming({ thinking: '', text: '', abort, tokens: 0, first: null });
     setStatus(null);
     try {
       const { total } = await backend().count(requested);
@@ -113,9 +114,15 @@ export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy:
         if (thinking && !text && sel.selected() === nextId()) follow(nextId() + 1);
         setStreaming({ ...streaming()!, text: text + d });
       };
-      const result = await backend().chat(payload, { signal: abort.signal, onDelta, onThinking, maxTokens: k.budgetOf(total).maxTokens });
+      const onToken = () => {
+        const s = streaming()!;
+        setStreaming({ ...s, tokens: s.tokens + 1, first: s.first ?? Date.now() });
+      };
+      const sent = Date.now();
+      const result = await backend().chat(payload, { signal: abort.signal, onDelta, onThinking, onToken, maxTokens: k.budgetOf(total).maxTokens });
+      const speed = speedOf(result, streaming()!, sent);
       setStreaming(null);
-      loop.finish(result, did);
+      loop.finish(result, did, speed);
     } catch (e) {
       setStreaming(null);
       setStatus({ text: `backend error: ${errorText(e)}`, tone: 'error' });
@@ -125,4 +132,17 @@ export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy:
   }
 
   return { send };
+}
+
+// What the server measured; else measured here: generation by the server's token count when it reports one,
+// without prefill (before the first token); a first token within half a second is not worth telling.
+function speedOf(result: ChatResult, { tokens, first }: Streaming, sent: number): string | null {
+  const server = result.speed ?? {};
+  if (first === null) return speedText(server);
+  const wait = first - sent;
+  return speedText({
+    generation: server.generation ?? generationRate(result.usage?.completion_tokens ?? tokens, Date.now() - first) ?? undefined,
+    prompt: server.prompt,
+    firstToken: server.firstToken ?? (wait < 500 ? undefined : wait),
+  });
 }

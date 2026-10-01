@@ -82,6 +82,13 @@ test('a Context without user message is counted with an empty user turn in the T
   expect(split.total).toBe(21);
 });
 
+test('the answer\'s speed comes from oMLX\'s timing in usage, in seconds', async () => {
+  const backend = await open();
+  fake.reply({ chunks: ['ok'], usage: { prompt_tokens: 20, completion_tokens: 2, time_to_first_token: 1.2, prompt_tokens_per_second: 850, generation_tokens_per_second: 42.5 } });
+  const result = await backend.chat(request([{ role: 'user', content: 'hi' }]), { signal: new AbortController().signal, onDelta: () => {} });
+  expect(result.speed).toEqual({ firstToken: 1200, prompt: 850, generation: 42.5 });
+});
+
 test('an answer streams in deltas and ends with finish reason, usage and cached tokens', async () => {
   const backend = await open({ sampling: { temperature: 0.2, top_k: 20 } });
   fake.reply({ chunks: ['Hel', 'lo'], usage: { prompt_tokens: 20, completion_tokens: 2 }, cacheN: 7 });

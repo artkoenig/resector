@@ -46,7 +46,9 @@ export function scriptedBackend({ window = 4096, exact = true, perBlock = 10, th
 const answer = ({ calls = [], ...reply }: Partial<ChatResult>): ChatResult =>
   ({ thinking: '', content: '', calls, finish: calls.length ? 'tool_calls' : 'stop', usage: null, cached: null, predicted: null, ...reply });
 
+// The first token comes at once: the delay is generation.
 const stream = (result: ChatResult, options: Parameters<Backend['chat']>[1]) => {
+  options.onToken?.();
   if (result.thinking) options.onThinking?.(result.thinking);
   if (result.content) options.onDelta(result.content);
 };

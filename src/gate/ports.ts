@@ -5,9 +5,16 @@ import type { TokenSplit } from '../core/tokens/split';
 import type { ChatResult } from '../core/tools/answer';
 import type { RunResult } from '../core/tools/call';
 
-// onThinking: reasoning as it streams; maxTokens: the window minus the Context, no reserve –
-// the Gate always sets it, without it the server's default applies.
-export type ChatOptions = { signal: AbortSignal; onDelta: (text: string) => void; onThinking?: (text: string) => void; maxTokens?: number };
+// onThinking: reasoning as it streams; onToken: a stream event with generated output (reasoning, text or a call's
+// pieces), about one token; maxTokens: the window minus the Context, no reserve – the Gate always sets it,
+// without it the server's default applies.
+export type ChatOptions = {
+  signal: AbortSignal;
+  onDelta: (text: string) => void;
+  onThinking?: (text: string) => void;
+  onToken?: () => void;
+  maxTokens?: number;
+};
 // Prompt tokens the server will reuse from its prefix cache; not exact = approximate.
 export type CacheHit = { tokens: number; exact: boolean };
 export type Counted = TokenSplit & { cached: CacheHit };

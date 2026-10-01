@@ -17,8 +17,11 @@ export type Reply = {
   hang?: boolean;
   // Seconds to wait after the chunks and calls before finishing.
   delay?: number;
-  usage?: { prompt_tokens: number; completion_tokens: number };
+  // Extra fields as servers add them (oMLX's timing).
+  usage?: { prompt_tokens: number; completion_tokens: number; [field: string]: number };
   cacheN?: number;
+  // Timing fields next to cache_n, as llama.cpp, Splash and Ollama send them.
+  timings?: Record<string, number>;
   // End the stream without finish_reason (dropped connection) or with a mid-stream error event.
   truncate?: boolean;
   error?: string;
@@ -108,7 +111,7 @@ export function startFakeLlamaCpp({ jinja = true, nCtx = 4096, model = 'qwen3-8b
         const reply = replies.shift();
         if (!reply) return error('no scripted reply');
         const prompt = tokenize(applyTemplate(body.messages, true, body.tools), true);
-        const final = { choices: [], usage: reply.usage ?? null, timings: { cache_n: reply.cacheN ?? reuse(prompt) } };
+        const final = { choices: [], usage: reply.usage ?? null, timings: { cache_n: reply.cacheN ?? reuse(prompt), ...reply.timings } };
         slot = [...prompt, ...tokenize(content(answer(reply), true), false)];
         return new Response(stream(reply, req.signal, final), { headers: { 'content-type': 'text/event-stream' } });
       }

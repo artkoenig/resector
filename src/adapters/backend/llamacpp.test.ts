@@ -59,6 +59,13 @@ test('an answer streams in deltas and ends with finish reason, usage and cached 
   expect(fake.chatRequests).toEqual([{ n_cache_reuse: 0, messages, stream: true, stream_options: { include_usage: true } }]);
 });
 
+test('the answer\'s speed comes from the server\'s timings', async () => {
+  fake = startFakeLlamaCpp();
+  fake.reply({ chunks: ['ok'], timings: { prompt_ms: 1200, prompt_per_second: 850, predicted_ms: 500, predicted_per_second: 42.5 } });
+  const result = await (await connectLlamaCpp(fake.url)).chat(request([{ role: 'user', content: 'hi' }]), { signal: new AbortController().signal, onDelta: () => {} });
+  expect(result.speed).toEqual({ firstToken: 1200, prompt: 850, generation: 42.5 });
+});
+
 test('max_tokens goes into the request: the window minus the Context; llama.cpp counts exactly', async () => {
   fake = startFakeLlamaCpp();
   fake.reply({ chunks: ['ok'] });
@@ -204,7 +211,10 @@ test('the request sends the tools; tool calls stream in and end with finish reas
   fake = startFakeLlamaCpp();
   fake.reply({ chunks: ['Let me see.'], calls: [{ name: 'bash', arguments: '{"command":"ls -la"}' }, { name: 'bash', arguments: '{"command":"pwd"}' }] });
   const chat = toolLoop()[1]!;
-  const result = await (await connectLlamaCpp(fake.url)).chat(chat, { signal: new AbortController().signal, onDelta: () => {} });
+  let tokens = 0;
+  const result = await (await connectLlamaCpp(fake.url)).chat(chat, { signal: new AbortController().signal, onDelta: () => {}, onToken: () => tokens++ });
+  // Every event with output counts: the text, then each call's name and arguments.
+  expect(tokens).toBeGreaterThan(1);
   expect(result).toMatchObject({
     content: 'Let me see.',
     calls: [{ name: 'bash', arguments: '{"command":"ls -la"}' }, { name: 'bash', arguments: '{"command":"pwd"}' }],

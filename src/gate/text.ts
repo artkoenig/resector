@@ -4,9 +4,29 @@ import { callText, type Block } from '../core/log/fold';
 import type { Reviewed } from './review';
 import { toolNames } from '../core/tools/catalog';
 import { questionTitle } from '../core/tools/question';
+import type { Speed } from '../core/tools/answer';
 
 export const formatTokens = (t: number): string =>
   t >= 1024 && t % 1024 === 0 ? `${t / 1024}k` : t >= 1000 ? `${(t / 1000).toFixed(1)}k` : String(t);
+
+// Tokens/s, one decimal below 100.
+const rate = (r: number) => `${r >= 100 ? Math.round(r) : r.toFixed(1)} tok/s`;
+
+// Generation speed measured on the stream: the tokens after the first of `n`, over the `ms` since it; null while
+// too short to tell.
+export const generationRate = (n: number, ms: number): number | null => (ms < 500 || n < 2 ? null : ((n - 1) * 1000) / ms);
+export const rateText = (n: number, ms: number): string | null => {
+  const r = generationRate(n, ms);
+  return r === null ? null : rate(r);
+};
+
+// An answer's speed: generation, prompt processing, time to the first token; null when nothing is known.
+export const speedText = ({ generation, prompt, firstToken }: Speed): string | null =>
+  [
+    generation !== undefined && rate(generation),
+    prompt !== undefined && `prompt ${rate(prompt)}`,
+    firstToken !== undefined && `first token ${(firstToken / 1000).toFixed(1)}s`,
+  ].filter(Boolean).join(' · ') || null;
 
 // `off`, `on`, or `on:<effort>`.
 export const thinkingLabel = (thinking: Thinking) => (thinking === 'off' || thinking === 'on' ? thinking : `on:${thinking}`);

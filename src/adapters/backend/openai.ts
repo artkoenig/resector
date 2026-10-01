@@ -1,6 +1,6 @@
 // HTTP and OpenAI-compatible chat streaming shared by the backends that speak /v1/chat/completions.
 import type { ChatOptions } from '../../gate/ports';
-import type { ChatResult } from '../../core/tools/answer';
+import type { ChatResult, Speed } from '../../core/tools/answer';
 import type { Thinking } from '../../core/log/events';
 import { callId, type Message, type Request } from '../../core/render/native';
 import { splitThinking } from '../../core/render/thinking';
@@ -11,9 +11,18 @@ type CallDelta = { index: number; function?: { name?: string; arguments?: string
 type Delta = { content?: string | null; reasoning_content?: string | null; reasoning?: string | null; tool_calls?: CallDelta[] };
 type StreamEvent = {
   choices?: { delta: Delta; finish_reason?: 'stop' | 'length' | 'tool_calls' | null }[];
-  usage?: { prompt_tokens: number; completion_tokens: number; prompt_tokens_details?: { cached_tokens?: number } } | null;
-  // llama.cpp reports reused cache in timings, oMLX in usage.prompt_tokens_details.
-  timings?: { cache_n: number };
+  // oMLX adds its timing to usage (seconds).
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    prompt_tokens_details?: { cached_tokens?: number };
+    time_to_first_token?: number;
+    prompt_tokens_per_second?: number;
+    generation_tokens_per_second?: number;
+  } | null;
+  // llama.cpp reports reused cache in timings, oMLX in usage.prompt_tokens_details. llama.cpp, Splash and Ollama
+  // time the answer in timings (ms).
+  timings?: { cache_n?: number; prompt_ms?: number; prompt_per_second?: number; predicted_per_second?: number };
   error?: { message: string };
 };
 
@@ -85,10 +94,10 @@ export async function streamChat(
   { name, request }: { name: string; request: ReturnType<typeof httpClient>['request'] },
   params: Record<string, unknown>,
   chat: Request,
-  { signal, onDelta, onThinking = () => {}, maxTokens }: ChatOptions,
+  { signal, onDelta, onThinking = () => {}, onToken = () => {}, maxTokens }: ChatOptions,
 ): Promise<ChatResult> {
   const answer: Answer = { result: { thinking: '', content: '', calls: [], finish: 'aborted', usage: null, cached: null, predicted: null }, fromField: '', text: '', inline: '' };
-  const emit = { onDelta, onThinking };
+  const emit = { onDelta, onThinking, onToken };
   try {
     const body = { ...params, ...chatFields(chat), ...(maxTokens !== undefined && { max_tokens: maxTokens }), stream: true, stream_options: { include_usage: true } };
     const res = await request('/v1/chat/completions', { ...jsonPost(body), signal });
@@ -105,7 +114,7 @@ export async function streamChat(
 // The answer so far. Reasoning comes as its own delta field (fromField) or inline as <think>…</think> at the
 // start of the content (inline); `text`: all content streamed.
 type Answer = { result: ChatResult; fromField: string; text: string; inline: string };
-type Emit = Pick<ChatOptions, 'onDelta'> & { onThinking: (text: string) => void };
+type Emit = Pick<ChatOptions, 'onDelta'> & { onThinking: (text: string) => void; onToken: () => void };
 
 // Streams what is new of the reasoning and the answer text since the last event.
 function streamText(answer: Answer, { onDelta, onThinking }: Emit, done = false) {
@@ -120,13 +129,14 @@ function streamText(answer: Answer, { onDelta, onThinking }: Emit, done = false)
 
 // The complete answer: text held back as a possible <think> is text after all.
 function settle(answer: Answer): ChatResult {
-  streamText(answer, { onDelta: () => {}, onThinking: () => {} }, true);
+  streamText(answer, { onDelta: () => {}, onThinking: () => {}, onToken: () => {} }, true);
   answer.result.thinking = answer.fromField || answer.inline;
   return answer.result;
 }
 
-function addDelta(answer: Answer, { reasoning_content, reasoning: named, content }: Delta, emit: Emit) {
+function addDelta(answer: Answer, { reasoning_content, reasoning: named, content, tool_calls }: Delta, emit: Emit) {
   const reasoning = reasoning_content || named;
+  if (reasoning || content || tool_calls?.length) emit.onToken();
   if (reasoning) {
     answer.fromField += reasoning;
     emit.onThinking(reasoning);
@@ -144,13 +154,31 @@ function accumulate(name: string, answer: Answer, event: StreamEvent, emit: Emit
   const choice = event.choices?.[0];
   if (choice) addDelta(answer, choice.delta, emit);
   addCalls(result, choice?.delta.tool_calls ?? []);
+  addUsage(result, event);
+  if (!choice?.finish_reason) return false;
+  result.finish = choice.finish_reason;
+  return true;
+}
+
+// Usage, cache hit and speed, which servers send in the last event.
+function addUsage(result: ChatResult, event: StreamEvent) {
   const { usage, timings } = event;
   if (usage) result.usage = { prompt_tokens: usage.prompt_tokens, completion_tokens: usage.completion_tokens };
   const cached = timings?.cache_n ?? usage?.prompt_tokens_details?.cached_tokens;
   if (cached !== undefined) result.cached = cached;
-  if (!choice?.finish_reason) return false;
-  result.finish = choice.finish_reason;
-  return true;
+  const speed = serverSpeed(event);
+  if (speed) result.speed = speed;
+}
+
+// The answer's speed as the server measured it; null from an event without it.
+function serverSpeed({ usage, timings }: StreamEvent): Speed | null {
+  // Splash sends 0 for what it could not measure (e.g. an answer of one emission).
+  const known = (speed: Speed) => Object.fromEntries(Object.entries(speed).filter(([, v]) => v !== undefined && v > 0));
+  if (timings?.predicted_per_second !== undefined)
+    return known({ firstToken: timings.prompt_ms, prompt: timings.prompt_per_second, generation: timings.predicted_per_second });
+  if (usage?.generation_tokens_per_second === undefined) return null;
+  const firstToken = usage.time_to_first_token === undefined ? undefined : usage.time_to_first_token * 1000;
+  return known({ firstToken, prompt: usage.prompt_tokens_per_second, generation: usage.generation_tokens_per_second });
 }
 
 function addCalls(result: ChatResult, deltas: CallDelta[]) {
