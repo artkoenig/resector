@@ -87,10 +87,10 @@ test('a missing or unknown Model Profile is an error', () => {
 test('a profile systemPrompt path is relative to the config file declaring it', () => {
   const { profile } = readConfig([
     { source: '/home/me/.config/resector/config.jsonc', text: '{ "profiles": { "a": { "backend": "llamacpp", "systemPrompt": "prompts/a.md" } } }' },
-    { source: '/work/app/.resector/config.jsonc', text: '{ "profiles": { "b": { "backend": "llamacpp", "systemPrompt": "b.md" }, "c": { "backend": "llamacpp", "systemPrompt": "/etc/c.md" } } }' },
+    { source: '/home/me/.config/resector/projects/-work-app/config.jsonc', text: '{ "profiles": { "b": { "backend": "llamacpp", "systemPrompt": "b.md" }, "c": { "backend": "llamacpp", "systemPrompt": "/etc/c.md" } } }' },
   ]);
   expect(profile('a').systemPrompt).toBe('/home/me/.config/resector/prompts/a.md');
-  expect(profile('b').systemPrompt).toBe('/work/app/.resector/b.md');
+  expect(profile('b').systemPrompt).toBe('/home/me/.config/resector/projects/-work-app/b.md');
   expect(profile('c').systemPrompt).toBe('/etc/c.md');
 });
 
@@ -109,16 +109,19 @@ test('permission rules, keybindings and the bash timeout are read from config', 
   );
 });
 
-test('permission rules: built-in, then global, then project; project allow entries are ignored', () => {
+test('permission rules: built-in, then global, then project; project allow entries count', () => {
   const { permissions } = readConfig([
     { source: 'global', text: '{ "permission": { "git push *": "ask", "make *": "allow" } }' },
     { source: 'project', project: true, text: '{ "permission": { "make *": "deny", "git commit *": "allow" } }' },
   ]);
-  expect(permissions).toEqual({
-    rules: [...BUILTIN_ALLOW, { pattern: 'git push *', action: 'ask', source: 'global' }, { pattern: 'make *', action: 'allow', source: 'global' }, { pattern: 'make *', action: 'deny', source: 'project' }],
-    ignored: ['git commit *'],
-  });
-  expect(readConfig([{ source: 'global', text: '{}' }]).permissions).toEqual({ rules: BUILTIN_ALLOW, ignored: [] });
+  expect(permissions).toEqual([
+    ...BUILTIN_ALLOW,
+    { pattern: 'git push *', action: 'ask', source: 'global' },
+    { pattern: 'make *', action: 'allow', source: 'global' },
+    { pattern: 'make *', action: 'deny', source: 'project' },
+    { pattern: 'git commit *', action: 'allow', source: 'project' },
+  ]);
+  expect(readConfig([{ source: 'global', text: '{}' }]).permissions).toEqual(BUILTIN_ALLOW);
 });
 
 test('an invalid permission is an error even when a later file overrides it', () => {

@@ -59,8 +59,8 @@ export type Compactor = { profile: string; backend: Backend };
 // and $EDITOR on a file of the project (`e` on a reference).
 export type Project = { read: ReadFile; list: () => string[]; environment: () => string; open: (path: string) => Promise<void> };
 // Tool Approval: the splitter, the project root arguments must stay in, and the config's rules as read
-// when the session opened (ignored: project allow patterns).
-export type Approval = { split: Split; root: string; permissions: () => { rules: Rule[]; ignored: string[] } };
+// when the session opened.
+export type Approval = { split: Split; root: string; permissions: () => Rule[] };
 
 // The local branches, the current one (null when detached) and those checked out in another worktree, with its path.
 export type Branches = { current: string | null; all: string[]; elsewhere: Record<string, string> };

@@ -123,25 +123,7 @@ Interface: [`src/core/policy/policy.ts`](src/core/policy/policy.ts), design: [AD
 
 ## Configuration
 
-`~/.config/resector/config.jsonc` (`$XDG_CONFIG_HOME` if set, `RESECTOR_CONFIG` to use another file), then `.resector/config.jsonc` in the project (may only tighten permissions). All options: [`config.schema.json`](config.schema.json).
-
-### Project Home
-
-resector keeps what belongs to a project outside it ([ADR 0004](docs/adr/0004-project-data-outside-project.md)), in two roots:
-
-| Root | Holds |
-| --- | --- |
-| `$XDG_CONFIG_HOME/resector/projects/<key>/` (default `~/.config`) | what you edit: your personal `AGENTS.md`/`CLAUDE.md` for the project |
-| `$XDG_DATA_HOME/resector/projects/<key>/` (default `~/.local/share`) | what resector writes: `sessions/` |
-
-`<key>` is the real path of the main checkout with every non-alphanumeric character replaced by `-`; without git, the start directory. It is the same from every subdirectory and every worktree of a repository; a submodule has its own. `RESECTOR_CONFIG` moves only the global config file, not the Project Homes or `policies/`.
-
-Personal instructions for `/Users/me/resector`:
-
-```bash
-mkdir -p ~/.config/resector/projects/-Users-me-resector
-$EDITOR ~/.config/resector/projects/-Users-me-resector/AGENTS.md
-```
+`~/.config/resector/config.jsonc` (`$XDG_CONFIG_HOME` if set, `RESECTOR_CONFIG` to use another file), then `config.jsonc` in the [Project Home](#project-home), which overrides it. All options: [`config.schema.json`](config.schema.json).
 
 ```jsonc
 {
@@ -159,7 +141,27 @@ $EDITOR ~/.config/resector/projects/-Users-me-resector/AGENTS.md
 }
 ```
 
-`compaction.md` / `system.md` next to a config file replace the shipped instructions. Slash commands: `tab`, then `/`.
+`permission`: the last matching rule decides, in this order: built-in, global config, project config, rules you add with `a` for the session; none matching asks. Project rules can loosen global ones (`allow` what the global config asks for) as well as tighten them.
+
+`compaction.md` / `system.md` in the Project Home, else next to the global config, replace the shipped instructions. Slash commands: `tab`, then `/`.
+
+### Project Home
+
+resector keeps what belongs to a project outside it ([ADR 0004](docs/adr/0004-project-data-outside-project.md)), in two roots:
+
+| Root | Holds |
+| --- | --- |
+| `$XDG_CONFIG_HOME/resector/projects/<key>/` (default `~/.config`) | what you edit: `config.jsonc`, `system.md`, `compaction.md`, your personal `AGENTS.md`/`CLAUDE.md` for the project; resector never creates it |
+| `$XDG_DATA_HOME/resector/projects/<key>/` (default `~/.local/share`) | what resector writes: `sessions/` |
+
+`<key>` is the real path of the main checkout with every non-alphanumeric character replaced by `-`; without git, the start directory. It is the same from every subdirectory and every worktree of a repository; a submodule has its own. `RESECTOR_CONFIG` moves only the global config file, not the Project Homes or `policies/`.
+
+Personal instructions for `/Users/me/resector`:
+
+```bash
+mkdir -p ~/.config/resector/projects/-Users-me-resector
+$EDITOR ~/.config/resector/projects/-Users-me-resector/AGENTS.md
+```
 
 ## Documentation
 
