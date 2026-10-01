@@ -14,7 +14,7 @@ type ExportLog = (ref: SessionRef) => string;
 const USAGE = 'usage: resector [-c [id]] | resector --export-fixture [id] | resector --version\n';
 const OPTIONS = { version: { type: 'boolean' }, continue: { type: 'boolean', short: 'c' }, 'export-fixture': { type: 'boolean' } } as const;
 const USAGE_ERROR: Result = { code: 1, out: USAGE };
-const projectLog: ExportLog = ref => projectSessionStore(configPaths({ home: homedir(), cwd: process.cwd(), env: process.env }), process.cwd()).exportLog(ref);
+const projectLog: ExportLog = ref => projectSessionStore(configPaths({ home: homedir(), cwd: process.cwd(), env: process.env })).exportLog(ref);
 
 export function main(argv: string[], exportLog = projectLog): Result | { start: Start } {
   try {

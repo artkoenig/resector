@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { listProjectFiles, personalInstructionsDir, probeEnvironment, projectFiles, projectInstructions } from './project';
+import { listProjectFiles, probeEnvironment, projectFiles, projectInstructions } from './project';
 
 const dir = () => realpathSync(mkdtempSync(join(tmpdir(), 'resector-project-')));
 
@@ -45,10 +45,6 @@ test('AGENTS.md and CLAUDE.md of the project, then those of the personal directo
     { file: '~/projects/p/CLAUDE.md', content: 'mine' },
   ]);
   expect(projectInstructions(root, personal, '/elsewhere').at(-1)!.file).toBe(join(personal, 'CLAUDE.md'));
-});
-
-test('the personal instructions of a project lie next to the global config, named after the project directory', () => {
-  expect(personalInstructionsDir({ global: '/h/.config/resector/config.jsonc', project: '' }, '/Users/a/my.app')).toBe('/h/.config/resector/projects/my.app');
 });
 
 const at = new Date(2026, 8, 26, 23, 30);

@@ -36,7 +36,7 @@ test('/sessions lists the project sessions newest first with marker, profile, Co
 });
 
 test('Enter opens the selected session; the lock moves with it; Esc goes back', async () => {
-  const { root } = await sessionsView({ ses_a: titled('local', 'fix the build') });
+  const { sessionsDir } = await sessionsView({ ses_a: titled('local', 'fix the build') });
   await key('escape');
   await frameMatching(ui, f => f.includes('/ 2k') && !f.includes('Sessions ·'));
   await command('/sessions');
@@ -45,7 +45,7 @@ test('Enter opens the selected session; the lock moves with it; Esc goes back', 
   await key('enter');
   const frame = await frameMatching(ui, f => f.includes('resumed "fix the build"'));
   expect(frame).toMatch(/3\s+User\s+fix the build/);
-  expect(readdirSync(join(root, 'sessions')).filter(f => f.endsWith('.lock'))).toEqual(['ses_a.lock']);
+  expect(readdirSync(sessionsDir).filter(f => f.endsWith('.lock'))).toEqual(['ses_a.lock']);
 });
 
 test('a session open in another instance is neither opened nor deleted', async () => {
@@ -63,7 +63,7 @@ test('a session open in another instance is neither opened nor deleted', async (
 });
 
 test('d asks before deleting; deleting the current session switches to the newest other one', async () => {
-  const { root } = await sessionsView({ ses_a: titled('local', 'keep me'), ses_b: titled('local', 'drop me') });
+  const { sessionsDir } = await sessionsView({ ses_a: titled('local', 'keep me'), ses_b: titled('local', 'drop me') });
   await key('down');
   await key('down');
   await key('d');
@@ -74,28 +74,28 @@ test('d asks before deleting; deleting the current session switches to the newes
   await key('y');
   const deleted = await frameMatching(ui, f => f.includes('deleted "drop me"'));
   expect(line(deleted, /1h ago|2h ago/)).toMatch(/keep me/);
-  expect(existsSync(join(root, 'sessions', 'ses_b.jsonl'))).toBe(false);
+  expect(existsSync(join(sessionsDir, 'ses_b.jsonl'))).toBe(false);
   await key('up');
   await key('up');
   await key('d');
   await key('y');
   const frame = await frameMatching(ui, f => f.includes('switched to "keep me"'));
   expect(line(frame, /keep me/)).toMatch(/^[ ┃]●/);
-  expect(existsSync(join(root, 'sessions', 'ses_test.jsonl'))).toBe(false);
+  expect(existsSync(join(sessionsDir, 'ses_test.jsonl'))).toBe(false);
 });
 
 test('when the next session cannot be opened, the current one is not deleted', async () => {
   const config = (url: string) =>
     `{ "profiles": { "local": { "backend": "llamacpp", "endpoint": "${url}", "window": 2048 }, "down": { "backend": "llamacpp", "endpoint": "http://localhost:1" } }, "defaultProfile": "local" }`;
-  const { root } = await launch({ config, sessions: { ses_a: titled('down', 'unreachable') } });
+  const { sessionsDir } = await launch({ config, sessions: { ses_a: titled('down', 'unreachable') } });
   await frameMatching(ui, f => f.includes('/ 2k'));
   await command('/sessions');
   await frameMatching(ui, f => f.includes('Sessions ·'));
   await key('d');
   await key('y');
   await frameMatching(ui, f => f.includes('cannot reach llama.cpp at http://localhost:1'));
-  expect(existsSync(join(root, 'sessions', 'ses_test.jsonl'))).toBe(true);
-  expect(readdirSync(join(root, 'sessions')).filter(f => f.endsWith('.lock'))).toEqual(['ses_test.lock']);
+  expect(existsSync(join(sessionsDir, 'ses_test.jsonl'))).toBe(true);
+  expect(readdirSync(sessionsDir).filter(f => f.endsWith('.lock'))).toEqual(['ses_test.lock']);
 });
 
 test('deleting the only session starts a new empty one', async () => {

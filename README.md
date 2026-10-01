@@ -125,7 +125,23 @@ Interface: [`src/core/policy/policy.ts`](src/core/policy/policy.ts), design: [AD
 
 `~/.config/resector/config.jsonc`, then `.resector/config.jsonc` in the project (may only tighten permissions). All options: [`config.schema.json`](config.schema.json).
 
-Session Logs are written to `~/.config/resector/projects/<project>/sessions/`, next to your personal `AGENTS.md`/`CLAUDE.md` for the project.
+### Project Home
+
+resector keeps what belongs to a project outside it ([ADR 0004](docs/adr/0004-project-data-outside-project.md)), in two roots:
+
+| Root | Holds |
+| --- | --- |
+| `$XDG_CONFIG_HOME/resector/projects/<key>/` (default `~/.config`) | what you edit: your personal `AGENTS.md`/`CLAUDE.md` for the project |
+| `$XDG_DATA_HOME/resector/projects/<key>/` (default `~/.local/share`) | what resector writes: `sessions/` |
+
+`<key>` is the real path of the main checkout with every non-alphanumeric character replaced by `-`; without git, the start directory. It is the same from every subdirectory and every worktree of a repository; a submodule has its own. `RESECTOR_CONFIG` moves only the global config file, not the Project Homes or `policies/`.
+
+Personal instructions for `/Users/me/resector`:
+
+```bash
+mkdir -p ~/.config/resector/projects/-Users-me-resector
+$EDITOR ~/.config/resector/projects/-Users-me-resector/AGENTS.md
+```
 
 ```jsonc
 {

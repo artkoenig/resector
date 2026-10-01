@@ -25,7 +25,7 @@ export async function start({ resume }: Start) {
     () => (
       <Launch
         paths={paths}
-        store={projectSessionStore(paths, process.cwd())}
+        store={projectSessionStore(paths)}
         editor={createEditor(terminal)}
         openFile={createFileEditor(terminal)}
         clipboard={createClipboard({ osc52: text => renderer.copyToClipboardOSC52(text), command: copyCommand(process.platform, process.env) })}

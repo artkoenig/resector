@@ -1,17 +1,47 @@
-// Reads the config files from disk: global, then project; RESECTOR_CONFIG replaces the global path.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+// Reads the config files from disk: global, then project; RESECTOR_CONFIG replaces the global path. The Project Home (ADR 0004).
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { DEFAULT_INSTRUCTION } from '../../core/compaction/compaction';
 import { initialConfig, readConfig, type BackendKind, type ConfigFile, type ModelProfile } from '../../core/config/config';
 import { DEFAULT_SYSTEM_PROMPT } from '../../core/config/system-prompt';
 
-export type ConfigPaths = { global: string; project: string };
+// projectHome: what the user edits for the Project (config) and what resector writes for it (data).
+export type ConfigPaths = { global: string; project: string; policies: string; projectHome: { config: string; data: string } };
 
 export function configPaths({ home, cwd, env }: { home: string; cwd: string; env: Record<string, string | undefined> }): ConfigPaths {
+  // XDG values count only if absolute, as the spec says.
+  const xdg = (name: string, fallback: string) => join(isAbsolute(env[name] ?? '') ? env[name]! : join(home, fallback), 'resector');
+  const config = xdg('XDG_CONFIG_HOME', '.config');
+  const key = projectKey(cwd);
   return {
-    global: env.RESECTOR_CONFIG ?? join(home, '.config/resector/config.jsonc'),
+    global: env.RESECTOR_CONFIG ?? join(config, 'config.jsonc'),
     project: join(cwd, '.resector/config.jsonc'),
+    policies: join(config, 'policies'),
+    projectHome: { config: join(config, 'projects', key), data: join(xdg('XDG_DATA_HOME', '.local/share'), 'projects', key) },
   };
+}
+
+const realpath = (path: string) => {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+};
+const gitOut = (cwd: string, ...args: string[]) => {
+  const run = spawnSync('git', args, { cwd, encoding: 'utf8' });
+  return run.status === 0 ? run.stdout.trim() : null;
+};
+
+// The main checkout's realpath, every non-alphanumeric character a `-`: the same from every subdirectory and
+// worktree. A submodule's common dir lies in its superproject's .git, so its own top level is its checkout.
+// Without git, the start directory.
+export function projectKey(cwd: string): string {
+  const start = realpath(cwd);
+  const common = gitOut(start, 'rev-parse', '--path-format=absolute', '--git-common-dir');
+  const root = common === null ? start : basename(common) === '.git' ? realpath(dirname(common)) : (gitOut(start, 'rev-parse', '--show-toplevel') ?? start);
+  return root.replace(/[^a-zA-Z0-9]/g, '-');
 }
 
 // Null when no config file exists yet (first start).

@@ -7,7 +7,7 @@ import { testRender } from '@opentui/solid';
 import { startFakeLlamaCpp } from '../../test/fake-llamacpp';
 import type { LocalServer } from '../adapters/backend/discover';
 import { configPaths, type ConfigPaths } from '../adapters/fs/config';
-import { personalInstructionsDir } from '../adapters/fs/project';
+import { projectSessionsDir } from '../adapters/store/session-log';
 import { openSessionStore } from '../adapters/store/sessions';
 import type { SessionEvent } from '../core/log/events';
 import { newSession } from '../core/session/session';
@@ -42,13 +42,13 @@ function writeProject(project: string, files: Record<string, string>, git?: true
 }
 
 // The global config and the files next to it; the personal instructions.
-function writeConfig(paths: ConfigPaths, project: string, { config, systemMd, compactionMd, policies = {}, personal = {} }: Setup) {
+function writeConfig(paths: ConfigPaths, { config, systemMd, compactionMd, policies = {}, personal = {} }: Setup) {
   const dir = dirname(paths.global);
   if (config) put(paths.global, config(fake.url));
-  for (const [name, text] of Object.entries(personal)) put(join(personalInstructionsDir(paths, project), name), text);
+  for (const [name, text] of Object.entries(personal)) put(join(paths.projectHome.config, name), text);
   if (systemMd) put(join(dir, 'system.md'), systemMd);
   if (compactionMd) put(join(dir, 'compaction.md'), compactionMd);
-  for (const [name, text] of Object.entries(policies)) put(join(dir, 'policies', `${name}.ts`), text);
+  for (const [name, text] of Object.entries(policies)) put(join(paths.policies, `${name}.ts`), text);
 }
 
 export async function launch(setup: Setup = {}) {
@@ -58,18 +58,19 @@ export async function launch(setup: Setup = {}) {
   const project = join(root, 'project');
   writeProject(project, files, git);
   const paths = configPaths({ home: join(root, 'home'), cwd: project, env: {} });
-  writeConfig(paths, project, setup);
+  writeConfig(paths, setup);
+  const sessionsDir = projectSessionsDir(paths);
   const fatal: string[] = [];
   let created = 0;
-  const store = openSessionStore(join(root, 'sessions'), { id: () => (created++ ? `ses_new${created - 1}` : 'ses_test') });
+  const store = openSessionStore(sessionsDir, { id: () => (created++ ? `ses_new${created - 1}` : 'ses_test') });
   // Sessions are written oldest last: the first one given is the newest.
   Object.entries(sessions).forEach(([id, events], i) => {
-    const path = join(root, 'sessions', `${id}.jsonl`);
+    const path = join(sessionsDir, `${id}.jsonl`);
     put(path, events.map(e => JSON.stringify(e) + '\n').join(''));
     const t = new Date(Date.now() - (i + 1) * 3_600_000);
     utimesSync(path, t, t);
   });
-  for (const [id, pid] of Object.entries(locks)) put(join(root, 'sessions', `${id}.lock`), String(pid));
+  for (const [id, pid] of Object.entries(locks)) put(join(sessionsDir, `${id}.lock`), String(pid));
   const quit: string[] = [];
   ui = await testRender(
     () => (
@@ -88,8 +89,8 @@ export async function launch(setup: Setup = {}) {
     ),
     { width: 80, height: 16 },
   );
-  const log = () => readFileSync(join(root, 'sessions', 'ses_test.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
-  return { paths, fatal, log, store, quit, root, project };
+  const log = () => readFileSync(join(sessionsDir, 'ses_test.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
+  return { paths, fatal, log, store, quit, root, project, sessionsDir };
 }
 
 export const profileConfig = (url: string, extra = '') => `{
