@@ -154,15 +154,20 @@ function accumulate(name: string, answer: Answer, event: StreamEvent, emit: Emit
   const choice = event.choices?.[0];
   if (choice) addDelta(answer, choice.delta, emit);
   addCalls(result, choice?.delta.tool_calls ?? []);
+  addUsage(result, event);
+  if (!choice?.finish_reason) return false;
+  result.finish = choice.finish_reason;
+  return true;
+}
+
+// Usage, cache hit and speed, which servers send in the last event.
+function addUsage(result: ChatResult, event: StreamEvent) {
   const { usage, timings } = event;
   if (usage) result.usage = { prompt_tokens: usage.prompt_tokens, completion_tokens: usage.completion_tokens };
   const cached = timings?.cache_n ?? usage?.prompt_tokens_details?.cached_tokens;
   if (cached !== undefined) result.cached = cached;
   const speed = serverSpeed(event);
   if (speed) result.speed = speed;
-  if (!choice?.finish_reason) return false;
-  result.finish = choice.finish_reason;
-  return true;
 }
 
 // The answer's speed as the server measured it; null from an event without it.

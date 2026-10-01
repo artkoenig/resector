@@ -1,6 +1,6 @@
 // The prompt band's meta line (what Enter does, or the Compaction's effect) and the status line of the step under way.
 import { Show } from 'solid-js';
-import type { Compaction, Status } from '../gate';
+import type { Compaction, Status, Streaming } from '../gate';
 import type { Screen } from './screen';
 import { cell } from './format';
 import { count, formatTokens, rateText, titleOf } from '../gate/text';
@@ -49,7 +49,12 @@ export function statusOf(gate: Screen, spin: string): Status | null {
   if (gate.policing()) return { text: `${spin} policy ${gate.policing()} running`, tone: 'warn' };
   if (gate.compacting()?.phase === 'running') return { text: `${spin} compacting with ${gate.compacting()!.profile}`, tone: 'warn' };
   const s = gate.streaming();
-  if (!s) return gate.status();
+  return s ? { text: `${spin} model is ${streamingText(s)}${stop('answer')}`, tone: 'warn' } : gate.status();
+}
+
+// What the streaming model does, with its speed once tokens come.
+function streamingText(s: Streaming): string {
+  const doing = s.thinking && !s.text ? 'thinking' : 'responding';
   const speed = s.first === null ? null : rateText(s.tokens, Date.now() - s.first);
-  return { text: `${spin} model is ${s.thinking && !s.text ? 'thinking' : 'responding'}${speed ? ` · ${speed}` : ''}${stop('answer')}`, tone: 'warn' };
+  return speed ? `${doing} · ${speed}` : doing;
 }
