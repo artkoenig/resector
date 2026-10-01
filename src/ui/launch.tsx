@@ -187,9 +187,14 @@ export function Launch(props: LaunchOptions) {
     const title = titleOf(id);
     const switched = id === current();
     if (switched) await open(load(), props.store.list().find(s => !s.locked && s.id !== id)?.id);
-    const removed = repository ? removeWorktree(root, worktrees, id, force) : null;
+    const kept = removeWorktreeOf(id, force);
     props.store.delete(id);
-    return [`deleted "${title}"`, ...(switched ? [`switched to "${titleOf(current())}"`] : []), ...(removed?.kept ? [`branch ${removed.branch} kept – not merged`] : [])].join(' · ');
+    return [`deleted "${title}"`, ...(switched ? [`switched to "${titleOf(current())}"`] : []), ...kept].join(' · ');
+  }
+  // The status text for an unmerged branch kept; none outside a repository.
+  function removeWorktreeOf(id: string, force: boolean): string[] {
+    const removed = repository ? removeWorktree(root, worktrees, id, force) : null;
+    return removed?.kept ? [`branch ${removed.branch} kept – not merged`] : [];
   }
   const rename = (id: string, title: string) => {
     const event: SessionEvent = { type: 'SessionRenamed', title };
