@@ -1,5 +1,4 @@
 // Startup: read the config (or run the first-start setup), open a new or resumed session, then show the Gate.
-import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createSignal, onMount, Show } from 'solid-js';
 import { connect } from '../adapters/backend/connect';
@@ -8,7 +7,7 @@ import { createRunner } from '../adapters/bash/runner';
 import { createSearcher } from '../adapters/search/ddgr';
 import { createSplit } from '../adapters/bash/split';
 import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
-import { ensureWorktree, isRepository, listBranches, removeWorktree, status, switchBranch, watchHead, worktreeDirty } from '../adapters/git/git';
+import { ensureWorktree, isRepository, listBranches, locateCheckout, mainCheckout, topLevel, removeWorktree, status, switchBranch, watchHead, worktreeDirty } from '../adapters/git/git';
 import { loadPolicies } from '../adapters/fs/policies';
 import { listProjectFiles, probeEnvironment, projectFiles, projectInstructions, tilde } from '../adapters/fs/project';
 import type { OpenSession, SessionStore } from '../adapters/store/sessions';
@@ -65,12 +64,15 @@ export function Launch(props: LaunchOptions) {
   const autoApprove: AutoApprove = { on: autoOn, set: setAutoOn };
   // Policies that failed to load, reported once in the first status line.
   let failed: string[] = [];
-  const root = props.cwd ?? process.cwd();
-  const repository = isRepository(root);
+  // The checkout started in (or its subdirectory), as a real path, so that sessions logged with it are found.
+  const cwd = props.cwd ?? process.cwd();
+  const here = locateCheckout(cwd, null) ?? cwd;
+  const repository = isRepository(here);
+  const project = mainCheckout(here);
   // Session Worktrees live in the Project Home's data root (ADR 0004).
   const worktrees = join(props.paths.projectHome.data, 'worktrees');
   // The project as seen from where a session runs: its checkout or its worktree.
-  const projectAt = (dir: string, checkout = root) => ({
+  const projectAt = (dir: string, checkout = here) => ({
     read: projectFiles(dir),
     list: () => listProjectFiles(dir),
     environment: () => environmentText({ ...probeEnvironment(dir), worktree: dir !== checkout }),
@@ -96,9 +98,10 @@ export function Launch(props: LaunchOptions) {
     const profile = loaded.profile();
     // The project instructions are read once, now.
     const events = newSession(profile.name, loaded.systemPrompt(profile), {
-      environment: projectAt(root).environment(),
-      instructions: projectInstructions(root, props.paths.projectHome.config),
-      checkout: root,
+      environment: projectAt(here).environment(),
+      // From the checkout's top level, also when started in a subdirectory.
+      instructions: projectInstructions(topLevel(here), props.paths.projectHome.config),
+      checkout: here,
     });
     events.forEach(opened.log.append);
     // A new session starts with the configured policy on (lean-compact unless set, none with `off`); when resumed, the app's stays.
@@ -147,8 +150,8 @@ export function Launch(props: LaunchOptions) {
   // older logs that name none.
   function checkoutFor(events: SessionEvent[]): { checkout: string; warning: string | null } {
     const started = checkoutOf(events);
-    if (!started || started === root || existsSync(started)) return { checkout: started ?? root, warning: null };
-    return { checkout: root, warning: `checkout ${started} gone – runs in ${root}` };
+    const now = started ? locateCheckout(started, project) : here;
+    return now ? { checkout: now, warning: null } : { checkout: here, warning: `checkout ${tilde(started!)} gone – runs in ${tilde(here)}` };
   }
   // Where the session runs: its worktree, created again if it is gone; its checkout if that fails.
   function sessionDir(events: SessionEvent[], id: string): { dir: string; checkout: string; warning: string | null } {
@@ -210,16 +213,18 @@ export function Launch(props: LaunchOptions) {
   }
   // The status text for an unmerged branch kept; none outside a repository.
   function removeWorktreeOf(id: string, force: boolean): string[] {
-    const removed = repository ? removeWorktree(root, worktrees, id, force) : null;
+    const removed = repository ? removeWorktree(here, worktrees, id, force) : null;
     return removed?.kept ? [`branch ${removed.branch} kept – not merged`] : [];
   }
   // Where a listed session started, when that is another checkout of the Project: its branch and directory.
-  function elsewhere(events: SessionEvent[]): string | null {
+  function origin(events: SessionEvent[]): string | null {
     const started = checkoutOf(events);
-    if (!started || started === root) return null;
-    if (!existsSync(started)) return `${tilde(started)} (gone)`;
-    const { branch } = probeEnvironment(started);
-    return `${branch ? `⎇ ${branch} in ` : ''}${tilde(started)}`;
+    if (!started) return null;
+    const now = locateCheckout(started, project);
+    if (now === here) return null;
+    if (!now) return `${tilde(started)} (gone)`;
+    const { branch } = probeEnvironment(now);
+    return `${branch ? `⎇ ${branch} in ` : ''}${tilde(now)}`;
   }
   const rename = (id: string, title: string) => {
     const event: SessionEvent = { type: 'SessionRenamed', title };
@@ -274,7 +279,7 @@ export function Launch(props: LaunchOptions) {
           create={() => switchTo()}
           remove={remove}
           worktreeDirty={id => repository && worktreeDirty(worktrees, id)}
-          elsewhere={s => elsewhere(s.events)}
+          origin={s => origin(s.events)}
           rename={rename}
           back={back}
         />

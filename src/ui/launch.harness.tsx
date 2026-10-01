@@ -29,10 +29,11 @@ export function put(path: string, text: string) {
   writeFileSync(path, text);
 }
 
-// policies: Context Policy modules by name, in policies/ under the config root. elsewhere: start in another
-// worktree of the git project, on branch `other`; sessions may then refer to both checkouts.
-type Checkouts = { project: string; other: string };
-export type Setup = { config?: (url: string) => string; systemMd?: string; compactionMd?: string; policies?: Record<string, string>; servers?: (url: string) => LocalServer[]; sessions?: Record<string, SessionEvent[]> | ((dirs: Checkouts) => Record<string, SessionEvent[]>); locks?: Record<string, number>; resume?: true | string; files?: Record<string, string>; personal?: Record<string, string>; git?: true; elsewhere?: true };
+// policies: Context Policy modules by name, in policies/ under the config root. otherWorktree: start in another
+// worktree of the git project, on branch `other`; sessions may then refer to both checkouts. subdirectory: start
+// in this subdirectory of the project.
+export type Checkouts = { project: string; other: string };
+export type Setup = { config?: (url: string) => string; systemMd?: string; compactionMd?: string; policies?: Record<string, string>; servers?: (url: string) => LocalServer[]; sessions?: Record<string, SessionEvent[]> | ((dirs: Checkouts) => Record<string, SessionEvent[]>); locks?: Record<string, number>; resume?: true | string; files?: Record<string, string>; personal?: Record<string, string>; git?: true; otherWorktree?: true; subdirectory?: string };
 
 // The project directory with its files; with git a repository with one commit on main.
 function writeProject(project: string, files: Record<string, string>, git?: true) {
@@ -54,14 +55,15 @@ function writeConfig(paths: ConfigPaths, { config, systemMd, compactionMd, polic
 }
 
 export async function launch(setup: Setup = {}) {
-  const { servers, locks = {}, resume, files = {}, git, elsewhere } = setup;
+  const { servers, locks = {}, resume, files = {}, git, otherWorktree, subdirectory } = setup;
   fake = startFakeLlamaCpp({ nCtx: 4096, model: 'qwen3-8b.gguf' });
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'resector-launch-')));
   const project = join(root, 'project');
   const other = join(root, 'other');
-  writeProject(project, files, git || elsewhere);
-  if (elsewhere) Bun.spawnSync(['git', 'worktree', 'add', '-q', '-b', 'other', other], { cwd: project });
-  const cwd = elsewhere ? other : project;
+  writeProject(project, files, git || otherWorktree);
+  if (otherWorktree) Bun.spawnSync(['git', 'worktree', 'add', '-q', '-b', 'other', other], { cwd: project });
+  const cwd = join(otherWorktree ? other : project, subdirectory ?? '');
+  mkdirSync(cwd, { recursive: true });
   const sessions = typeof setup.sessions === 'function' ? setup.sessions({ project, other }) : (setup.sessions ?? {});
   const paths = configPaths({ home: join(root, 'home'), cwd, env: {} });
   writeConfig(paths, setup);

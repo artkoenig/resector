@@ -22,7 +22,7 @@ type Editing = { kind: 'rename'; session: StoredSession } | { kind: 'filter' };
 
 // open/create/remove switch the current session (remove returns the status text; force: remove the worktree's
 // uncommitted changes too); back returns to the Gate. worktreeDirty: whether deleting would lose changes.
-// elsewhere: where a session started when not in the current checkout (branch and directory), else null.
+// origin: where a session started when not in the current checkout (branch and directory), else null.
 export type SessionsProps = {
   store: SessionStore;
   current: () => string;
@@ -32,7 +32,7 @@ export type SessionsProps = {
   create: () => Promise<void>;
   remove: (id: string, force: boolean) => Promise<string>;
   worktreeDirty: (id: string) => boolean;
-  elsewhere: (s: StoredSession) => string | null;
+  origin: (s: StoredSession) => string | null;
   rename: (id: string, title: string) => void;
   back: () => void;
 };
@@ -145,7 +145,7 @@ export function Sessions(props: SessionsProps) {
   };
 
   const previewTitle = (s: StoredSession) => {
-    const at = props.elsewhere(s);
+    const at = props.origin(s);
     return ` · ${s.id} · last blocks${at ? ` · ${at}` : ''}`;
   };
   const heading = () => `Sessions · ${all().length} sessions${filter() ? ` · filter "${filter()}"` : ''}`;

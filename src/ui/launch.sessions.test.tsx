@@ -4,7 +4,7 @@ import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { frameMatching } from '../../test/frames';
 import type { SessionEvent } from '../core/log/events';
-import { command, key, launch, line, profileConfig, startedIn, titled, ui, useHarness } from './launch.harness';
+import { type Checkouts, command, key, launch, line, profileConfig, startedIn, titled, ui, useHarness } from './launch.harness';
 
 useHarness();
 
@@ -214,8 +214,8 @@ test('/sessions with more sessions than fit: rows never overlap, the list follow
 });
 
 test('the preview names the branch and directory of a session started in another checkout of the Project', async () => {
-  const sessions = ({ project }: { project: string }) => ({ ses_a: startedIn(project, titled('local', 'from main')), ses_b: startedIn('/gone/checkout', titled('local', 'from gone')) });
-  const { project } = await launch({ config: url => profileConfig(url), elsewhere: true, sessions });
+  const sessions = ({ project }: Checkouts) => ({ ses_a: startedIn(project, titled('local', 'from main')), ses_b: startedIn('/gone/checkout', titled('local', 'from gone')) });
+  const { project } = await launch({ config: url => profileConfig(url), otherWorktree: true, sessions });
   await frameMatching(ui, f => f.includes('/ 2k'));
   await openSessions();
   expect(line(ui.captureCharFrame(), /Preview/)).toMatch(/Preview · ses_test · last blocks *$/);

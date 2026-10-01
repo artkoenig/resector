@@ -15,7 +15,8 @@ type RequestSent = Extract<SessionEvent, { type: 'RequestSent' }>;
 
 // What a new session starts with besides System prompt and Tools Block: the environment Note and the
 // project instructions (`AGENTS.md` and `CLAUDE.md` of the project, then the user's own for it), read once now.
-// All are ordinary Notes right after the Tools Block, one per file. checkout: the directory the session starts in.
+// All are ordinary Notes right after the Tools Block, one per file. checkout, no Note: the directory the session
+// starts in, logged with SessionCreated.
 export type Instructions = { file: string; content: string };
 export type SessionNotes = { environment?: string; instructions?: Instructions[]; checkout?: string };
 
@@ -44,7 +45,7 @@ export function openingBlocks(events: SessionEvent[]): Set<number> {
   return ids;
 }
 
-// The checkout (or its subdirectory) the session started in, shared by all worktrees of the Project; none in older logs.
+// The checkout (or its subdirectory) the session started in, from any worktree of the Project; none in older logs.
 export const checkoutOf = (events: SessionEvent[]): string | undefined => events.find(e => e.type === 'SessionCreated')?.checkout;
 
 // Whether the session runs in its own git worktree: the last switch wins, a new session runs in the project.
