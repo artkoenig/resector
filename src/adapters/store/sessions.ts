@@ -99,4 +99,4 @@ export function openSessionStore(dir: string, { id = newId } = {}) {
   return store;
 }
 
-export const projectSessionStore = (paths: ConfigPaths, projectRoot: string) => openSessionStore(projectSessionsDir(paths, projectRoot));
+export const projectSessionStore = (paths: ConfigPaths) => openSessionStore(projectSessionsDir(paths));

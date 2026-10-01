@@ -8,8 +8,8 @@ import { createSearcher } from '../adapters/search/ddgr';
 import { createSplit } from '../adapters/bash/split';
 import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
 import { ensureWorktree, isRepository, listBranches, status, switchBranch, watchHead } from '../adapters/git/git';
-import { loadPolicies, policiesDir } from '../adapters/fs/policies';
-import { listProjectFiles, personalInstructionsDir, probeEnvironment, projectFiles, projectInstructions } from '../adapters/fs/project';
+import { loadPolicies } from '../adapters/fs/policies';
+import { listProjectFiles, probeEnvironment, projectFiles, projectInstructions } from '../adapters/fs/project';
 import type { OpenSession, SessionStore } from '../adapters/store/sessions';
 import type { Split } from '../core/approval/approval';
 import type { Editor } from '../gate/ports';
@@ -89,7 +89,7 @@ export function Launch(props: LaunchOptions) {
     const opened = props.store.create();
     const profile = loaded.profile();
     // The project instructions are read once, now.
-    const events = newSession(profile.name, loaded.systemPrompt(profile), { environment: projectAt(root).environment(), instructions: projectInstructions(root, personalInstructionsDir(props.paths, root)) });
+    const events = newSession(profile.name, loaded.systemPrompt(profile), { environment: projectAt(root).environment(), instructions: projectInstructions(root, props.paths.projectHome.config) });
     events.forEach(opened.log.append);
     // A new session starts with the configured policy on (lean-compact unless set, none with `off`); when resumed, the app's stays.
     const name = loaded.config.defaultPolicy ?? DEFAULT_POLICY;
@@ -214,7 +214,7 @@ export function Launch(props: LaunchOptions) {
 
   onMount(() => {
     const start = async () => {
-      ({ policies: policies.all, failed } = await loadPolicies(policiesDir(props.paths), BUILT_IN));
+      ({ policies: policies.all, failed } = await loadPolicies(props.paths.policies, BUILT_IN));
       const loaded = loadConfig(props.paths);
       return loaded ? open(loaded, props.resume) : firstStart();
     };

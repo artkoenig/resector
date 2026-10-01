@@ -2,11 +2,10 @@
 import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, join, resolve, sep } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import type { Environment } from '../../core/notes/environment';
 import type { ReadFile } from '../../core/notes/files';
 import type { Instructions } from '../../core/session/session';
-import type { ConfigPaths } from './config';
 
 // A path relative to the project root, or absolute; null when it is no readable file.
 export const projectFiles = (root: string): ReadFile => path => {
@@ -42,12 +41,7 @@ export function listProjectFiles(root: string, limit = 20000): string[] {
 
 const INSTRUCTIONS = ['AGENTS.md', 'CLAUDE.md'];
 
-// The user's own instructions for a project, outside its repository: `projects/<name>/` next to the global config,
-// the project's directory name.
-export const personalInstructionsDir = (paths: ConfigPaths, root: string) =>
-  join(dirname(paths.global), 'projects', basename(root));
-
-// `AGENTS.md` and `CLAUDE.md` in the project root, then in the personal directory (named with `~` for the home
+// `AGENTS.md` and `CLAUDE.md` in the project root, then in the Project Home's config root (named with `~` for the home
 // directory, so its file name fits the Gate). A file with the same content as one before (e.g. CLAUDE.md a symlink
 // to AGENTS.md) is left out.
 export function projectInstructions(root: string, personal?: string, home = homedir()): Instructions[] {

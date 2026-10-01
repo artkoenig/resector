@@ -3,13 +3,13 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { configPaths } from './config';
-import { loadPolicies, policiesDir } from './policies';
+import { loadPolicies } from './policies';
 
 const dir = () => mkdtempSync(join(tmpdir(), 'resector-policies-'));
 
-test('policies live in policies/ next to the global config, also when RESECTOR_CONFIG moves it', () => {
-  expect(policiesDir(configPaths({ home: '/h', cwd: '/p', env: {} }))).toBe('/h/.config/resector/policies');
-  expect(policiesDir(configPaths({ home: '/h', cwd: '/p', env: { RESECTOR_CONFIG: '/tmp/c/config.jsonc' } }))).toBe('/tmp/c/policies');
+test('policies live in policies/ under the config root, also when RESECTOR_CONFIG moves the global config', () => {
+  expect(configPaths({ home: '/h', cwd: '/p', env: {} }).policies).toBe('/h/.config/resector/policies');
+  expect(configPaths({ home: '/h', cwd: '/p', env: { RESECTOR_CONFIG: '/tmp/c/config.jsonc' } }).policies).toBe('/h/.config/resector/policies');
 });
 
 test('each .ts file with a default export function is a policy named after the file', async () => {

@@ -1,17 +1,40 @@
-// Reads the config files from disk: global, then project; RESECTOR_CONFIG replaces the global path.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+// Where resector's files are (global config, policies/, the Project Home of ADR 0004), and reading the config files.
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { DEFAULT_INSTRUCTION } from '../../core/compaction/compaction';
 import { initialConfig, readConfig, type BackendKind, type ConfigFile, type ModelProfile } from '../../core/config/config';
 import { DEFAULT_SYSTEM_PROMPT } from '../../core/config/system-prompt';
+import { mainCheckout } from '../git/git';
 
-export type ConfigPaths = { global: string; project: string };
+// projectHome: what the user edits for the Project (config) and what resector writes for it (data).
+export type ConfigPaths = { global: string; project: string; policies: string; projectHome: { config: string; data: string } };
 
 export function configPaths({ home, cwd, env }: { home: string; cwd: string; env: Record<string, string | undefined> }): ConfigPaths {
+  // XDG values count only if absolute, as the spec says.
+  const xdg = (name: string, fallback: string) => join(isAbsolute(env[name] ?? '') ? env[name]! : join(home, fallback), 'resector');
+  const config = xdg('XDG_CONFIG_HOME', '.config');
+  const key = projectKey(cwd);
   return {
-    global: env.RESECTOR_CONFIG ?? join(home, '.config/resector/config.jsonc'),
+    global: env.RESECTOR_CONFIG ?? join(config, 'config.jsonc'),
     project: join(cwd, '.resector/config.jsonc'),
+    policies: join(config, 'policies'),
+    projectHome: { config: join(config, 'projects', key), data: join(xdg('XDG_DATA_HOME', '.local/share'), 'projects', key) },
   };
+}
+
+const realpath = (path: string) => {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+};
+
+// The main checkout's realpath, every non-alphanumeric character a `-`: the same from every subdirectory and
+// worktree. Without git, the start directory.
+export function projectKey(cwd: string): string {
+  const start = realpath(cwd);
+  return realpath(mainCheckout(start) ?? start).replace(/[^a-zA-Z0-9]/g, '-');
 }
 
 // Null when no config file exists yet (first start).

@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import { startFakeLlamaCpp } from '../../test/fake-llamacpp';
 import { frameMatching } from '../../test/frames';
 import { startFakeOmlx } from '../../test/fake-omlx';
-import { personalInstructionsDir } from '../adapters/fs/project';
 import { SCHEMA_URL } from '../core/config/config';
 import { DEFAULT_SYSTEM_PROMPT } from '../core/config/system-prompt';
 import { chat, command, fake, key, launch, line, profileConfig, titled, ui, useHarness } from './launch.harness';
@@ -105,11 +104,11 @@ test('Compaction runs on compactionProfile with the instruction from compaction.
 });
 
 test('-c replays the last Session Log and lands at the Gate; unchanged, nothing is sent', async () => {
-  const { root } = await launch({ config: url => profileConfig(url), sessions: { ses_a: chat('local') }, resume: true });
+  const { sessionsDir } = await launch({ config: url => profileConfig(url), sessions: { ses_a: chat('local') }, resume: true });
   const frame = await frameMatching(ui, f => f.includes('resumed "hi there"'));
   expect(frame).toMatch(/3\s+User\s+hi there/);
   expect(frame).toMatch(/4\s+Assistant\s+hello/);
-  expect(readFileSync(join(root, 'sessions', 'ses_a.lock'), 'utf8')).toBe(String(process.pid));
+  expect(readFileSync(join(sessionsDir, 'ses_a.lock'), 'utf8')).toBe(String(process.pid));
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('nothing to send'));
   expect(fake.chatRequests).toEqual([]);
@@ -135,11 +134,11 @@ test('a session open in another instance is not resumed', async () => {
 });
 
 test('quitting releases the session lock', async () => {
-  const { quit, root } = await launch({ config: url => profileConfig(url) });
+  const { quit, sessionsDir } = await launch({ config: url => profileConfig(url) });
   await frameMatching(ui, f => f.includes('/ 2k'));
   ui.mockInput.pressKey('q');
   await until(() => quit.length > 0);
-  expect(readdirSync(join(root, 'sessions'))).toEqual(['ses_test.jsonl']);
+  expect(readdirSync(sessionsDir)).toEqual(['ses_test.jsonl']);
 });
 
 async function until(condition: () => boolean) {
@@ -158,10 +157,10 @@ test('a new session starts with the environment Note, AGENTS.md and CLAUDE.md ri
   ]);
 });
 
-test('the personal instructions for the project from the config directory follow those of the project', async () => {
-  const { log, paths, project } = await launch({ config: url => profileConfig(url), files: { 'AGENTS.md': '# Agents' }, personal: { 'AGENTS.md': '# Mine' } });
+test('the personal instructions from the Project Home follow those of the project', async () => {
+  const { log, paths } = await launch({ config: url => profileConfig(url), files: { 'AGENTS.md': '# Agents' }, personal: { 'AGENTS.md': '# Mine' } });
   await frameMatching(ui, f => f.includes('/ 2k') && !f.includes('… / 2k'));
-  const file = join(personalInstructionsDir(paths, project), 'AGENTS.md');
+  const file = join(paths.projectHome.config, 'AGENTS.md');
   expect(log().slice(5)).toEqual([{ type: 'BlockAdded', id: 5, kind: 'Note', origin: 'file', file, content: `[${file}]\n# Mine` }]);
 });
 
