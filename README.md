@@ -125,6 +125,8 @@ Interface: [`src/core/policy/policy.ts`](src/core/policy/policy.ts), design: [AD
 
 `~/.config/resector/config.jsonc`, then `.resector/config.jsonc` in the project (may only tighten permissions). All options: [`config.schema.json`](config.schema.json).
 
+Session Logs are written to `~/.config/resector/projects/<project>/sessions/`, next to your personal `AGENTS.md`/`CLAUDE.md` for the project.
+
 ```jsonc
 {
   "$schema": "https://raw.githubusercontent.com/artkoenig/resector/main/config.schema.json",

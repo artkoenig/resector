@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { decodeLog, encodeEvent } from '../../core/log/codec';
 import type { SessionEvent } from '../../core/log/events';
 import type { SessionLog } from '../../gate/ports';
+import type { ConfigPaths } from '../fs/config';
 import { summarize, type SessionRef, type SessionSummary } from '../../core/session/session';
 import { createSessionLog, projectSessionsDir } from './session-log';
 
@@ -98,4 +99,4 @@ export function openSessionStore(dir: string, { id = newId } = {}) {
   return store;
 }
 
-export const projectSessionStore = (home: string, projectRoot: string) => openSessionStore(projectSessionsDir(home, projectRoot));
+export const projectSessionStore = (paths: ConfigPaths, projectRoot: string) => openSessionStore(projectSessionsDir(paths, projectRoot));

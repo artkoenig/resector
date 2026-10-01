@@ -1,13 +1,13 @@
-// Session Log files: <data>/resector/sessions/<project-hash>/<id>.jsonl, one event per line.
+// Session Log files: <config>/projects/<name>/sessions/<id>.jsonl, one event per line.
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { encodeEvent } from '../../core/log/codec';
 import type { SessionLog } from '../../gate/ports';
+import type { ConfigPaths } from '../fs/config';
+import { personalInstructionsDir } from '../fs/project';
 
-export function projectSessionsDir(home: string, projectRoot: string): string {
-  const hash = new Bun.CryptoHasher('sha256').update(projectRoot).digest('hex').slice(0, 16);
-  return join(home, '.local/share/resector/sessions', hash);
-}
+// Next to the project's personal instructions, under the global config directory.
+export const projectSessionsDir = (paths: ConfigPaths, projectRoot: string) => join(personalInstructionsDir(paths, projectRoot), 'sessions');
 
 export function createSessionLog(dir: string, id: string): SessionLog & { path: string } {
   mkdirSync(dir, { recursive: true });
