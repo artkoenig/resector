@@ -75,4 +75,6 @@ test('a session records the checkout it started in; older logs have none', () =>
   expect(events[0]).toEqual({ type: 'SessionCreated', profile: 'p', protocol: 'native', checkout: '/repo/sub' });
   expect(checkoutOf(events)).toBe('/repo/sub');
   expect(checkoutOf(newSession('p', 'sys'))).toBeUndefined();
+  expect(checkoutOf([user(3, 'hi'), ...events])).toBe('/repo/sub');
+  expect(checkoutOf([])).toBeUndefined();
 });
