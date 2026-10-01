@@ -248,12 +248,16 @@ test('calls pending when the Gate opens are decided by the rules at once', async
   expect(g.gate.nextCall()?.content).toBe('touch resumed.txt');
 });
 
-test('project allow entries are ignored; the Gate says so', async () => {
-  const g = gateWith({ project: { 'touch *': 'allow', 'curl *': 'deny' } });
-  expect(g.gate.status()?.text).toBe('project config: allow "touch *" ignored (project config may only tighten)');
-  g.reply({ calls: [bash('touch project.txt')] });
-  g.gate.submit('go');
+test('a project rule beats a global one: project allow loosens a global ask, project deny beats a global allow', async () => {
+  const g = await answered(['touch project.txt', 'make'], { global: { 'touch *': 'ask', 'make *': 'allow' }, project: { 'touch *': 'allow', 'make *': 'deny' } });
+  expect(g.ran).toEqual(['touch project.txt']);
+  expect(results(g.events).map(e => e.content)).toEqual(['ran touch project.txt\n[exit 0]', 'denied by rule']);
+});
+
+test('a session rule beats global and project rules', async () => {
+  const g = await answered(['touch one.txt', 'touch secret.txt'], { global: { 'touch secret.txt': 'allow' }, project: { 'touch secret.txt': 'deny', 'touch one.txt': 'ask' } });
+  g.reply({ content: 'ok' });
+  g.gate.allowForSession();
   await settled(g.gate);
-  expect(g.gate.nextCall()?.content).toBe('touch project.txt');
-  expect(g.ran).toEqual([]);
+  expect(g.ran).toEqual(['touch one.txt', 'touch secret.txt']);
 });

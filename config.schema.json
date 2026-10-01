@@ -97,7 +97,7 @@
       "type": "string"
     },
     "permission": {
-      "description": "bash command pattern → decision; project config may only tighten",
+      "description": "bash command pattern → decision; the last matching rule decides: built-in, global, project config, session; none → ask",
       "type": "object",
       "propertyNames": {
         "type": "string"

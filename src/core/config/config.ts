@@ -38,7 +38,7 @@ const ConfigSchema = z.strictObject({
   profiles: z.record(z.string(), ProfileSchema).default({}),
   defaultProfile: z.string().optional().describe('Model Profile for new sessions'),
   defaultPolicy: z.string().optional().describe('Context Policy switched on for new sessions (default lean-compact, `off` for none); /policy switches it'),
-  permission: PermissionSchema.optional().describe('bash command pattern → decision; project config may only tighten'),
+  permission: PermissionSchema.optional().describe('bash command pattern → decision; the last matching rule decides: built-in, global, project config, session; none → ask'),
   keybindings: z.record(z.string(), z.string()).optional().describe('Action → key'),
   bash: z.strictObject({ timeout: z.number().positive().optional().describe('Seconds (default 120)') }).optional(),
 });
@@ -50,7 +50,7 @@ export const configJsonSchema = () => z.toJSONSchema(ConfigSchema, { io: 'input'
 
 export type Config = z.infer<typeof ConfigSchema>;
 export type ModelProfile = z.infer<typeof ProfileSchema> & { name: string; endpoint: string };
-// project: the project config, which may only tighten permissions.
+// project: the project config, whose rules come after the global ones.
 export type ConfigFile = { source: string; text: string; project?: boolean };
 
 export function readConfig(files: ConfigFile[]) {
@@ -58,7 +58,7 @@ export function readConfig(files: ConfigFile[]) {
   const result = ConfigSchema.safeParse(parsed.map(f => f.json).reduce(merge, {}));
   if (!result.success) throw new Error(`invalid config: ${result.error.issues.map(describe).join('; ')}`);
   const config = result.data;
-  // Rules keep their file: global ones first, then the project's without its allows.
+  // Rules keep their file: global ones first, then the project's.
   const permissions = (project: boolean) =>
     parsed.filter(f => (f.project ?? false) === project).reduce<Permissions>((all, f) => ({ ...all, ...permissionOf(f.source, f.json) }), {});
   return {
@@ -115,7 +115,7 @@ const describe = (issue: z.core.$ZodIssue) => (issue.path.length ? `${issue.path
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 // Objects merge key by key; anything else (arrays included) is replaced by the later file.
-// Permission rules are read per file, so project loosening can be ignored.
+// Permission rules are read per file, so each keeps its source.
 function merge(base: Json, override: Json): Json {
   const result = { ...base };
   for (const [key, value] of Object.entries(override)) {

@@ -81,7 +81,7 @@ Decision whether a Tool Call the model requested may run, taken before execution
 _Avoid_: permission prompt
 
 **Permission Rule**:
-Pattern over a bash sub-command with an action (`allow`, `ask`, `deny`) and a source, in this order: built-in, global config, project config (from the Project Home), Session Rule. The last matching rule decides; none matching means `ask`.
+Pattern over a bash sub-command with an action (`allow`, `ask`, `deny`) and a source, in this order: built-in, global config, project config (from the Project Home), Session Rule. The last matching rule decides; none matching means `ask`. So project rules can loosen global ones as well as tighten them.
 
 **Session Rule**:
 Permission Rule with action `allow` the user adds while approving a Tool Call, valid for the rest of the Session, also after resume.

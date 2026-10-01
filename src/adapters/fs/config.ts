@@ -14,11 +14,12 @@ export function configPaths({ home, cwd, env }: { home: string; cwd: string; env
   const xdg = (name: string, fallback: string) => join(isAbsolute(env[name] ?? '') ? env[name]! : join(home, fallback), 'resector');
   const config = xdg('XDG_CONFIG_HOME', '.config');
   const key = projectKey(cwd);
+  const projectHome = { config: join(config, 'projects', key), data: join(xdg('XDG_DATA_HOME', '.local/share'), 'projects', key) };
   return {
     global: env.RESECTOR_CONFIG ?? join(config, 'config.jsonc'),
-    project: join(cwd, '.resector/config.jsonc'),
+    project: join(projectHome.config, 'config.jsonc'),
     policies: join(config, 'policies'),
-    projectHome: { config: join(config, 'projects', key), data: join(xdg('XDG_DATA_HOME', '.local/share'), 'projects', key) },
+    projectHome,
   };
 }
 
@@ -44,14 +45,14 @@ export function loadConfig(paths: ConfigPaths) {
     .map(path => ({ source: path, text: readFileSync(path, 'utf8'), project: path === paths.project }));
   if (!files.length) return null;
   const config = readConfig(files);
-  // Profile file, else system.md next to the project config, else next to the global one, else shipped.
-  const beside = (name: string) => [paths.project, paths.global].map(p => join(dirname(p), name)).find(p => existsSync(p));
+  // Profile file, else system.md in the Project Home (with or without its config), else next to the global config, else shipped.
+  const beside = (name: string) => [paths.projectHome.config, dirname(paths.global)].map(dir => join(dir, name)).find(p => existsSync(p));
   const systemPrompt = ({ name, systemPrompt: own }: ModelProfile) => {
     if (own && !existsSync(own)) throw new Error(`system prompt of profile "${name}" not found: ${own}`);
     const path = own ?? beside('system.md');
     return path ? readFileSync(path, 'utf8') : DEFAULT_SYSTEM_PROMPT;
   };
-  // Compaction.md next to the project config, else next to the global one, else shipped. One line in the input.
+  // Compaction.md in the Project Home, else next to the global config, else shipped. One line in the input.
   const compactionInstruction = () => {
     const path = beside('compaction.md');
     return path ? readFileSync(path, 'utf8').trim() : DEFAULT_INSTRUCTION;

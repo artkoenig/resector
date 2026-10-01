@@ -4,7 +4,7 @@ import type { SessionEvent, Tool } from '../log/events';
 import type { Block } from '../log/fold';
 
 export type Action = 'allow' | 'ask' | 'deny';
-// Where a rule comes from; project config may only tighten, session rules come from `a`.
+// Where a rule comes from, in the order rules count (CONTEXT.md, Permission Rule); session rules come from `a`.
 export type Source = 'built-in' | 'global' | 'project' | 'session';
 export type Rule = { pattern: string; action: Action; source: Source };
 
@@ -88,7 +88,7 @@ export function evaluate(command: string, input: ApprovalInput): Verdict {
 
 const ALLOWED: Verdict = { action: 'allow', checks: [] };
 // A Question never needs Tool Approval, but the last rule for `question` switches it off when it denies; `ask` never
-// applies to it, so a project `ask` cannot loosen a global deny.
+// applies to it, so it does not undo a deny.
 function questionVerdict(rules: Rule[]): Verdict {
   const rule = rules.findLast(r => r.pattern === 'question' && r.action !== 'ask');
   if (rule?.action !== 'deny') return ALLOWED;
@@ -135,13 +135,9 @@ export const sessionAllowed = (events: SessionEvent[]): Rule[] =>
 
 export type Permissions = Record<string, Action>;
 
-// The rules in order: built-in, global config, project config without `allow`; ignored: the project's allows.
-export function permissionRules(global: Permissions | undefined, project: Permissions | undefined): { rules: Rule[]; ignored: string[] } {
+// The config's rules in order: built-in, global config, project config (its allows count: it is personal).
+export function permissionRules(global: Permissions | undefined, project: Permissions | undefined): Rule[] {
   const own = (permissions: Permissions | undefined, source: Source) =>
     Object.entries(permissions ?? {}).map(([pattern, action]): Rule => ({ pattern, action, source }));
-  const fromProject = own(project, 'project');
-  return {
-    rules: [...BUILTIN_ALLOW, ...own(global, 'global'), ...fromProject.filter(r => r.action !== 'allow')],
-    ignored: fromProject.filter(r => r.action === 'allow').map(r => r.pattern),
-  };
+  return [...BUILTIN_ALLOW, ...own(global, 'global'), ...own(project, 'project')];
 }

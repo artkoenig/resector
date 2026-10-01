@@ -19,19 +19,24 @@ function put(path: string, text: string) {
   writeFileSync(path, text);
 }
 
-test('global and project config are found in their standard places and merged', () => {
+test('global and project config are found in their standard places and merged; .resector/ is not read', () => {
   put(join(home, '.config/resector/config.jsonc'), '{ "profiles": { "qwen": { "backend": "llamacpp", "window": 8192 } }, "defaultProfile": "qwen" }');
-  put(join(cwd, '.resector/config.jsonc'), '{ "profiles": { "qwen": { "window": 4096 } } }');
-  const loaded = loadConfig(configPaths({ home, cwd, env: {} }));
-  expect(loaded?.profile()).toMatchObject({ name: 'qwen', window: 4096 });
+  put(join(cwd, '.resector/config.jsonc'), '{ "profiles": { "qwen": { "window": 1024 } } }');
+  const paths = configPaths({ home, cwd, env: {} });
+  expect(paths.project).toBe(join(paths.projectHome.config, 'config.jsonc'));
+  expect(loadConfig(paths)?.profile()).toMatchObject({ name: 'qwen', window: 8192 });
+  put(paths.project, '{ "profiles": { "qwen": { "window": 4096 } } }');
+  expect(loadConfig(paths)?.profile()).toMatchObject({ name: 'qwen', window: 4096 });
 });
 
-test('the project config may only tighten permissions: its allow entries are ignored', () => {
-  put(join(home, '.config/resector/config.jsonc'), '{ "permission": { "make *": "allow" } }');
-  put(join(cwd, '.resector/config.jsonc'), '{ "permission": { "curl *": "deny", "git commit *": "allow" } }');
-  const { permissions } = loadConfig(configPaths({ home, cwd, env: {} }))!;
-  expect(permissions.rules.filter(r => r.source !== 'built-in').map(r => [r.pattern, r.source])).toEqual([['make *', 'global'], ['curl *', 'project']]);
-  expect(permissions.ignored).toEqual(['git commit *']);
+test('the project config can loosen permissions: its rules come after the global ones', () => {
+  const paths = configPaths({ home, cwd, env: {} });
+  put(paths.global, '{ "permission": { "make *": "allow", "git commit *": "ask" } }');
+  put(paths.project, '{ "permission": { "make *": "deny", "git commit *": "allow" } }');
+  const { permissions } = loadConfig(paths)!;
+  expect(permissions.filter(r => r.source !== 'built-in').map(r => [r.pattern, r.action, r.source])).toEqual([
+    ['make *', 'allow', 'global'], ['git commit *', 'ask', 'global'], ['make *', 'deny', 'project'], ['git commit *', 'allow', 'project'],
+  ]);
 });
 
 test('without any config file there is nothing to load (first start)', () => {
@@ -113,7 +118,8 @@ test('RESECTOR_CONFIG replaces the global config path', () => {
   expect(Object.keys(loaded!.config.profiles)).toEqual(['b']);
 });
 
-test('the system prompt comes from the profile file, else system.md (project before global), else the default', () => {
+test('the system prompt comes from the profile file, else system.md (Project Home before global), else the default', () => {
+  // No project config.jsonc: system.md in the Project Home counts anyway.
   const paths = configPaths({ home, cwd, env: {} });
   put(paths.global, '{ "profiles": { "plain": { "backend": "llamacpp" }, "own": { "backend": "llamacpp", "systemPrompt": "own.md" } } }');
   const systemPrompt = (name: string) => {
@@ -123,19 +129,23 @@ test('the system prompt comes from the profile file, else system.md (project bef
   expect(systemPrompt('plain')).toBe(DEFAULT_SYSTEM_PROMPT);
   put(join(home, '.config/resector/system.md'), 'global prompt\n');
   expect(systemPrompt('plain')).toBe('global prompt\n');
-  put(join(cwd, '.resector/system.md'), 'project prompt');
+  put(join(cwd, '.resector/system.md'), 'old place');
+  expect(systemPrompt('plain')).toBe('global prompt\n');
+  put(join(paths.projectHome.config, 'system.md'), 'project prompt');
   expect(systemPrompt('plain')).toBe('project prompt');
   expect(() => systemPrompt('own')).toThrow(`system prompt of profile "own" not found: ${join(home, '.config/resector/own.md')}`);
   put(join(home, '.config/resector/own.md'), 'own prompt');
   expect(systemPrompt('own')).toBe('own prompt');
 });
 
-test('the default compaction instruction comes from compaction.md (project before global), else the shipped one', () => {
+test('the default compaction instruction comes from compaction.md (Project Home before global), else the shipped one', () => {
   const paths = configPaths({ home, cwd, env: {} });
   put(paths.global, '{}');
   expect(loadConfig(paths)!.compactionInstruction()).toBe(DEFAULT_INSTRUCTION);
   put(join(home, '.config/resector/compaction.md'), 'keep errors\n');
   expect(loadConfig(paths)!.compactionInstruction()).toBe('keep errors');
-  put(join(cwd, '.resector/compaction.md'), 'keep paths');
+  put(join(cwd, '.resector/compaction.md'), 'old place');
+  expect(loadConfig(paths)!.compactionInstruction()).toBe('keep errors');
+  put(join(paths.projectHome.config, 'compaction.md'), 'keep paths');
   expect(loadConfig(paths)!.compactionInstruction()).toBe('keep paths');
 });

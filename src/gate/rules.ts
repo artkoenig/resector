@@ -1,5 +1,5 @@
 // Tool Approval at the Gate: the rules for a call, what happens to it, and the tools the rules deny.
-import { deniedTools, quoted, sessionAllowed, verdictOf as decide, type Verdict } from '../core/approval/approval';
+import { deniedTools, sessionAllowed, verdictOf as decide, type Verdict } from '../core/approval/approval';
 import * as ops from '../core/context/operations';
 import type { Block } from '../core/log/fold';
 import type { Kernel } from './kernel';
@@ -9,7 +9,7 @@ export type Rules = ReturnType<typeof createRules>;
 
 export function createRules(k: Kernel, approval: Approval, autoApprove: AutoApprove) {
   // The rules for a call: built-in, global and project rules, then the ones allowed for this session; last match wins.
-  const rules = () => [...approval.permissions().rules, ...sessionAllowed(k.events())];
+  const rules = () => [...approval.permissions(), ...sessionAllowed(k.events())];
   const verdictOf = (call: Block): Verdict => decide(call, { rules: rules(), split: approval.split, root: approval.root });
   const denied = () => deniedTools(rules());
 
@@ -30,8 +30,3 @@ export function createRules(k: Kernel, approval: Approval, autoApprove: AutoAppr
   return { rules, verdictOf, denied, decided, dropDenied };
 }
 
-// Project config may only tighten: its allow entries are ignored, and the Gate says so.
-export function ignoredHint(approval: Approval): string | null {
-  const { ignored } = approval.permissions();
-  return ignored.length ? `project config: allow ${quoted(ignored)} ignored (project config may only tighten)` : null;
-}

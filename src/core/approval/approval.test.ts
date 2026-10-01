@@ -29,8 +29,8 @@ test('a Question is never asked for: only a rule for `question` denies it, the l
   expect(deniedTools([rule('question', 'deny')])).toEqual(['question']);
   expect(deniedTools([rule('question', 'deny'), rule('question', 'ask', 'project')])).toEqual(['question']);
   expect(deniedTools([rule('question', 'deny'), rule('question', 'allow')])).toEqual([]);
-  expect(deniedTools(permissionRules({ question: 'allow' }, { question: 'deny' }).rules)).toEqual(['question']);
-  expect(deniedTools(permissionRules({ question: 'deny' }, { question: 'allow' }).rules)).toEqual(['question']);
+  expect(deniedTools(permissionRules({ question: 'allow' }, { question: 'deny' }))).toEqual(['question']);
+  expect(deniedTools(permissionRules({ question: 'deny' }, { question: 'allow' }))).toEqual([]);
 });
 
 test('a pattern ending in " *" matches the command alone or with arguments, not a longer word', () => {
@@ -178,12 +178,11 @@ test('no session rule where an argument or the parse is why it asks', () => {
   expect(sessionRules(verdict('echo "open'))).toEqual({ error: 'cannot allow for session: unparseable – y runs once, e edits' });
 });
 
-test('config rules: global ones in order, then the project ones; project allow is ignored', () => {
-  expect(permissionRules({ 'git push *': 'ask', 'rm *': 'deny' }, { 'curl *': 'deny', 'git commit *': 'allow', 'make *': 'ask' })).toEqual({
-    rules: [...BUILTIN_ALLOW, rule('git push *', 'ask'), rule('rm *', 'deny'), rule('curl *', 'deny', 'project'), rule('make *', 'ask', 'project')],
-    ignored: ['git commit *'],
-  });
-  expect(permissionRules(undefined, undefined)).toEqual({ rules: BUILTIN_ALLOW, ignored: [] });
+test('config rules: global ones in order, then the project ones, allow included', () => {
+  expect(permissionRules({ 'git push *': 'ask', 'rm *': 'deny' }, { 'curl *': 'deny', 'git commit *': 'allow', 'make *': 'ask' })).toEqual([
+    ...BUILTIN_ALLOW, rule('git push *', 'ask'), rule('rm *', 'deny'), rule('curl *', 'deny', 'project'), rule('git commit *', 'allow', 'project'), rule('make *', 'ask', 'project'),
+  ]);
+  expect(permissionRules(undefined, undefined)).toEqual(BUILTIN_ALLOW);
 });
 
 test('the session rules are the AllowRuleAdded events of the Session Log', () => {

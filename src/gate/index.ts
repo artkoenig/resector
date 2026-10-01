@@ -10,7 +10,7 @@ import { createEdits } from './edits';
 import { createGit } from './git';
 import { createKernel } from './kernel';
 import { createPolicy } from './policy';
-import { createRules, ignoredHint } from './rules';
+import { createRules } from './rules';
 import { createSend } from './send';
 import { createSettings } from './settings';
 import { createToolLoop } from './tool-loop';
@@ -30,11 +30,8 @@ function ownAutoApprove(): AutoApprove {
   return { on, set };
 }
 
-const withHint = (status: Status | null, hint: string | null): Status | null =>
-  hint ? { text: status ? `${status.text} · ${hint}` : hint, tone: 'warn' } : status;
-
 export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, policies = NO_POLICIES, autoApprove = ownAutoApprove(), git = null, ...options }: GateOptions, view: (k: Kernel) => View) {
-  const k = createKernel({ log, project, backend: options.backend, events: options.events, status: withHint(options.notice ?? null, ignoredHint(approval)) });
+  const k = createKernel({ log, project, backend: options.backend, events: options.events, status: options.notice ?? null });
   const sel = view(k);
   const repo = createGit(k, git, project, approval.root);
   const rules = createRules(k, approval, autoApprove);
