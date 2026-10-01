@@ -43,7 +43,15 @@ test('read-only commands, alone or chained, with quoted arguments and output sen
   const commands = ['ls', 'tree', 'cat a', 'head a', 'tail a', 'wc a', 'grep x a', 'rg x', 'find .', 'sed -n 1p a', 'git status', 'git diff', 'git log',
     'git show HEAD', 'pwd', 'cd src', 'stat a', 'file a', 'echo hi', 'ls | wc -l', 'ls; pwd', 'ls\npwd', 'ls || pwd', "grep 'a|b' x", 'grep "ab|c" x',
     'grep "a b" x', "grep '$(x)' x", 'ls>&2', 'ls >&2', 'ls 2>&1', 'ls>/dev/null', 'ls > /dev/null', 'ls 2>/dev/null'];
-  for (const command of commands) expect(opsFor(command), command).toEqual([{ op: 'remove', id: 2 }]);
+  // With other work, so the read is removed rather than compacted.
+  const opsFor = (command: string) => leanCompact({ window: 100, used: 60, blocks: blocks('User', call(command), 'Tool Result', 'Assistant', 'User') });
+  for (const command of commands) expect(opsFor(command), command).toEqual([{ op: 'remove', id: 2 }, compact(4)]);
+});
+
+test('only reads and short Thinking since the last Compaction: they are compacted with its Note, not removed', () => {
+  const context = blocks('User', ['Note', { origin: 'compaction' }], call('cat a'), 'Tool Result', ['Thinking', { tokens: 50 }], call('ls'), 'Tool Result');
+  expect(leanCompact({ window: 100, used: 60, blocks: context })).toEqual([compact(2, 3, 4, 5)]);
+  expect(leanCompact({ window: 100, used: 60, blocks: blocks('User', call('cat a'), 'Tool Result', 'User') })).toEqual([compact(2, 3)]);
 });
 
 test('a command that writes or runs something is not a read', () => {
