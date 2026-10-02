@@ -1,6 +1,6 @@
 // The built-in Context Policy lean-compact (ADR 0001): from half the window on, read-only Tool Pairs and Thinking under
-// 200 tokens are removed, then the rest of the work is compacted into one Note. Without other work they are compacted
-// instead, so what was read survives. The newest block (Tool Pair) stays as is.
+// 200 tokens are removed, then the rest of the work, the user's messages with it, is compacted into one Note. Without
+// other work they are compacted instead, so what was read survives. The newest block (Tool Pair) stays as is.
 // Written like a policy module in ~/.config/resector/policies: the reference for one.
 import { DEFAULT_INSTRUCTION } from '../compaction/compaction';
 import type { PolicyBlock, PolicyContext, PolicyOperation } from './policy';
@@ -31,16 +31,18 @@ export default function leanCompact({ window, used, blocks: all }: PolicyContext
   const sources = blocks.filter(b => compactable(b) && !gone.has(b.id));
   const removals = [...reads, ...short].map(b => ({ op: 'remove' as const, id: b.id }));
   const compact = (from: PolicyBlock[]): PolicyOperation => ({ op: 'compact', sources: from.map(b => b.id), instruction: DEFAULT_INSTRUCTION });
-  if (sources.some(b => b.origin !== 'compaction')) return [...removals, compact(sources)];
+  if (sources.some(isWork)) return [...removals, compact(sources)];
   // No work but reads and short Thinking: removing them would lose all the model learned, so they are compacted.
   if (removals.length) return [compact(blocks.filter(compactable))];
-  // Only the Note of an earlier Compaction left: compacting it again would not free the window.
+  // Only the user's messages and the Note of an earlier Compaction left: compacting them would hardly free the window.
   return [];
 }
 
-// The user's word, the project's Notes and a Tool Call awaiting approval stay.
+// The project's Notes and a Tool Call awaiting approval stay.
 const compactable = (b: PolicyBlock) =>
-  b.kind !== 'System' && b.kind !== 'Tools' && b.kind !== 'User' && !b.pending && b.origin !== 'environment' && b.origin !== 'file';
+  b.kind !== 'System' && b.kind !== 'Tools' && !b.pending && b.origin !== 'environment' && b.origin !== 'file';
+// What the model did since the last Compaction.
+const isWork = (b: PolicyBlock) => b.kind !== 'User' && b.origin !== 'compaction';
 
 // A bash Tool Call with its result whose every command only reads. A Question's answers (by the user) stay.
 function isRead(b: PolicyBlock, blocks: PolicyBlock[]): boolean {
