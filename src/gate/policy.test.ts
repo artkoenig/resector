@@ -92,6 +92,20 @@ test('a policy Compaction that writes nothing stops the Gate: nothing is sent', 
   expect(g.events.some(e => e.type === 'Compact' || e.type === 'RequestSent')).toBe(false);
 });
 
+test('Esc while the policy runs stops the loop after the answer that follows', async () => {
+  const squash: Policy = { name: 'squash', run: c => (c.blocks.some(b => b.id === 3) ? [{ op: 'compact', sources: [3], instruction: 'merge' }] : []) };
+  const g = policed({ users: ['long', 'short'], policies: [squash] });
+  g.reply({ content: 'brief', delay: 100 }, { calls: [bash('ls -d .')] });
+  const sending = g.gate.send();
+  await until(() => g.sent.length === 1);
+  g.gate.abort();
+  expect(g.gate.stopping()).toBe(true);
+  await sending;
+  await settled(g.gate);
+  expect(g.gate.status()?.text).toBe('squash: 1 User → 1 Note · stopped – make your changes, Enter goes on');
+  expect(g.ran).toEqual([]);
+});
+
 test('a policy Compaction runs on compactionProfile; too big for its window, cut off or aborted, it stops the Gate', async () => {
   const small = scriptedBackend({ window: 8 });
   const squash = (id: number): Policy => ({ name: `squash${id}`, run: c => (c.blocks.some(b => b.id === id) ? [{ op: 'compact', sources: [id], instruction: 'merge' }] : []) });
@@ -108,6 +122,8 @@ test('a policy Compaction runs on compactionProfile; too big for its window, cut
   small.reply({ content: 'wait', hang: true });
   const sending = g.gate.send();
   await until(() => small.sent.length === 2);
+  g.gate.abort();
+  expect(g.gate.stopping()).toBe(true);
   g.gate.abort();
   await sending;
   await settled(g.gate);

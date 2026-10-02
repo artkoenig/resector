@@ -46,7 +46,7 @@ export function statusOf(gate: Screen, spin: string): Status | null {
   const stop = (step: string) => (gate.stopping() ? ` · stops after this ${step}` : '');
   const r = gate.running();
   if (r) return { text: `${spin} running: ${cell(titleOf(r.call), 50).trimEnd()} · ${Math.round((Date.now() - r.started) / 1000)}s / ${r.timeout}s${stop('call')}`, tone: 'warn' };
-  if (gate.policing()) return { text: `${spin} policy ${gate.policing()} running`, tone: 'warn' };
+  if (gate.policing()) return { text: `${spin} policy ${gate.policing()} running${stop('answer')}`, tone: 'warn' };
   if (gate.compacting()?.phase === 'running') return { text: `${spin} compacting with ${gate.compacting()!.profile}`, tone: 'warn' };
   const s = gate.streaming();
   return s ? { text: `${spin} model is ${streamingText(s)}${stop('answer')}`, tone: 'warn' } : gate.status();

@@ -33,10 +33,10 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
   // Esc while an answer streams or a call runs: the step finishes, then the tool loop stops at the Gate for changes;
   // Esc again aborts the step. Enter goes on.
   const [stopping, setStopping] = createSignal(false);
-  // Esc: the first stops after the step, the second aborts it (then the loop stops anyway); a policy's or the
-  // user's Compaction is aborted at once.
+  // Esc: the first stops after the step, the second aborts it (then the loop stops anyway); while the policy runs
+  // the step is the answer after it. The user's Compaction is aborted at once.
   function abort() {
-    const step = k.streaming() ?? running();
+    const step = k.streaming() ?? running() ?? k.policing();
     if (step && !stopping()) return void setStopping(true);
     setStopping(false);
     (k.policing() ?? step ?? k.compacting())?.abort?.abort();
