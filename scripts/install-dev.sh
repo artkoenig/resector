@@ -1,6 +1,6 @@
 #!/bin/sh
 # Installs a `resector` command that runs this checkout's source with Bun, so every
-# `git pull` takes effect without a build. Release installs use the Homebrew tap instead.
+# `git pull` takes effect without a build. Release installs use the release binaries instead.
 #   scripts/install-dev.sh [bin-dir]   (default: ~/.local/bin)
 set -eu
 
