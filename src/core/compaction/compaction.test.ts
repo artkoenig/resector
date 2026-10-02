@@ -31,7 +31,7 @@ test('a selection that is no block (the live row) has no sources', () => {
 
 test('the model is told to rewrite into one note; the default instruction keeps what the task needs', () => {
   expect(COMPACTION_SYSTEM).toBe('Rewrite the given context blocks into one compact note, following the instruction. Output only the note.');
-  expect(DEFAULT_INSTRUCTION).toBe('Keep file paths, line numbers, decisions, errors and open todos. Drop passing output and code already fixed.');
+  expect(DEFAULT_INSTRUCTION).toBe("Keep the user's requests, file paths, line numbers, decisions, errors and open todos. Drop passing output and code already fixed.");
 });
 
 test('System, Tools Block, pending Tool Calls and removed blocks are never sources', () => {

@@ -1,1 +1,1 @@
-Keep file paths, line numbers, decisions, errors and open todos. Drop passing output and code already fixed.
+Keep the user's requests, file paths, line numbers, decisions, errors and open todos. Drop passing output and code already fixed.

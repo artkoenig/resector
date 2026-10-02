@@ -88,7 +88,7 @@ A **Context Policy** is a function over the Context that resector calls before e
 
 ### Built-in: `lean-compact`
 
-On by default. From half the window on, [`lean-compact`](src/core/policy/lean-compact.ts) removes read-only `bash` Tool Pairs (`grep`, `cat`, `git diff`, …) and short Thinking, then compacts the rest of the work into one Note. If there is no other work since the last Compaction, the reads and short Thinking are compacted instead, so what the model read survives. Your messages, the project's Notes and the newest Tool Pair stay.
+On by default. From half the window on, [`lean-compact`](src/core/policy/lean-compact.ts) removes read-only `bash` Tool Pairs (`grep`, `cat`, `git diff`, …) and short Thinking, then compacts the rest of the work into one Note. If there is no other work since the last Compaction, the reads and short Thinking are compacted instead, so what the model read survives. Your messages are compacted with the work; the Note keeps what you asked for. The project's Notes and the newest Tool Pair stay.
 
 Compared with compacting everything (same instruction, 5 synthetic sessions):
 
