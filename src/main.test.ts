@@ -1,10 +1,11 @@
 import { expect, test } from 'bun:test';
+import pkg from '../package.json';
 import { main } from './main';
 
 const USAGE = 'usage: resector [-c [id]] | resector --export-fixture [id] | resector --version\n';
 
 test('--version prints the package version', () => {
-  expect(main(['--version'])).toEqual({ code: 0, out: 'resector 0.0.0\n' });
+  expect(main(['--version'])).toEqual({ code: 0, out: `resector ${pkg.version}\n` });
 });
 
 test('unknown arguments print usage and fail', () => {

@@ -29,11 +29,14 @@ Local models get a few ten thousand tokens, not a million. resector shows the Co
 
 ## Installation
 
+Download the binary for your platform (`darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`) from the [releases page](https://github.com/artkoenig/resector/releases) and put it on your `PATH`:
+
 ```bash
-brew install artkoenig/tap/resector
+tar -xzf resector-v*-darwin-arm64.tar.gz
+mv resector ~/.local/bin/
 ```
 
-Or grab a binary from the [releases page](https://github.com/artkoenig/resector/releases).
+On macOS, a binary downloaded with a browser is quarantined by Gatekeeper; clear it with `xattr -d com.apple.quarantine ~/.local/bin/resector`.
 
 <details>
 <summary><strong>From source</strong></summary>
