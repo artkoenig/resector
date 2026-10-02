@@ -104,19 +104,28 @@ export function Launch(props: LaunchOptions) {
       checkout: here,
     });
     events.forEach(opened.log.append);
-    // A new session starts with the configured policy on (lean-compact unless set, none with `off`); when resumed, the app's stays.
-    const name = loaded.config.defaultPolicy ?? DEFAULT_POLICY;
-    const policy = name === 'off' ? null : policies.all.find(p => p.name === name);
-    if (policy) setActive(policy);
-    const notice = policy === undefined ? { text: `new session · defaultPolicy ${name} – no such policy`, tone: 'warn' as const } : { text: 'new session', tone: 'ok' as const };
+    // A new session starts with the configured policy on; when switched to, a resumed one keeps the app's.
+    const missing = switchOnDefault(loaded);
+    const notice = missing ? { text: `new session · ${missing}`, tone: 'warn' as const } : { text: 'new session', tone: 'ok' as const };
     return { opened, events, notice };
   }
 
+  // The configured policy switched on (lean-compact unless set, none with `off`); why not, if no such policy.
+  function switchOnDefault(loaded: Loaded): string | null {
+    const name = loaded.config.defaultPolicy ?? DEFAULT_POLICY;
+    const policy = name === 'off' ? null : policies.all.find(p => p.name === name);
+    if (policy) setActive(policy);
+    return policy === undefined ? `defaultPolicy ${name} – no such policy` : null;
+  }
+
   // Resume = replay; a Model Profile missing from the config falls back to the default one.
-  function resume(loaded: Loaded, which: SessionRef) {
+  // started: resumed at start (-c), so the app has no policy yet; it starts with the configured one, as a new session.
+  function resume(loaded: Loaded, which: SessionRef, started = false) {
     const opened = props.store.open(which);
     const events: SessionEvent[] = [...opened.events];
     const texts = [`resumed "${summarize(events).title}"`];
+    const missing = started && switchOnDefault(loaded);
+    if (missing) texts.push(missing);
     const { profile } = fold(events);
     if (!(profile in loaded.config.profiles)) {
       const fallback: SessionEvent = { type: 'ProfileFallback', profile: loaded.profile().name };
@@ -127,10 +136,10 @@ export function Launch(props: LaunchOptions) {
     return { opened, events, notice: { text: texts.join(' · '), tone: texts.length > 1 ? ('warn' as const) : ('ok' as const) } };
   }
 
-  // which: a session to resume, else a new session; a new one is dropped again if its backend fails.
-  async function open(loaded: Loaded, which: SessionRef | undefined) {
+  // which: a session to resume, else a new session; a new one is dropped again if its backend fails. started: at start.
+  async function open(loaded: Loaded, which: SessionRef | undefined, started = false) {
     split ??= await createSplit();
-    const { opened, events, notice } = which ? resume(loaded, which) : create(loaded);
+    const { opened, events, notice } = which ? resume(loaded, which, started) : create(loaded);
     const profile = fold(events).profile;
     const backend = await connect(loaded.profile(profile), opened.id).catch(e => {
       opened.release();
@@ -258,7 +267,7 @@ export function Launch(props: LaunchOptions) {
     const start = async () => {
       ({ policies: policies.all, failed } = await loadPolicies(props.paths.policies, BUILT_IN));
       const loaded = loadConfig(props.paths);
-      return loaded ? open(loaded, props.resume) : firstStart();
+      return loaded ? open(loaded, props.resume, true) : firstStart();
     };
     start().catch(fail);
   });
