@@ -152,6 +152,14 @@ test('while the answer streams, the status shows the generation speed', async ()
   await write('hi there');
   const frame = await frameMatching(ui, f => /model is responding · \d+\.\d tok\/s/.test(f));
   expect(frame).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] model is responding · \d+\.\d tok\/s/);
+  // It changes once a second, though the rate falls with every frame while the stream hangs.
+  const shown = new Set<string>();
+  for (let i = 0; i < 25; i++) {
+    await ui.renderOnce();
+    shown.add(/[\d.]+ tok\/s/.exec(ui.captureCharFrame())![0]);
+    await Bun.sleep(20);
+  }
+  expect(shown.size).toBeLessThanOrEqual(2);
   await escape();
   await escape();
   await frameMatching(ui, f => f.includes('⚠ cut off'));
