@@ -226,6 +226,15 @@ test('the built-in lean-compact is on for a new session without any policy file;
   expect(line(await frameMatching(ui, f => f.includes('/ 2k')), /local/)).not.toContain('policy');
 });
 
+test('a session resumed at start (-c) starts with the default policy on, an unknown name is reported', async () => {
+  await launch({ config: url => profileConfig(url), sessions: { ses_a: titled('local', 'fix the build') }, resume: 'ses_a' });
+  expect(await frameMatching(ui, f => f.includes('resumed "fix the build"'))).toMatch(/local · thinking off · policy lean-compact/);
+  ui.renderer.destroy();
+  fake.stop();
+  await launch({ config: url => profileConfig(url).replace('"defaultProfile"', '"defaultPolicy": "nope", "defaultProfile"'), sessions: { ses_a: titled('local', 'fix the build') }, resume: 'ses_a' });
+  expect(await frameMatching(ui, f => f.includes('resumed "fix the build"'))).toMatch(/defaultPolicy nope – no such policy/);
+});
+
 test('defaultPolicy: a new session starts with it on, an unknown name is reported', async () => {
   await launch({ config: url => profileConfig(url).replace('"defaultProfile"', '"defaultPolicy": "shout", "defaultProfile"'), policies: { shout: SHOUT } });
   expect(await frameMatching(ui, f => f.includes('/ 2k'))).toMatch(/local · thinking off · policy shout/);
@@ -288,7 +297,9 @@ test('/git:worktree on runs the session in its own worktree in the Project Home 
 });
 
 test('a session resumed with the worktree on runs in its worktree again, created anew if it is gone', async () => {
-  await launch({ config: url => profileConfig(url), git: true, sessions: { ses_a: [...chat('local'), { type: 'WorktreeSet', on: true }] }, resume: true });
+  // No policy, so the header has room for the worktree.
+  const config = (url: string) => profileConfig(url).replace('"defaultProfile"', '"defaultPolicy": "off", "defaultProfile"');
+  await launch({ config, git: true, sessions: { ses_a: [...chat('local'), { type: 'WorktreeSet', on: true }] }, resume: true });
   const frame = await frameMatching(ui, f => f.includes('resumed "hi there"'));
   expect(line(frame, /local/)).toMatch(/⎇ resector\/ses_a · worktree/);
 });

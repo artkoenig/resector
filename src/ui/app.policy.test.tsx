@@ -52,3 +52,17 @@ test('an operation the rules refuse stops the Gate and names it', async () => {
   await frameMatching(ui, f => f.includes('✗ policy bad') && f.includes('remove 1: System prompt cannot be removed – not sent'));
   expect(fake.chatRequests).toHaveLength(0);
 });
+
+test('Esc while the policy runs: the status and the hint say the loop stops after the answer', async () => {
+  let done = () => {};
+  const slow: Policy = { name: 'slow', run: () => new Promise(resolve => (done = () => resolve([]))) };
+  await start({ users: ['hi'], policies: [slow] });
+  await policyOn('slow');
+  fake.reply({ chunks: ['ok'] });
+  ui.mockInput.pressEnter();
+  expect(await frameMatching(ui, f => f.includes('policy slow running'))).toContain('esc stop after');
+  await escape();
+  expect(await frameMatching(ui, f => f.includes('policy slow running · stops after this answer'))).toContain('esc abort');
+  done();
+  await frameMatching(ui, f => f.includes('answer complete'));
+});

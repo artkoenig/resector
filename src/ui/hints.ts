@@ -32,9 +32,9 @@ const MODE_KEYS: Partial<Record<KeyMode, Hint[]>> = {
   questions: [['↑↓', 'choose'], ['enter', 'pick'], ['←→', 'question'], ['r', 'recommended'], ['esc', 'decline'], ['q', 'quit']],
   answer: [['enter', 'answer'], ['esc', 'back']],
 };
-// Streaming or running: the first Esc stops the loop after the step, the second aborts it.
+// Streaming, running or a policy running: the first Esc stops the loop after the step, the second aborts it.
 function busyKeys(gate: Screen): Hint[] | null {
-  const step = gate.running() ? 'kill' : gate.streaming() ? 'abort' : null;
+  const step = gate.running() ? 'kill' : gate.streaming() || gate.policing() ? 'abort' : null;
   return step && [['esc', gate.stopping() ? step : 'stop after'], ...LOOK_KEYS];
 }
 function modeKeys(gate: Screen, mode: KeyMode): Hint[] {

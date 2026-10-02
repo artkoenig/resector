@@ -46,7 +46,7 @@ export function statusOf(gate: Screen, spin: string): Status | null {
   const stop = (step: string) => (gate.stopping() ? ` · stops after this ${step}` : '');
   const r = gate.running();
   if (r) return { text: `${spin} running: ${cell(titleOf(r.call), 50).trimEnd()} · ${Math.round((Date.now() - r.started) / 1000)}s / ${r.timeout}s${stop('call')}`, tone: 'warn' };
-  if (gate.policing()) return { text: `${spin} policy ${gate.policing()} running`, tone: 'warn' };
+  if (gate.policing()) return { text: `${spin} policy ${gate.policing()} running${stop('answer')}`, tone: 'warn' };
   if (gate.compacting()?.phase === 'running') return { text: `${spin} compacting with ${gate.compacting()!.profile}`, tone: 'warn' };
   const s = gate.streaming();
   return s ? { text: `${spin} model is ${streamingText(s)}${stop('answer')}`, tone: 'warn' } : gate.status();
@@ -55,6 +55,15 @@ export function statusOf(gate: Screen, spin: string): Status | null {
 // What the streaming model does, with its speed once tokens come.
 function streamingText(s: Streaming): string {
   const doing = s.thinking && !s.text ? 'thinking' : 'responding';
-  const speed = s.first === null ? null : rateText(s.tokens, Date.now() - s.first);
+  const speed = s.first === null ? null : speedOf(s.first, s.tokens);
   return speed ? `${doing} · ${speed}` : doing;
+}
+
+// The speed shown changes once a second, not with every token or spinner frame.
+let shown: { first: number; second: number; text: string | null } | null = null;
+function speedOf(first: number, tokens: number): string | null {
+  const ms = Date.now() - first;
+  const second = Math.floor(ms / 1000);
+  if (shown?.first !== first || shown.second !== second || shown.text === null) shown = { first, second, text: rateText(tokens, ms) };
+  return shown.text;
 }

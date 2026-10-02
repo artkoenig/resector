@@ -93,12 +93,13 @@ export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy:
   async function send() {
     if (!k.idle() || loop.wentOn()) return;
     const policy = deps.policies.active();
-    if (!(policy ? await readyWith(policy) : ready())) return;
+    // Before the policy: an Esc while it runs stops the loop after the answer.
+    loop.setStopping(false);
+    if (!(policy ? await readyWith(policy) : ready())) return void loop.setStopping(false);
     const did = deps.policy.takeRan();
     const requested = k.prefixes();
     const payload = requested.at(-1)!;
     const abort = new AbortController();
-    loop.setStopping(false);
     setStreaming({ thinking: '', text: '', abort, tokens: 0, first: null });
     setStatus(null);
     try {
