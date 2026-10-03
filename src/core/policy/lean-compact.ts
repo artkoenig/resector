@@ -1,8 +1,9 @@
 // The built-in Context Policy lean-compact (ADR 0001): from half the window on, read-only Tool Pairs and Thinking under
 // 200 tokens are removed, then the rest of the work, the user's messages with it, is compacted into one Note. Without
-// other work they are compacted instead, so what was read survives. The newest block (Tool Pair) stays as is.
+// other work they are compacted instead, so what was read survives. The newest block (Tool Pair) stays as is. A lead
+// right before the Note tells the model it continues its own work.
 // Written like a policy module in ~/.config/resector/policies: the reference for one.
-import { DEFAULT_INSTRUCTION } from '../compaction/compaction';
+import instruction from './lean-compact-instruction.md' with { type: 'text' };
 import type { PolicyBlock, PolicyContext, PolicyOperation } from './policy';
 
 const COMPACT_FROM = 1 / 2;
@@ -17,9 +18,21 @@ const WRITING: Record<string, RegExp> = {
   rg: /\s--pre(=|\s|$)/,
 };
 
+export const INSTRUCTION = instruction.trimEnd();
+// A Note of its own right before the Note of a Compaction: the model reads that Note as a user message, so it is told
+// this is its own work, not a new task. Never compacted with it.
+export const LEAD =
+  'The summary below is of your own earlier work in this session, not a new task. Build on it, do not redo what is under Done; continue with Next steps.';
+
 export const description = 'drops reads and short thinking, compacts at ½';
 
-export default function leanCompact({ window, used, blocks: all }: PolicyContext): PolicyOperation[] {
+export default function leanCompact(context: PolicyContext): PolicyOperation[] {
+  const lead = led(context.blocks);
+  // Alone in its pass: a Compaction moves the Note, so the lead is placed after it.
+  return lead.length ? lead : compacted(context);
+}
+
+function compacted({ window, used, blocks: all }: PolicyContext): PolicyOperation[] {
   if (used < window * COMPACT_FROM) return [];
   // The model has not yet built on the newest block: it is left out, a Tool Pair as a whole.
   const last = all.at(-1);
@@ -30,7 +43,7 @@ export default function leanCompact({ window, used, blocks: all }: PolicyContext
   const gone = new Set([...reads.flatMap(b => [b.id, b.pair!]), ...short.map(b => b.id)]);
   const sources = blocks.filter(b => compactable(b) && !gone.has(b.id));
   const removals = [...reads, ...short].map(b => ({ op: 'remove' as const, id: b.id }));
-  const compact = (from: PolicyBlock[]): PolicyOperation => ({ op: 'compact', sources: from.map(b => b.id), instruction: DEFAULT_INSTRUCTION });
+  const compact = (from: PolicyBlock[]): PolicyOperation => ({ op: 'compact', sources: from.map(b => b.id), instruction: INSTRUCTION });
   if (sources.some(isWork)) return [...removals, compact(sources)];
   // No work but reads and short Thinking: removing them would lose all the model learned, so they are compacted.
   if (removals.length) return [compact(blocks.filter(compactable))];
@@ -38,11 +51,21 @@ export default function leanCompact({ window, used, blocks: all }: PolicyContext
   return [];
 }
 
-// The project's Notes and a Tool Call awaiting approval stay.
+const isLead = (b: PolicyBlock) => b.origin === 'policy' && b.content === LEAD;
+// The project's Notes, the lead and a Tool Call awaiting approval stay.
 const compactable = (b: PolicyBlock) =>
-  b.kind !== 'System' && b.kind !== 'Tools' && !b.pending && b.origin !== 'environment' && b.origin !== 'file';
+  b.kind !== 'System' && b.kind !== 'Tools' && !b.pending && b.origin !== 'environment' && b.origin !== 'file' && !isLead(b);
 // What the model did since the last Compaction.
-const isWork = (b: PolicyBlock) => b.kind !== 'User' && b.origin !== 'compaction';
+const isWork = (b: PolicyBlock) => b.kind !== 'User' && b.origin !== 'compaction' && !isLead(b);
+
+// The lead right before the first Note of a Compaction; one elsewhere, left behind by a Compaction, goes.
+function led(blocks: PolicyBlock[]): PolicyOperation[] {
+  const first = blocks.findIndex(b => b.origin === 'compaction');
+  // No Note of a Compaction (-1): blocks[-2] is undefined, so nothing is before it.
+  const before = blocks[first - 1];
+  const stale = blocks.filter(b => isLead(b) && b !== before).map(b => ({ op: 'remove' as const, id: b.id }));
+  return before && !isLead(before) ? [...stale, { op: 'note', after: before.id, content: LEAD }] : stale;
+}
 
 // A bash Tool Call with its result whose every command only reads. A Question's answers (by the user) stay.
 function isRead(b: PolicyBlock, blocks: PolicyBlock[]): boolean {

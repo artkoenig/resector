@@ -1,5 +1,7 @@
 // Context Policy tests without a renderer (ADR 0001): passes before each request, attribution, failures, Compaction.
 import { expect, test } from 'bun:test';
+import { BUILT_IN } from '../core/policy/built-in';
+import { LEAD } from '../core/policy/lean-compact';
 import type { Policy, PolicyOperation } from '../core/policy/policy';
 import { bash, gateWith, ofType, scriptedBackend, settled, until } from './gate.harness';
 
@@ -145,4 +147,15 @@ test('a request failing after the policy ran still says what the policy did', as
   await settled(g.gate);
   expect(g.gate.status()?.text).toContain('backend error');
   expect(g.gate.status()?.text).toContain('trim: 1 User removed');
+});
+
+test('lean-compact: the Note of its Compaction is sent led by the lead, which says it is the model\'s own work', async () => {
+  const g = policed({ window: 90, users: ['fix x'], policies: BUILT_IN });
+  g.reply({ content: 'fixed' }, { content: '## Goal\nfix x' }, { content: 'ok' });
+  await g.gate.send();
+  await settled(g.gate);
+  g.gate.submit('next');
+  await settled(g.gate);
+  const messages = g.sent.at(-1)!.request.messages.map(m => m.content);
+  expect(messages.slice(-3)).toEqual([LEAD, '## Goal\nfix x', 'next']);
 });
