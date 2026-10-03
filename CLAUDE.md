@@ -5,7 +5,7 @@ TUI harness for local LLMs (Bun + TypeScript, UI with OpenTUI/Solid). No build s
 ## Commands
 
 - `bun run typecheck` — tsc, ~1 s.
-- `bun test` — all tests, ~30 s. `bun test <file>` for one file, `bun test <file> -t "<name part>"` for single tests.
+- `bun test --only-failures` — all tests, `bun test <file>` for one file, `bun test <file> -t "<name part>"` for single tests.
 - UI tests render real frames and wait on a fake backend; a rare timeout is flaky — rerun that file once before debugging.
 
 ## Layout
