@@ -61,7 +61,8 @@ const isWork = (b: PolicyBlock) => b.kind !== 'User' && b.origin !== 'compaction
 // The lead right before the first Note of a Compaction; one elsewhere, left behind by a Compaction, goes.
 function led(blocks: PolicyBlock[]): PolicyOperation[] {
   const first = blocks.findIndex(b => b.origin === 'compaction');
-  const before = first > 0 ? blocks[first - 1]! : undefined;
+  // No Note of a Compaction (-1): blocks[-2] is undefined, so nothing is before it.
+  const before = blocks[first - 1];
   const stale = blocks.filter(b => isLead(b) && b !== before).map(b => ({ op: 'remove' as const, id: b.id }));
   return before && !isLead(before) ? [...stale, { op: 'note', after: before.id, content: LEAD }] : stale;
 }

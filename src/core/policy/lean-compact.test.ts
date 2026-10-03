@@ -101,9 +101,10 @@ test('a lead not right before the first Note of a Compaction goes, and one is ad
   expect(leanCompact({ window: 100, used: 0, blocks: blocks('System', lead, 'User') })).toEqual([{ op: 'remove', id: 2 }]);
 });
 
-test('a Note of the same text by someone else is no lead', () => {
+test('a Note of the same text by someone else, or of another text by the policy, is no lead', () => {
   const context = blocks('System', ['Note', { origin: 'file', content: LEAD }], ['Note', { origin: 'compaction' }], 'User');
   expect(leanCompact({ window: 100, used: 0, blocks: context })).toEqual([{ op: 'note', after: 2, content: LEAD }]);
+  expect(leanCompact({ window: 100, used: 0, blocks: blocks('System', ['Note', { origin: 'policy' }], 'User') })).toEqual([]);
 });
 
 test('the lead is neither work nor compacted', () => {
