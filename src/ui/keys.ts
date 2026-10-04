@@ -2,14 +2,10 @@
 import type { Screen } from './screen';
 import type { Mode } from './prompt';
 
-// Keys acting on the selected block only: off while blocks are marked.
-const SINGLE_KEYS = new Set(['alt+up', 'alt+down', 'y', 'a', 'n', 'p', 'e']);
-const BUSY_KEYS = new Set(['up', 'down', 'shift+up', 'shift+down', 'pageup', 'pagedown', 'q']);
-
 export const modifierOf = (key: { option?: boolean; meta: boolean; shift: boolean }) =>
   key.option || key.meta ? 'alt+' : key.shift ? 'shift+' : '';
 
-type Ui = {
+export type Ui = {
   draft: () => string;
   editDraft: (text: string) => void;
   setMode: (mode: Mode) => void;
@@ -20,6 +16,48 @@ type Ui = {
   previewPage: () => number;
   onQuit: () => void;
 };
+
+// A key in the Context and its footer hint. `single`: acts on the selected block only, off while blocks are marked;
+// `busy`: also while streaming or running; `marked`: its hint while blocks are marked; `when`: its hint shows only then.
+export type Binding = {
+  key: string;
+  run: (gate: Screen, ui: Ui) => void;
+  label?: string;
+  hint?: string;
+  marked?: string;
+  single?: true;
+  busy?: true;
+  when?: (gate: Screen) => boolean;
+};
+const pending = (gate: Screen) => !!gate.selectedBlock()?.pending;
+// The order is the footer's.
+export const CONTEXT_KEYS: Binding[] = [
+  { key: 'tab', run: (_, ui) => ui.setMode('input') },
+  { key: '/', run: (_, ui) => ui.startInput('/')() },
+  { key: '@', run: (_, ui) => ui.startInput('@')() },
+  { key: 'shift+@', run: (_, ui) => ui.startInput('@')() },
+  { key: 'return', run: gate => void gate.send() },
+  { key: 'up', run: gate => gate.select(-1), busy: true },
+  { key: 'down', run: gate => gate.select(1), busy: true },
+  { key: 'y', run: gate => gate.approve(), hint: 'run once', single: true, when: pending },
+  { key: 'a', run: gate => gate.allowForSession(), hint: 'allow for session', single: true, when: pending },
+  { key: 'n', run: gate => gate.reject(), hint: 'reject', single: true, when: pending },
+  // No move while a Kind Filter hides blocks.
+  { key: 'alt+up', run: gate => gate.move(-1), label: '⌥↑↓', hint: 'move', single: true, when: gate => !gate.hiding() },
+  { key: 'alt+down', run: gate => gate.move(1), single: true },
+  { key: 'shift+up', run: (_, ui) => ui.scrollPreview(-1), busy: true },
+  { key: 'shift+down', run: (_, ui) => ui.scrollPreview(1), busy: true },
+  { key: 'pageup', run: (_, ui) => ui.scrollPreview(-ui.previewPage()), busy: true },
+  { key: 'pagedown', run: (_, ui) => ui.scrollPreview(ui.previewPage()), busy: true },
+  { key: 'e', run: gate => gate.edit(), hint: 'edit', single: true },
+  { key: 'd', run: gate => gate.remove(), hint: 'remove', marked: 'remove' },
+  { key: 'space', run: gate => gate.toggleMark(), hint: 'mark', marked: 'mark' },
+  { key: 'c', run: gate => gate.startCompaction(), hint: 'compact', marked: 'compact' },
+  { key: 'u', run: gate => gate.undo(), hint: 'undo' },
+  { key: 'escape', run: gate => (gate.status()?.tone === 'error' ? gate.dismiss() : gate.clearMarks()), label: 'esc', marked: 'unmark' },
+  { key: 'q', run: (_, ui) => ui.onQuit(), hint: 'quit', marked: 'quit', busy: true },
+];
+const BY_KEY = new Map(CONTEXT_KEYS.map(b => [b.key, b]));
 
 export function createKeys(gate: Screen, ui: Ui) {
   const { scrollPreview, previewPage } = ui;
@@ -48,40 +86,17 @@ export function createKeys(gate: Screen, ui: Ui) {
     pagedown: () => scrollPreview(previewPage()),
     q: ui.onQuit,
   };
-  const context: Record<string, () => void> = {
-    tab: () => ui.setMode('input'),
-    '/': ui.startInput('/'),
-    '@': ui.startInput('@'),
-    'shift+@': ui.startInput('@'),
-    return: () => void gate.send(),
-    up: () => gate.select(-1),
-    down: () => gate.select(1),
-    'alt+up': () => gate.move(-1),
-    'alt+down': () => gate.move(1),
-    'shift+up': () => scrollPreview(-1),
-    'shift+down': () => scrollPreview(1),
-    pageup: () => scrollPreview(-previewPage()),
-    pagedown: () => scrollPreview(previewPage()),
-    y: gate.approve,
-    a: gate.allowForSession,
-    n: gate.reject,
-    d: gate.remove,
-    u: gate.undo,
-    e: gate.edit,
-    space: gate.toggleMark,
-    c: gate.startCompaction,
-    escape: () => (gate.status()?.tone === 'error' ? gate.dismiss() : gate.clearMarks()),
-    q: ui.onQuit,
-  };
   // The key pressed last in the Context: only the same key again confirms.
   let lastKey = '';
   // A key in the Context. Streaming or running: only looking around (select, scroll, quit); Esc stops after the step, again aborts.
   function contextAction(name: string) {
     if (name !== lastKey) gate.cancelConfirm();
     lastKey = name;
-    if (gate.marked().size && SINGLE_KEYS.has(name)) return undefined;
-    if (!gate.busy()) return context[name];
-    return name === 'escape' ? gate.abort : BUSY_KEYS.has(name) ? context[name] : undefined;
+    const binding = BY_KEY.get(name);
+    if (gate.marked().size && binding?.single) return undefined;
+    if (gate.busy() && name === 'escape') return gate.abort;
+    if (!binding || (gate.busy() && !binding.busy)) return undefined;
+    return () => binding.run(gate, ui);
   }
   return {
     input,

@@ -1,6 +1,8 @@
 // Context Policy (ADR 0001) at the Gate: the active policy edits the Context before a request; /policy switches it.
 import * as compaction from '../core/compaction/compaction';
-import { applyPolicy, summary, type Policy, type Ports } from '../core/policy/policy';
+import { applyPolicy, type Ports, type Ran } from '../core/policy/apply';
+import { summary } from '../core/policy/plan';
+import type { Policy, Situation } from '../core/policy/policy';
 import { inContextRequest } from '../core/render/compaction';
 import { renderPrefixes, type Request } from '../core/render/native';
 import { errorText, formatTokens } from './text';
@@ -14,26 +16,8 @@ export function createPolicy(k: Kernel, sel: View, policies: Policies, compactor
   // What the policy did before the request being sent, for its status line.
   let ran: string | null = null;
 
-  // The active policy edits the Context; an error, its Compaction's too, stops the Gate: nothing is sent.
-  async function runPolicy(policy: Policy): Promise<boolean> {
-    const abort = new AbortController();
-    k.setPolicing({ name: policy.name, abort });
-    try {
-      const { changes, error } = await applyPolicy(policy, ports(abort.signal));
-      const did = changes.length ? summary(policy.name, changes) : null;
-      if (error) setStatus({ text: [`policy ${policy.name}: ${error} – not sent`, did].filter(Boolean).join(' · '), tone: 'error' });
-      else ran = did;
-      return !error;
-    } catch (e) {
-      setStatus({ text: `policy ${policy.name}: ${errorText(e)} – not sent`, tone: 'error' });
-      return false;
-    } finally {
-      k.setPolicing(null);
-      sel.keepSelection();
-    }
-  }
-  const ports = (signal: AbortSignal): Ports => ({
-    events: k.events, append: k.append, window: backend().window, aborted: () => signal.aborted,
+  const ports = (signal: AbortSignal, situation: Situation): Ports => ({
+    events: k.events, append: k.append, situation, aborted: () => signal.aborted,
     count: context => backend().count(renderPrefixes(context)),
     compact: (context, sources, instruction, inContext) =>
       compact(inContext ? inContextRequest(context, instruction) : compaction.compactionRequest(context, sources, instruction), signal),
@@ -64,8 +48,40 @@ export function createPolicy(k: Kernel, sel: View, policies: Policies, compactor
     setStatus({ text: chosen ? `policy ${chosen.name} on – edits the Context before every request` : 'policy off', tone: 'info' });
   }
 
+  // The policy edits the Context with what the Gate knows; Esc aborts it. A throw is its error.
+  async function run(policy: Policy, situation: Situation): Promise<Ran> {
+    const abort = new AbortController();
+    k.setPolicing({ name: policy.name, abort });
+    try {
+      return await applyPolicy(policy, ports(abort.signal, situation));
+    } catch (e) {
+      return { changes: [], error: errorText(e) };
+    } finally {
+      k.setPolicing(null);
+      sel.keepSelection();
+    }
+  }
+  const situation = (): Situation => ({ window: backend().window });
+
   return {
-    runPolicy, switchPolicy,
+    // What the view shows and does.
+    api: {
+      // The name of the policy editing the Context before a request.
+      policing: () => k.policing()?.name ?? null,
+      // The active Context Policy and the ones to switch on (ADR 0001).
+      policy: () => policies.active()?.name ?? null,
+      policyNames: () => policies.all.map(p => p.name),
+      policyDescription: (name: string) => policies.all.find(p => p.name === name)?.description ?? null,
+    },
+    // The active policy edits the Context before a request; an error, its Compaction's too, stops the Gate: nothing is sent.
+    async runPolicy(policy: Policy): Promise<boolean> {
+      const { changes, error } = await run(policy, situation());
+      const did = changes.length ? summary(policy.name, changes) : null;
+      if (error) setStatus({ text: [`policy ${policy.name}: ${error} – not sent`, did].filter(Boolean).join(' · '), tone: 'error' });
+      else ran = did;
+      return !error;
+    },
+    switchPolicy,
     // What the policy did before this request; read once.
     takeRan: () => {
       const did = ran;

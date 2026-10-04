@@ -113,13 +113,15 @@ export function createEdits(k: Kernel, sel: View, loop: ToolLoop, deps: { editor
   }
 
   return {
-    move, remove, undo, toggleMark,
-    edit: () => void edit(),
-    copy: (text: string) => void copy(text),
-    // Any other key than the one asked for cancels the confirmation.
-    cancelConfirm: () => {
-      if (confirming()) setStatus(null);
-      setConfirming(null);
+    api: {
+      move, remove, undo, toggleMark,
+      edit: () => void edit(),
+      copy: (text: string) => void copy(text),
+      // Any other key than the one asked for cancels the confirmation.
+      cancelConfirm: () => {
+        if (confirming()) setStatus(null);
+        setConfirming(null);
+      },
     },
   };
 }

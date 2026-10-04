@@ -52,5 +52,5 @@ export function createCommands(k: Kernel, sel: View, handlers: Record<CommandNam
     sel.setSelected(id);
   }
 
-  return { commands: offered, submit };
+  return { api: { commands: offered, submit } };
 }

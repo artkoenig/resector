@@ -191,5 +191,12 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
     if (apply(operation(context(), call, nextId()))) advance(notes);
   }
 
-  return { stopping, setStopping, abort, finish, advance, wentOn, asked, answer, decline, approve, allowForSession, reject };
+  return {
+    // What the view shows and does.
+    api: {
+      stopping, abort, asked, answer, decline, approve, allowForSession, reject,
+      nextCall: () => ops.nextCall(context()),
+    },
+    setStopping, finish, advance, wentOn,
+  };
 }
