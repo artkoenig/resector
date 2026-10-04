@@ -159,3 +159,18 @@ test('lean-compact: the Note of its Compaction is sent led by the lead, which sa
   const messages = g.sent.at(-1)!.request.messages.map(m => m.content);
   expect(messages.slice(-3)).toEqual([LEAD, '## Goal\nfix x', 'next']);
 });
+
+test('guided-compaction: the model compacts the Context as sent, the first User message and the reads it keeps stay, the others go', async () => {
+  const g = policed({ window: 160, users: ['fix x'], policies: [BUILT_IN.find(p => p.name === 'guided-compaction')!] });
+  g.reply({ calls: [bash('cat a.ts')] }, { calls: [bash('cat b.ts')] }, { content: 'fixed' }, { content: 'x\n## Keep\n- b.ts' }, { content: 'ok' });
+  await g.gate.send();
+  await settled(g.gate);
+  g.gate.submit('next');
+  await settled(g.gate);
+  const [compaction, last] = g.sent.slice(-2).map(s => s.request.messages.map(m => m.content));
+  expect(compaction!.at(-1)).toStartWith('Accumulate the knowledge in this conversation');
+  expect(JSON.stringify(compaction)).toContain('ran cat a.ts');
+  expect(last!.slice(1)).toEqual(['fix x', '', 'ran cat b.ts\n[exit 0]', LEAD, '## Facts\nx\n## Keep\n- b.ts', 'next']);
+  expect(JSON.stringify(last)).not.toContain('ran cat a.ts');
+  expect(g.gate.status()?.text).toBe('guided-compaction: 1 Assistant → 1 Note, 1 Note added, 1 Tool Pair removed · answer complete');
+});

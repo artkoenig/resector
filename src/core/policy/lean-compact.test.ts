@@ -23,8 +23,8 @@ test('below half the window nothing happens', () => {
   expect(leanCompact({ window: 100, used: 49, blocks: blocks('User', 'Thinking', 'Assistant', 'User') })).toEqual([]);
 });
 
-test('from half the window on, the work is compacted with the user\'s messages; the newest block stays', () => {
-  expect(leanCompact({ window: 100, used: 50, blocks: blocks('User', 'Thinking', 'Assistant', 'User') })).toEqual([compact(1, 2, 3)]);
+test('from half the window on, the work is compacted, the user\'s messages stay; the newest block stays', () => {
+  expect(leanCompact({ window: 100, used: 50, blocks: blocks('User', 'Thinking', 'Assistant', 'User') })).toEqual([compact(2, 3)]);
 });
 
 test('read-only Tool Pairs and short Thinking are removed, the rest compacted', () => {
@@ -32,7 +32,7 @@ test('read-only Tool Pairs and short Thinking are removed, the rest compacted', 
   expect(leanCompact({ window: 100, used: 60, blocks: context })).toEqual([
     { op: 'remove', id: 2 },
     { op: 'remove', id: 4 },
-    compact(1, 5, 6, 7),
+    compact(5, 6, 7),
   ]);
 });
 
@@ -43,36 +43,36 @@ test('read-only commands, alone or chained, with quoted arguments and output sen
   const commands = ['ls', 'tree', 'cat a', 'head a', 'tail a', 'wc a', 'grep x a', 'rg x', 'find .', 'sed -n 1p a', 'git status', 'git diff', 'git log',
     'git show HEAD', 'pwd', 'cd src', 'stat a', 'file a', 'echo hi', 'ls | wc -l', 'ls; pwd', 'ls\npwd', 'ls || pwd', "grep 'a|b' x", 'grep "ab|c" x',
     'grep "a b" x', "grep '$(x)' x", 'ls>&2', 'ls >&2', 'ls 2>&1', 'ls>/dev/null', 'ls > /dev/null', 'ls 2>/dev/null'];
-  for (const command of commands) expect(opsFor(command), command).toEqual([{ op: 'remove', id: 2 }, compact(1, 4)]);
+  for (const command of commands) expect(opsFor(command), command).toEqual([{ op: 'remove', id: 2 }, compact(4)]);
 });
 
 test('only reads and short Thinking since the last Compaction: they are compacted with its Note, not removed', () => {
   const context = blocks('User', lead, ['Note', { origin: 'compaction' }], call('cat a'), 'Tool Result', ['Thinking', { tokens: 50 }], call('ls'), 'Tool Result');
-  expect(leanCompact({ window: 100, used: 60, blocks: context })).toEqual([compact(1, 3, 4, 5, 6)]);
-  expect(leanCompact({ window: 100, used: 60, blocks: blocks('System', 'User', call('cat a'), 'Tool Result', 'User') })).toEqual([compact(2, 3, 4)]);
+  expect(leanCompact({ window: 100, used: 60, blocks: context })).toEqual([compact(3, 4, 5, 6)]);
+  expect(leanCompact({ window: 100, used: 60, blocks: blocks('System', 'User', call('cat a'), 'Tool Result', 'User') })).toEqual([compact(3, 4)]);
 });
 
 test('a command that writes or runs something is not a read', () => {
   const commands = ['sed -i s/a/b/ x', 'sed -n -i s/a/b/ x', 'sed -n -nEi p x', 'sed -n --in-place p x', 'find . -delete', 'find . -delete -name x',
     'find . -exec rm {} +', 'git diff --output=x', 'git diff --output x', 'git log --output', 'rg --pre=cat x', 'rg --pre cat x', 'rg x --pre',
     'cat x > y', 'echo "$(rm x)"', 'echo "`rm x`"', 'echo `rm x`', 'ls && rm x', "'x'cat f"];
-  for (const command of commands) expect(opsFor(command), command).toEqual([compact(1, 2, 3, 4)]);
+  for (const command of commands) expect(opsFor(command), command).toEqual([compact(2, 3, 4)]);
 });
 
 test('a Tool Pair the user answered (a Question) or a Tool Call without result is not a read', () => {
-  expect(leanCompact({ window: 100, used: 60, blocks: blocks('User', call('ls'), ['Tool Result', { origin: 'user' }], 'Assistant', 'User') })).toEqual([compact(1, 2, 3, 4)]);
-  expect(leanCompact({ window: 100, used: 60, blocks: blocks('User', call('ls'), 'Assistant', 'User') })).toEqual([compact(1, 2, 3)]);
-  expect(leanCompact({ window: 100, used: 60, blocks: blocks('User', ['Assistant', { content: 'ls' }], call('x'), ['Tool Result', { content: 'ls' }], 'User') })).toEqual([compact(1, 2, 3, 4)]);
+  expect(leanCompact({ window: 100, used: 60, blocks: blocks('User', call('ls'), ['Tool Result', { origin: 'user' }], 'Assistant', 'User') })).toEqual([compact(2, 3, 4)]);
+  expect(leanCompact({ window: 100, used: 60, blocks: blocks('User', call('ls'), 'Assistant', 'User') })).toEqual([compact(2, 3)]);
+  expect(leanCompact({ window: 100, used: 60, blocks: blocks('User', ['Assistant', { content: 'ls' }], call('x'), ['Tool Result', { content: 'ls' }], 'User') })).toEqual([compact(2, 3, 4)]);
 });
 
 test('short means Thinking under 200 tokens; other short blocks are compacted', () => {
   const context = blocks('User', ['Thinking', { tokens: 199 }], ['Thinking', { tokens: 200 }], ['Assistant', { tokens: 10 }], 'User');
-  expect(leanCompact({ window: 100, used: 60, blocks: context })).toEqual([{ op: 'remove', id: 2 }, compact(1, 3, 4)]);
+  expect(leanCompact({ window: 100, used: 60, blocks: context })).toEqual([{ op: 'remove', id: 2 }, compact(3, 4)]);
 });
 
 test('System, Tools, pending Tool Calls and the Notes of the environment and of files are not compacted', () => {
   const context = blocks('System', 'Tools', ['Note', { origin: 'environment' }], ['Note', { origin: 'file' }], 'User', 'Assistant', ['Tool Call', { pending: true }], 'User');
-  expect(leanCompact({ window: 100, used: 60, blocks: context })).toEqual([compact(5, 6)]);
+  expect(leanCompact({ window: 100, used: 60, blocks: context })).toEqual([compact(6)]);
 });
 
 test('an empty Context: nothing to do', () => {
@@ -80,7 +80,7 @@ test('an empty Context: nothing to do', () => {
 });
 
 test('the newest Tool Pair stays as a whole', () => {
-  expect(leanCompact({ window: 100, used: 60, blocks: blocks('User', 'Assistant', call('ls'), 'Tool Result') })).toEqual([compact(1, 2)]);
+  expect(leanCompact({ window: 100, used: 60, blocks: blocks('User', 'Assistant', call('ls'), 'Tool Result') })).toEqual([compact(2)]);
 });
 
 test('only the user\'s messages and an earlier Compaction Note left: nothing to compact', () => {
@@ -111,7 +111,7 @@ test('the lead is neither work nor compacted', () => {
   const context = blocks('System', 'User', lead, ['Note', { origin: 'compaction' }], 'User', 'User');
   expect(leanCompact({ window: 100, used: 60, blocks: context })).toEqual([]);
   const work = blocks('System', 'User', lead, ['Note', { origin: 'compaction' }], 'Assistant', 'User');
-  expect(leanCompact({ window: 100, used: 60, blocks: work })).toEqual([compact(2, 4, 5)]);
+  expect(leanCompact({ window: 100, used: 60, blocks: work })).toEqual([compact(4, 5)]);
 });
 
 test('the lead tells the model the Note is its own earlier work in this session, to continue with its Next steps', () => {
@@ -119,6 +119,6 @@ test('the lead tells the model the Note is its own earlier work in this session,
 });
 
 test('the instruction asks for the structure the lead refers to', () => {
-  expect(INSTRUCTION).toContain("Keep the user's requests under Goal");
+  expect(INSTRUCTION).toContain("The user's messages are not among these blocks");
   expect(INSTRUCTION.split('\n').slice(1)).toEqual(['## Goal', '## Facts', '## Decisions', '## Done', '## Dead ends', '## Next steps']);
 });

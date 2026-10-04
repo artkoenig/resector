@@ -91,7 +91,7 @@ A **Context Policy** is a function over the Context that resector calls before e
 
 ### Built-in: `lean-compact`
 
-On by default. From half the window on, [`lean-compact`](src/core/policy/lean-compact.ts) removes read-only `bash` Tool Pairs (`grep`, `cat`, `git diff`, …) and short Thinking, then compacts the rest of the work into one Note. If there is no other work since the last Compaction, the reads and short Thinking are compacted instead, so what the model read survives. Your messages are compacted with the work; the Note keeps what you asked for, under Goal, Facts, Decisions, Done, Dead ends and Next steps. A short Note right before it tells the model this is its own earlier work, to continue with Next steps rather than start over. The project's Notes and the newest Tool Pair stay.
+On by default. From half the window on, [`lean-compact`](src/core/policy/lean-compact.ts) removes read-only `bash` Tool Pairs (`grep`, `cat`, `git diff`, …) and short Thinking, then compacts the rest of the work into one Note. If there is no other work since the last Compaction, the reads and short Thinking are compacted instead, so what the model read survives. Your messages are not compacted, they stay; the Note holds the work, under Goal, Facts, Decisions, Done, Dead ends and Next steps (with the code passages the next edits need, verbatim). A short Note right before it tells the model this is its own earlier work, to continue with Next steps rather than start over. The project's Notes and the newest Tool Pair stay.
 
 Compared with compacting everything (same instruction, 5 synthetic sessions):
 
@@ -104,6 +104,14 @@ Compared with compacting everything (same instruction, 5 synthetic sessions):
 ```bash
 /policy off            # switch off
 /policy lean-compact   # switch on again
+```
+
+### Built-in: `guided-compaction`
+
+Experimental. From half the window on, [`guided-compaction`](src/core/policy/guided-compaction.ts) asks the model for the Note in the Context as sent (the server's prefix cache holds it), with the sections of `lean-compact` but Goal (your first message stays and is it), plus Keep: the paths of the files it will change next. Per kept path the newest read-only `bash` Tool Pair naming it stays (older ones show the file before later edits), the other reads go; the rest of the work, your later messages with it, is in the Note. A Compaction without Keep (yours, another policy's) removes no reads. Your later requests go under Next steps.
+
+```bash
+/policy guided-compaction
 ```
 
 ### Write your own
