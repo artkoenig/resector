@@ -88,11 +88,13 @@ export function createKeys(gate: Screen, ui: Ui) {
   };
   // The key pressed last in the Context: only the same key again confirms.
   let lastKey = '';
-  // A key in the Context. Streaming or running: only looking around (select, scroll, quit); Esc stops after the step, again aborts.
   function contextAction(name: string) {
     if (name !== lastKey) gate.cancelConfirm();
     lastKey = name;
-    const binding = BY_KEY.get(name);
+    return bound(name, BY_KEY.get(name));
+  }
+  // A key in the Context. Streaming or running: only looking around (select, scroll, quit); Esc stops after the step, again aborts.
+  function bound(name: string, binding: ReturnType<typeof BY_KEY.get>) {
     if (gate.marked().size && binding?.single) return undefined;
     if (gate.busy() && name === 'escape') return gate.abort;
     if (!binding || (gate.busy() && !binding.busy)) return undefined;

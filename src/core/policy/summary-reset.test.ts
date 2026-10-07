@@ -20,7 +20,11 @@ const error = (id: number) => ({ op: 'edit' as const, id, content: ERROR });
 
 test('the intro goes right after the System and Tools Block, once', () => {
   expect(summaryReset({ window: 99, used: 10, blocks: blocks('System', 'Tools', ['Note', { origin: 'environment' }], 'User') })).toEqual([{ op: 'note', after: 2, content: INTRO }]);
+  expect(summaryReset({ window: 99, used: 10, blocks: blocks('System', 'User') })).toEqual([{ op: 'note', after: 1, content: INTRO }]);
   expect(summaryReset({ window: 99, used: 10, blocks: blocks('System', 'Tools', intro, 'User') })).toEqual([]);
+  // Only the policy's Note with the intro is it.
+  const others = blocks('System', 'Tools', ['Note', { origin: 'policy', content: HANDOVER }], ['User', { content: INTRO }]);
+  expect(summaryReset({ window: 99, used: 10, blocks: others })).toEqual([{ op: 'note', after: 2, content: INTRO }]);
 });
 
 test('the intro tells the model the rules: half, the error, the summary tags, only the summary stays', () => {
@@ -41,16 +45,17 @@ test('from half the window on, the results of the newest calls become the error;
 test('the error asks for a summary between summary tags and says the call ran', () => {
   expect(ERROR).toContain('between <summary> and </summary>');
   expect(ERROR).toContain('This command ran, but its output is withheld');
+  expect(ERROR).toBe(ERROR.trim());
 });
 
 test('a summary of the model becomes a Note led by the handover in its place; every block before it goes but the System, Tools Block, intro and the project\'s Notes', () => {
   const context = blocks(
-    'System', 'Tools', intro, ['Note', { origin: 'environment' }], 'User', 'Tool Call', ['Tool Result', { content: ERROR }], 'Thinking',
+    'System', 'Tools', intro, ['Note', { origin: 'environment' }], ['Note', { origin: 'file' }], 'User', 'Tool Call', ['Tool Result', { content: ERROR }], 'Thinking',
     ['Assistant', { content: 'Here it is.\n<summary>\n## Task\nfix x\n</summary>' }], 'User',
   );
   expect(summaryReset({ window: 99, used: 10, blocks: context })).toEqual([
-    { op: 'note', after: 9, content: `${HANDOVER}\n\n## Task\nfix x` },
-    ...[5, 6, 8, 9].map(id => ({ op: 'remove' as const, id })),
+    { op: 'note', after: 10, content: `${HANDOVER}\n\n## Task\nfix x` },
+    ...[6, 7, 9, 10].map(id => ({ op: 'remove' as const, id })),
   ]);
 });
 
@@ -62,6 +67,17 @@ test('a later summary overwrites the handover Note instead of adding one', () =>
   expect(summaryReset({ window: 99, used: 10, blocks: context })).toEqual([
     { op: 'edit', id: 3, content: `${HANDOVER}\n\nnew` },
     ...[4, 5, 7].map(id => ({ op: 'remove' as const, id })),
+  ]);
+});
+
+test('only the policy\'s Note led by the handover is overwritten, no other block starting with it', () => {
+  const context = blocks(
+    'System', intro, ['User', { origin: 'policy', content: `${HANDOVER}\n\nquoted` }], ['Note', { origin: 'compaction', content: `${HANDOVER}\n\nx` }],
+    ['Assistant', { content: '<summary>new</summary>' }], 'User',
+  );
+  expect(summaryReset({ window: 99, used: 10, blocks: context })).toEqual([
+    { op: 'note', after: 5, content: `${HANDOVER}\n\nnew` },
+    ...[3, 4, 5].map(id => ({ op: 'remove' as const, id })),
   ]);
 });
 

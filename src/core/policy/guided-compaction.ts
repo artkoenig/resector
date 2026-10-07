@@ -26,11 +26,12 @@ export default function guidedCompaction(context: PolicyContext): PolicyOperatio
 function compacted({ window, used, blocks: all }: PolicyContext): PolicyOperation[] {
   if (used < window * COMPACT_FROM) return [];
   // The model has not yet built on the newest block: it is left out, a Tool Pair as a whole.
-  const blocks = all.filter(b => !newest(all).has(b.id));
+  const last = newest(all);
+  const blocks = all.filter(b => !last.has(b.id));
   const reads = new Set(blocks.filter(b => isRead(b, blocks)).flatMap(b => [b.id, b.pair!]));
   const kept = keptBy(guide(blocks), blocks);
   // Reads the last Note kept are no new work: compacting again would only repeat it.
-  const isNew = (b: PolicyBlock) => compactable(b) && isWork(b) && !(reads.has(b.id) && kept(readOf(b, blocks)));
+  const isNew = (b: PolicyBlock) => compactable(b) && isWork(b) && !(reads.has(b.id) && kept.has(readOf(b, blocks)));
   if (!blocks.some(isNew)) return [];
   // The task as the user put it: never rewritten.
   const first = blocks.find(b => b.kind === 'User');
@@ -44,8 +45,8 @@ function unkept(blocks: PolicyBlock[]): PolicyOperation[] {
   if (!note) return [];
   const kept = keptBy(note, blocks);
   const last = newest(blocks);
-  return blocks
-    .filter(b => b.id < note.id && !last.has(b.id) && isRead(b, blocks) && !kept(b))
+  return olderReads(note, blocks)
+    .filter(b => !last.has(b.id) && !kept.has(b))
     .map(b => ({ op: 'remove' as const, id: b.id }));
 }
 
@@ -56,32 +57,35 @@ const guide = (blocks: PolicyBlock[]) =>
 // The Tool Call of a read Tool Pair, given either of its blocks.
 const readOf = (b: PolicyBlock, blocks: PolicyBlock[]) => (b.kind === 'Tool Call' ? b : blocks.find(c => c.id === b.pair)!);
 
-// Whether a read is, of those older than the Note, the newest naming a path under its Keep: an older one shows the
+// The reads that are, of those older than the Note, the newest naming a path under its Keep: an older one shows the
 // file before later edits.
-function keptBy(note: PolicyBlock | undefined, blocks: PolicyBlock[]): (call: PolicyBlock) => boolean {
-  if (!note) return () => false;
-  const older = blocks.filter(b => b.id < note.id && isRead(b, blocks));
+function keptBy(note: PolicyBlock | undefined, blocks: PolicyBlock[]): Set<PolicyBlock | undefined> {
+  if (!note) return new Set();
+  const older = olderReads(note, blocks);
   const newestOf = (path: string) => older.filter(b => b.content.includes(path)).at(-1);
-  const kept = new Set(keepOf(note.content)!.map(newestOf));
-  return call => kept.has(call);
+  return new Set(keepOf(note.content)!.map(newestOf));
 }
+
+// The Tool Calls of the reads made before the Note: by id, as a Compaction leaves them where they were.
+const olderReads = (note: PolicyBlock, blocks: PolicyBlock[]) =>
+  // Stryker disable next-line EqualityOperator: the Note itself is no read.
+  blocks.filter(b => b.id < note.id && isRead(b, blocks));
 
 // The paths under `## Keep`, list marks and backticks stripped; null without that section.
 export function keepOf(note: string): string[] | null {
   const keep = sectionsOf(note).find(s => s.heading.startsWith('Keep'));
   if (!keep) return null;
-  return keep.body
-    .split('\n')
-    .map(line => line.replace(/^\s*(?:[-*+]|\d+\.)\s+/, '').replace(/`/g, '').trim())
+  return keep.lines
+    .map(line => line.replace(/^\s*(?:[-*+]|\d+\.)\s/, '').replace(/`/g, '').trim())
     .filter(path => path && !/^\(?none\)?\.?$/i.test(path));
 }
 
-// A Note's `## ` sections in order, bodies trimmed.
+// A Note's `## ` sections in order, with the lines below each heading.
 const sectionsOf = (note: string) =>
   note
     .split(/^(?=## )/m)
     .filter(part => part.startsWith('## '))
     .map(part => {
-      const [heading, ...body] = part.split('\n');
-      return { heading: heading!.slice(3).trim(), body: body.join('\n').trim() };
+      const [heading, ...lines] = part.split('\n');
+      return { heading: heading!.slice(3).trim(), lines };
     });
