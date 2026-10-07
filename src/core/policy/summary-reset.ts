@@ -16,7 +16,7 @@ export const INTRO =
   'How this session works: your context is limited. Once your work since the start (or since the last summary) takes half of the room left, every tool call fails with an error saying the context is full; the command still runs, but its output is withheld. Then write a summary of the session between <summary> and </summary>, as the error describes. Only that summary is kept: everything else (the user\'s messages, your tool calls, their results, your answers) is deleted, and the session continues from the summary alone.';
 // Before the summary in its Note: the model reads it as a user message, so it is told this is its own work.
 export const HANDOVER =
-  'Continuation of the session with the following summary of your own earlier work; everything before it was deleted. Continue from it, do not redo what is done. Trust it: the files are as it describes them, so do not read again what it covers; its planned changes are patches against them, apply them as they are.';
+  'Continuation of the session with the following summary of your own earlier work; everything before it was deleted. Continue from it, do not redo what is done. Trust it: the files are as it describes them, so do not read again what it covers; its Patches are planned against them: apply them as they are, reading first only where its Next steps say so.';
 
 export const description = 'errors tool calls once the work takes ½ of the room left, keeps only the summary the model writes';
 
