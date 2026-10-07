@@ -116,7 +116,7 @@ Experimental. From half the window on, [`guided-compaction`](src/core/policy/gui
 
 ### Built-in: `summary-reset`
 
-Experimental. [`summary-reset`](src/core/policy/summary-reset.ts) puts an intro right after the System prompt and Tools Block that tells the model what is coming. From a third of the window on, it replaces the result of every further Tool Call with an error: the context is full, write a summary between `<summary>` and `</summary>`. The call still runs (the policy sees it only after); the error says its output is withheld. Once the model answers with a summary, only that stays, as a Note led by a handover (the session continues with the following summary): everything before it goes but the System prompt, the Tools Block, the intro and the project's Notes. Your next message continues from it.
+Experimental. [`summary-reset`](src/core/policy/summary-reset.ts) puts an intro right after the System prompt and Tools Block that tells the model what is coming. Once the work since the start (or since the last summary) takes a third of the window, it replaces the result of every further Tool Call with an error: the context is full, write a summary between `<summary>` and `</summary>`. The call still runs (the policy sees it only after); the error says its output is withheld. Once the model answers with a summary, only that stays, without the tags (they only mark it), as a Note led by a handover (the session continues with the following summary); a later summary overwrites that Note. Everything before it goes but the System prompt, the Tools Block, the intro and the project's Notes. Your next message continues from it.
 
 ```bash
 /policy summary-reset

@@ -24,7 +24,7 @@ test('the intro goes right after the System and Tools Block, once', () => {
 });
 
 test('the intro tells the model the rules: a third, the error, the summary tags, only the summary stays', () => {
-  for (const part of ['a third full', 'fails with an error', 'between <summary> and </summary>', 'Only that summary is kept']) expect(INTRO).toContain(part);
+  for (const part of ['takes a third of it', 'fails with an error', 'between <summary> and </summary>', 'Only that summary is kept']) expect(INTRO).toContain(part);
 });
 
 test('below a third of the window nothing happens', () => {
@@ -52,6 +52,31 @@ test('a summary of the model becomes a Note led by the handover in its place; ev
     { op: 'note', after: 9, content: `${HANDOVER}\n\n## Task\nfix x` },
     ...[5, 6, 8, 9].map(id => ({ op: 'remove' as const, id })),
   ]);
+});
+
+test('a later summary overwrites the handover Note instead of adding one', () => {
+  const context = blocks(
+    'System', intro, ['Note', { origin: 'policy', content: `${HANDOVER}\n\nold` }], 'User', 'Tool Call', 'Tool Result',
+    ['Assistant', { content: '<summary>new</summary>' }], 'User',
+  );
+  expect(summaryReset({ window: 99, used: 10, blocks: context })).toEqual([
+    { op: 'edit', id: 3, content: `${HANDOVER}\n\nnew` },
+    ...[4, 5, 7].map(id => ({ op: 'remove' as const, id })),
+  ]);
+});
+
+test('a summary quoting the tags is kept whole, from the first opening tag to the last closing one', () => {
+  const content = '<summary>\n## Facts\nthe tags are <summary> and </summary>\n## Next steps\nedit\n</summary>';
+  expect(summaryReset({ window: 99, used: 10, blocks: blocks('System', intro, 'User', ['Assistant', { content }], 'User') })[0]).toEqual({
+    op: 'note', after: 4, content: `${HANDOVER}\n\n## Facts\nthe tags are <summary> and </summary>\n## Next steps\nedit`,
+  });
+});
+
+test('after a reset only the work since counts toward the third, not the summary and what stays', () => {
+  const context = blocks('System', intro, ['Note', { origin: 'policy', content: `${HANDOVER}\n\nfix x`, tokens: 3000 }], 'User', 'Tool Call', 'Tool Result');
+  // System, intro and handover: 3600 tokens; the work since: 900.
+  expect(summaryReset({ window: 3000, used: 4500, blocks: context })).toEqual([]);
+  expect(summaryReset({ window: 2700, used: 4500, blocks: context })).toEqual([error(6)]);
 });
 
 test('without the closing tag there is no summary yet', () => {
