@@ -29,21 +29,29 @@ const sends = (op: unknown) => (op as { op?: unknown } | null)?.op === 'send';
 
 // onlyToSend: after an answer that ended the tool loop, the operations apply only if the first pass asks to send on.
 export async function applyPolicy(policy: Policy, ports: Ports, { onlyToSend = false } = {}): Promise<Ran> {
-  const changes: Change[] = [];
-  let send = false;
-  const ran = (error: string | null): Ran => ({ changes, error, ...(send && { send: true as const }) });
-  for (let pass = 1; ; pass++) {
-    if (ports.aborted()) return ran(ABORTED);
-    const context = fold(ports.events());
-    const operations = await called(policy, viewOf(context, await ports.count(context), ports.situation));
-    if ('error' in operations) return ran(operations.error);
-    send ||= operations.some(sends);
-    if (operations.every(sends) || (onlyToSend && !send)) return ran(null);
-    if (pass > MAX_PASSES) return ran(`still changing the Context after ${MAX_PASSES} passes`);
-    const error = await applyAll(policy.name, operations, ports, changes);
-    if (error) return ran(error);
-  }
+  const run: Run = { policy, ports, onlyToSend, changes: [], send: false };
+  let error: string | null | undefined;
+  for (let pass = 1; error === undefined; pass++) error = await applyPass(run, pass);
+  return { changes: run.changes, error, ...(run.send && { send: true as const }) };
 }
+
+type Run = { policy: Policy; ports: Ports; onlyToSend: boolean; changes: Change[]; send: boolean };
+
+// One pass: undefined to go on, else why the run ended (null: nothing left to do).
+async function applyPass(run: Run, pass: number): Promise<string | null | undefined> {
+  const { policy, ports } = run;
+  if (ports.aborted()) return ABORTED;
+  const context = fold(ports.events());
+  const operations = await called(policy, viewOf(context, await ports.count(context), ports.situation));
+  if ('error' in operations) return operations.error;
+  run.send ||= operations.some(sends);
+  if (done(run, operations)) return null;
+  if (pass > MAX_PASSES) return `still changing the Context after ${MAX_PASSES} passes`;
+  return (await applyAll(policy.name, operations, ports, run.changes)) ?? undefined;
+}
+
+// Nothing but a send, or after an answer a policy not asking to send on.
+const done = (run: Run, operations: unknown[]) => operations.every(sends) || (run.onlyToSend && !run.send);
 
 // One pass: the operations in turn, until one is refused or Esc is pressed.
 async function applyAll(by: string, operations: unknown[], ports: Ports, changes: Change[]): Promise<string | null> {
