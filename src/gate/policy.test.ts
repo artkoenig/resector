@@ -2,6 +2,7 @@
 import { expect, test } from 'bun:test';
 import { BUILT_IN } from '../core/policy/built-in';
 import { LEAD } from '../core/policy/lean-compact';
+import { ERROR, HANDOVER, INTRO } from '../core/policy/summary-reset';
 import type { Policy, PolicyOperation } from '../core/policy/policy';
 import { bash, gateWith, ofType, scriptedBackend, settled, until } from './gate.harness';
 
@@ -173,4 +174,18 @@ test('guided-compaction: the model compacts the Context as sent, the first User 
   expect(last!.slice(1)).toEqual(['fix x', '', 'ran cat b.ts\n[exit 0]', LEAD, '## Facts\nx\n## Keep\n- b.ts', 'next']);
   expect(JSON.stringify(last)).not.toContain('ran cat a.ts');
   expect(g.gate.status()?.text).toBe('guided-compaction: 1 Assistant → 1 Note, 1 Note added, 1 Tool Pair removed · answer complete');
+});
+
+test('summary-reset: the intro first; from a third of the window on, a call\'s result is the error; then only the model\'s summary is sent on, led by the handover', async () => {
+  const g = policed({ window: 90, users: ['fix x'], policies: [BUILT_IN.find(p => p.name === 'summary-reset')!] });
+  g.reply({ calls: [bash('cat a.ts')] }, { content: 'Done.\n<summary>fix x: a.ts read</summary>' }, { content: 'ok' });
+  await g.gate.send();
+  await settled(g.gate);
+  expect(g.sent[0]!.request.messages.slice(1).map(m => m.content)).toEqual([INTRO, 'fix x']);
+  expect(g.ran).toEqual(['cat a.ts']);
+  expect(g.sent[1]!.request.messages.at(-1)!.content).toBe(ERROR);
+  g.gate.submit('next');
+  await settled(g.gate);
+  expect(g.sent.at(-1)!.request.messages.slice(1).map(m => m.content)).toEqual([INTRO, `${HANDOVER}\n\nfix x: a.ts read`, 'next']);
+  expect(g.gate.status()?.text).toBe('summary-reset: 1 Note added, 1 User removed, 1 Tool Pair removed, 1 Assistant removed · answer complete');
 });

@@ -114,6 +114,14 @@ Experimental. From half the window on, [`guided-compaction`](src/core/policy/gui
 /policy guided-compaction
 ```
 
+### Built-in: `summary-reset`
+
+Experimental. [`summary-reset`](src/core/policy/summary-reset.ts) puts an intro right after the System prompt and Tools Block that tells the model what is coming. From a third of the window on, it replaces the result of every further Tool Call with an error: the context is full, write a summary between `<summary>` and `</summary>`. The call still runs (the policy sees it only after); the error says its output is withheld. Once the model answers with a summary, only that stays, as a Note led by a handover (the session continues with the following summary): everything before it goes but the System prompt, the Tools Block, the intro and the project's Notes. Your next message continues from it.
+
+```bash
+/policy summary-reset
+```
+
 ### Write your own
 
 A policy is a module in `~/.config/resector/policies/<name>.ts` (`$XDG_CONFIG_HOME` if set); one named `lean-compact.ts` replaces the built-in.

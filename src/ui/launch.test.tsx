@@ -183,7 +183,7 @@ test('a Context Policy from the config directory is loaded, switched on, and edi
   const { log } = await launch({ config: url => profileConfig(url), policies: { shout: SHOUT, broken: 'export default (;' } });
   const opened = await frameMatching(ui, f => f.includes('/ 2k') && f.includes('– not loaded'));
   expect(opened).toMatch(/policy broken: .* – not loaded/);
-  await command('/policy s');
+  await command('/policy sh');
   await frameMatching(ui, f => f.includes('policy shout on'));
   expect(ui.captureCharFrame()).toMatch(/local · thinking off · policy shout/);
   fake.reply({ chunks: ['ok'] });
