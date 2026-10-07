@@ -1,24 +1,24 @@
 // The built-in Context Policy summary-reset (ADR 0001): an intro at the front tells the model what is coming. Once the
-// work since the last reset takes a third of the window, the results of the newest Tool Calls are replaced by an error
+// work since the last reset takes half the window, the results of the newest Tool Calls are replaced by an error
 // asking the model for a summary between <summary> tags. Once the model wrote one, it alone stays, as a Note led by a handover: everything before it
 // goes but the System, Tools Block, the intro and the project's Notes.
 // A policy runs before a request, after the calls ran: the error says the call ran, its output is withheld.
 import instruction from './summary-reset-instruction.md' with { type: 'text' };
 import type { PolicyBlock, PolicyContext, PolicyOperation } from './policy';
 
-const ERROR_FROM = 1 / 3;
+const ERROR_FROM = 1 / 2;
 // From the first opening tag to the last closing one: a summary may quote the tags (from this very file, say).
 const SUMMARY = /<summary>([\s\S]*)<\/summary>/;
 
 export const ERROR = instruction.trimEnd();
 // Right after the System and Tools Block, from the first request on: the model knows the rules before it needs them.
 export const INTRO =
-  'How this session works: your context is limited. Once your work since the start (or since the last summary) takes a third of it, every tool call fails with an error saying the context is full; the command still runs, but its output is withheld. Then write a summary of the session between <summary> and </summary>, as the error describes. Only that summary is kept: everything else (the user\'s messages, your tool calls, their results, your answers) is deleted, and the session continues from the summary alone.';
+  'How this session works: your context is limited. Once your work since the start (or since the last summary) takes half of it, every tool call fails with an error saying the context is full; the command still runs, but its output is withheld. Then write a summary of the session between <summary> and </summary>, as the error describes. Only that summary is kept: everything else (the user\'s messages, your tool calls, their results, your answers) is deleted, and the session continues from the summary alone.';
 // Before the summary in its Note: the model reads it as a user message, so it is told this is its own work.
 export const HANDOVER =
   'Continuation of the session with the following summary of your own earlier work; everything before it was deleted. Continue from it, do not redo what is done. Trust it: what it quotes is verbatim, do not read it again.';
 
-export const description = 'errors tool calls once the work takes ⅓, keeps only the summary the model writes';
+export const description = 'errors tool calls once the work takes ½, keeps only the summary the model writes';
 
 export default function summaryReset(context: PolicyContext): PolicyOperation[] {
   const intro = introduced(context.blocks);
@@ -49,7 +49,7 @@ function resetTo(blocks: PolicyBlock[]): PolicyOperation[] {
   ];
 }
 
-// Once the work since the last reset takes a third of the window, the results of the newest calls (since the last
+// Once the work since the last reset takes half the window, the results of the newest calls (since the last
 // answer) become the error. The summary does not count: the work it leaves room for would shrink with every reset.
 function errored({ window, used, blocks }: PolicyContext): PolicyOperation[] {
   const handover = blocks.findIndex(isHandover);

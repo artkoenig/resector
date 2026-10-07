@@ -176,7 +176,7 @@ test('guided-compaction: the model compacts the Context as sent, the first User 
   expect(g.gate.status()?.text).toBe('guided-compaction: 1 Assistant → 1 Note, 1 Note added, 1 Tool Pair removed · answer complete');
 });
 
-test('summary-reset: the intro first; from a third of the window on, a call\'s result is the error; then only the model\'s summary is sent on, led by the handover', async () => {
+test('summary-reset: the intro first; from half the window on, a call\'s result is the error; then only the model\'s summary is sent on, led by the handover', async () => {
   const g = policed({ window: 90, users: ['fix x'], policies: [BUILT_IN.find(p => p.name === 'summary-reset')!] });
   g.reply({ calls: [bash('cat a.ts')] }, { content: 'Done.\n<summary>fix x: a.ts read</summary>' }, { content: 'ok' });
   await g.gate.send();

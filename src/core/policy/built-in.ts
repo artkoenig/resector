@@ -10,4 +10,4 @@ export const BUILT_IN: Policy[] = [
   { name: 'summary-reset', run: summaryReset, description: reset },
 ];
 // On for new sessions unless the config's defaultPolicy says otherwise.
-export const DEFAULT_POLICY = 'lean-compact';
+export const DEFAULT_POLICY = 'summary-reset';

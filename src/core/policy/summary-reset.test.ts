@@ -23,17 +23,17 @@ test('the intro goes right after the System and Tools Block, once', () => {
   expect(summaryReset({ window: 99, used: 10, blocks: blocks('System', 'Tools', intro, 'User') })).toEqual([]);
 });
 
-test('the intro tells the model the rules: a third, the error, the summary tags, only the summary stays', () => {
-  for (const part of ['takes a third of it', 'fails with an error', 'between <summary> and </summary>', 'Only that summary is kept']) expect(INTRO).toContain(part);
+test('the intro tells the model the rules: half, the error, the summary tags, only the summary stays', () => {
+  for (const part of ['takes half of it', 'fails with an error', 'between <summary> and </summary>', 'Only that summary is kept']) expect(INTRO).toContain(part);
 });
 
-test('below a third of the window nothing happens', () => {
-  expect(summaryReset({ window: 99, used: 32, blocks: blocks('User', 'Tool Call', 'Tool Result') })).toEqual([]);
+test('below half the window nothing happens', () => {
+  expect(summaryReset({ window: 99, used: 49, blocks: blocks('User', 'Tool Call', 'Tool Result') })).toEqual([]);
 });
 
-test('from a third of the window on, the results of the newest calls become the error; older ones, a Question\'s answers and errors stay', () => {
+test('from half the window on, the results of the newest calls become the error; older ones, a Question\'s answers and errors stay', () => {
   const context = blocks('User', 'Tool Call', 'Tool Result', 'Assistant', 'Tool Call', 'Tool Call', 'Tool Result', ['Tool Result', { pair: 5 }], 'Tool Call', ['Tool Result', { origin: 'user' }]);
-  expect(summaryReset({ window: 99, used: 33, blocks: context })).toEqual([error(7), error(8)]);
+  expect(summaryReset({ window: 99, used: 50, blocks: context })).toEqual([error(7), error(8)]);
   const done = blocks('User', 'Tool Call', ['Tool Result', { content: ERROR }]);
   expect(summaryReset({ window: 99, used: 90, blocks: done })).toEqual([]);
 });
@@ -72,11 +72,11 @@ test('a summary quoting the tags is kept whole, from the first opening tag to th
   });
 });
 
-test('after a reset only the work since counts toward the third, not the summary and what stays', () => {
+test('after a reset only the work since counts toward the half, not the summary and what stays', () => {
   const context = blocks('System', intro, ['Note', { origin: 'policy', content: `${HANDOVER}\n\nfix x`, tokens: 3000 }], 'User', 'Tool Call', 'Tool Result');
   // System, intro and handover: 3600 tokens; the work since: 900.
-  expect(summaryReset({ window: 3000, used: 4500, blocks: context })).toEqual([]);
-  expect(summaryReset({ window: 2700, used: 4500, blocks: context })).toEqual([error(6)]);
+  expect(summaryReset({ window: 1900, used: 4500, blocks: context })).toEqual([]);
+  expect(summaryReset({ window: 1800, used: 4500, blocks: context })).toEqual([error(6)]);
 });
 
 test('without the closing tag there is no summary yet', () => {
