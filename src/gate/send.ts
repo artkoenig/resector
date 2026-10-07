@@ -132,7 +132,7 @@ export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy:
     sel.keepSelection();
   }
 
-  return { send };
+  return { api: { send } };
 }
 
 // What the server measured; else measured here: generation by the server's token count when it reports one,

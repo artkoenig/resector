@@ -137,17 +137,19 @@ export function createCompaction(k: Kernel, sel: View, deps: { editor: Editor; i
   }
 
   return {
-    compacting,
-    sourceTokens: () => (compacting() ? tokensOf(compacting()!.sources) : null),
-    review: () => (compacting()?.phase === 'review' ? review(compacting()!) : null),
-    defaultInstruction: instruction,
-    startCompaction: () => void start(),
-    measure: (draft: string) => void measure(draft),
-    runCompaction: (draft: string) => void run(draft),
-    acceptCompaction: accept,
-    discardCompaction: () => end({ text: 'proposal discarded – Context unchanged', tone: 'info' }),
-    refine,
-    leaveInstruction,
-    editProposal: () => void editProposal(),
+    api: {
+      compacting,
+      sourceTokens: () => (compacting() ? tokensOf(compacting()!.sources) : null),
+      review: () => (compacting()?.phase === 'review' ? review(compacting()!) : null),
+      defaultInstruction: instruction,
+      startCompaction: () => void start(),
+      measure: (draft: string) => void measure(draft),
+      runCompaction: (draft: string) => void run(draft),
+      acceptCompaction: accept,
+      discardCompaction: () => end({ text: 'proposal discarded – Context unchanged', tone: 'info' }),
+      refine,
+      leaveInstruction,
+      editProposal: () => void editProposal(),
+    },
   };
 }

@@ -81,16 +81,18 @@ export function createGit(k: Kernel, git: Git | null, project: Project, root: st
   }
 
   return {
-    branch,
-    dirty,
+    // What the view shows: the branch, all branches with the other worktree holding one, the worktree on or off.
+    api: {
+      branch,
+      dirty,
+      branches: () => {
+        const { all, elsewhere } = branchesNow();
+        return all.map(name => ({ name, elsewhere: elsewhere[name] ?? null }));
+      },
+      worktree: () => inWorktree(events()),
+    },
     // A tool call may have switched the branch or dirtied the tree.
     lookAgain,
-    // All branches with the other worktree holding one.
-    branches: () => {
-      const { all, elsewhere } = branchesNow();
-      return all.map(name => ({ name, elsewhere: elsewhere[name] ?? null }));
-    },
-    worktree: () => inWorktree(events()),
     refresh, switchBranch, switchWorktree,
   };
 }

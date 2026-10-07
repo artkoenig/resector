@@ -1,5 +1,6 @@
 // Key hints in the footer: the keys of the current mode, the busy step, the marks or the selected block.
 import type { Compaction } from '../gate';
+import { CONTEXT_KEYS } from './keys';
 import type { Screen } from './screen';
 import * as dock from './dock';
 import type { DockState } from './dock';
@@ -7,10 +8,6 @@ import type { Hint } from './parts';
 import type { Mode } from './prompt';
 
 const LOOK_KEYS: Hint[] = [['q', 'quit']];
-// With marks only what acts on all marked blocks.
-const MARKED_KEYS: Hint[] = [['d', 'remove'], ['c', 'compact'], ['space', 'mark'], ['esc', 'unmark'], ['q', 'quit']];
-const MOVE: Hint = ['⌥↑↓', 'move'];
-const KEYS: Hint[] = [MOVE, ['e', 'edit'], ['d', 'remove'], ['space', 'mark'], ['c', 'compact'], ['u', 'undo'], ['q', 'quit']];
 
 // Key hints right of the status; they stay visible. An error band adds how to dismiss it.
 export type KeyMode = Mode | 'suggest' | 'complete' | 'question' | 'questions' | 'answer' | Compaction['phase'];
@@ -40,8 +37,10 @@ function busyKeys(gate: Screen): Hint[] | null {
 function modeKeys(gate: Screen, mode: KeyMode): Hint[] {
   const own = MODE_KEYS[mode] ?? busyKeys(gate);
   if (own) return own;
-  if (gate.marked().size) return MARKED_KEYS;
-  // No move while a Kind Filter hides blocks.
-  const keys = gate.hiding() ? KEYS.filter(k => k !== MOVE) : KEYS;
-  return gate.selectedBlock()?.pending ? [['y', 'run once'], ['a', 'allow for session'], ['n', 'reject'], ...keys] : keys;
+  // With marks only what acts on all marked blocks.
+  const marked = gate.marked().size > 0;
+  return CONTEXT_KEYS.flatMap(b => {
+    const text = marked ? b.marked : b.when?.(gate) === false ? undefined : b.hint;
+    return text ? [[b.label ?? b.key, text] as const] : [];
+  });
 }

@@ -90,7 +90,7 @@ test('Compaction runs on compactionProfile with the instruction from compaction.
     await frameMatching(ui, f => f.includes('/ 2k'));
     fake.reply({ chunks: ['ok'] });
     await command('long story');
-    await frameMatching(ui, f => /4\s+User\s+long story/.test(f) && f.includes('answer complete'));
+    await frameMatching(ui, f => /5\s+User\s+long story/.test(f) && f.includes('answer complete'));
     ui.mockInput.pressArrow('up');
     ui.mockInput.pressKey('c');
     await frameMatching(ui, f => /◇ Compact 1 block \(\d+ tok\) · small · request \d+ \/ 1k/.test(f));
@@ -183,7 +183,7 @@ test('a Context Policy from the config directory is loaded, switched on, and edi
   const { log } = await launch({ config: url => profileConfig(url), policies: { shout: SHOUT, broken: 'export default (;' } });
   const opened = await frameMatching(ui, f => f.includes('/ 2k') && f.includes('– not loaded'));
   expect(opened).toMatch(/policy broken: .* – not loaded/);
-  await command('/policy s');
+  await command('/policy sh');
   await frameMatching(ui, f => f.includes('policy shout on'));
   expect(ui.captureCharFrame()).toMatch(/local · thinking off · policy shout/);
   fake.reply({ chunks: ['ok'] });
@@ -213,13 +213,13 @@ test('a policy\'s Note sits where the policy put it, titled Context Policy', asy
   expect(JSON.stringify(fake.chatRequests[0])).toContain('Tool calls are removed once done.');
 });
 
-test('the built-in lean-compact is on for a new session without any policy file; defaultPolicy off switches it off', async () => {
+test('the built-in summary-reset is on for a new session without any policy file; defaultPolicy off switches it off', async () => {
   await launch({ config: url => profileConfig(url) });
-  expect(await frameMatching(ui, f => f.includes('/ 2k'))).toMatch(/local · thinking off · policy lean-compact/);
+  expect(await frameMatching(ui, f => f.includes('/ 2k'))).toMatch(/local · thinking off · policy summary-reset/);
   ui.mockInput.pressTab();
   await ui.flush();
   await ui.mockInput.typeText('/policy ');
-  expect(await frameMatching(ui, f => f.includes('drops reads'))).toMatch(/lean-compact\s+active · drops reads and short thinking/);
+  expect(await frameMatching(ui, f => f.includes('errors tool'))).toMatch(/summary-reset\s+active · errors tool calls/);
   ui.renderer.destroy();
   fake.stop();
   await launch({ config: url => profileConfig(url).replace('"defaultProfile"', '"defaultPolicy": "off", "defaultProfile"') });
@@ -228,7 +228,7 @@ test('the built-in lean-compact is on for a new session without any policy file;
 
 test('a session resumed at start (-c) starts with the default policy on, an unknown name is reported', async () => {
   await launch({ config: url => profileConfig(url), sessions: { ses_a: titled('local', 'fix the build') }, resume: 'ses_a' });
-  expect(await frameMatching(ui, f => f.includes('resumed "fix the build"'))).toMatch(/local · thinking off · policy lean-compact/);
+  expect(await frameMatching(ui, f => f.includes('resumed "fix the build"'))).toMatch(/local · thinking off · policy summary-reset/);
   ui.renderer.destroy();
   fake.stop();
   await launch({ config: url => profileConfig(url).replace('"defaultProfile"', '"defaultPolicy": "nope", "defaultProfile"'), sessions: { ses_a: titled('local', 'fix the build') }, resume: 'ses_a' });
@@ -266,7 +266,7 @@ test('auto-approve belongs to the app: it stays when switching sessions and is n
   await frameMatching(ui, f => f.includes('Sessions ·'));
   await key('down');
   await key('enter');
-  expect(await frameMatching(ui, f => f.includes('resumed "fix the build"'))).toMatch(/local · thinking off · policy lean-compact · auto-approve/);
+  expect(await frameMatching(ui, f => f.includes('resumed "fix the build"'))).toMatch(/local · thinking off · policy summary-reset · auto-approve/);
   expect(JSON.stringify(log())).not.toContain('auto');
 });
 

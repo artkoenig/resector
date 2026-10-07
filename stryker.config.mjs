@@ -6,7 +6,7 @@ export default {
   testRunner: 'bun',
   plugins: ['@hughescr/stryker-bun-runner'],
   coverageAnalysis: 'perTest',
-  mutate: ['src/core/**/*.ts', '!src/core/**/*.test.ts'],
+  mutate: ['src/core/**/*.ts', '!src/core/**/*.test.ts', '!src/core/**/*.harness.ts'],
   // Core tests alone must kill every Core mutant.
   bun: { testFiles: globSync('src/core/**/*.test.ts') },
   checkers: [],

@@ -1,5 +1,5 @@
 // The built-in Context Policy lean-compact (ADR 0001): from half the window on, read-only Tool Pairs and Thinking under
-// 200 tokens are removed, then the rest of the work, the user's messages with it, is compacted into one Note. Without
+// 200 tokens are removed, then the rest of the work is compacted into one Note. The user's messages stay. Without
 // other work they are compacted instead, so what was read survives. The newest block (Tool Pair) stays as is. A lead
 // right before the Note tells the model it continues its own work.
 // Written like a policy module in ~/.config/resector/policies: the reference for one.
@@ -41,25 +41,27 @@ function compacted({ window, used, blocks: all }: PolicyContext): PolicyOperatio
   const reads = blocks.filter(b => isRead(b, blocks));
   const short = blocks.filter(b => b.kind === 'Thinking' && b.tokens < SHORT_THINKING);
   const gone = new Set([...reads.flatMap(b => [b.id, b.pair!]), ...short.map(b => b.id)]);
-  const sources = blocks.filter(b => compactable(b) && !gone.has(b.id));
+  const sources = blocks.filter(b => leanCompactable(b) && !gone.has(b.id));
   const removals = [...reads, ...short].map(b => ({ op: 'remove' as const, id: b.id }));
   const compact = (from: PolicyBlock[]): PolicyOperation => ({ op: 'compact', sources: from.map(b => b.id), instruction: INSTRUCTION });
   if (sources.some(isWork)) return [...removals, compact(sources)];
   // No work but reads and short Thinking: removing them would lose all the model learned, so they are compacted.
-  if (removals.length) return [compact(blocks.filter(compactable))];
-  // Only the user's messages and the Note of an earlier Compaction left: compacting them would hardly free the window.
+  if (removals.length) return [compact(blocks.filter(leanCompactable))];
+  // Only the Note of an earlier Compaction left (the user's messages stay): compacting it would hardly free the window.
   return [];
 }
 
-const isLead = (b: PolicyBlock) => b.origin === 'policy' && b.content === LEAD;
+export const isLead = (b: PolicyBlock) => b.origin === 'policy' && b.content === LEAD;
 // The project's Notes, the lead and a Tool Call awaiting approval stay.
-const compactable = (b: PolicyBlock) =>
+export const compactable = (b: PolicyBlock) =>
   b.kind !== 'System' && b.kind !== 'Tools' && !b.pending && b.origin !== 'environment' && b.origin !== 'file' && !isLead(b);
+// The user's messages stay as they are, so the model keeps the exact request.
+const leanCompactable = (b: PolicyBlock) => compactable(b) && b.kind !== 'User';
 // What the model did since the last Compaction.
-const isWork = (b: PolicyBlock) => b.kind !== 'User' && b.origin !== 'compaction' && !isLead(b);
+export const isWork = (b: PolicyBlock) => b.kind !== 'User' && b.origin !== 'compaction' && !isLead(b);
 
 // The lead right before the first Note of a Compaction; one elsewhere, left behind by a Compaction, goes.
-function led(blocks: PolicyBlock[]): PolicyOperation[] {
+export function led(blocks: PolicyBlock[]): PolicyOperation[] {
   const first = blocks.findIndex(b => b.origin === 'compaction');
   // No Note of a Compaction (-1): blocks[-2] is undefined, so nothing is before it.
   const before = blocks[first - 1];
@@ -68,7 +70,7 @@ function led(blocks: PolicyBlock[]): PolicyOperation[] {
 }
 
 // A bash Tool Call with its result whose every command only reads. A Question's answers (by the user) stay.
-function isRead(b: PolicyBlock, blocks: PolicyBlock[]): boolean {
+export function isRead(b: PolicyBlock, blocks: PolicyBlock[]): boolean {
   // A pending Tool Call has no result yet, so no pair.
   if (b.kind !== 'Tool Call' || b.pair === null) return false;
   if (blocks.find(r => r.id === b.pair)!.origin === 'user') return false;

@@ -27,6 +27,10 @@ export function createRules(k: Kernel, approval: Approval, autoApprove: AutoAppr
     if (edit) k.append(edit);
   }
 
-  return { rules, verdictOf, denied, decided, dropDenied };
+  return {
+    // What the view shows: why the rules ask for a pending call, per sub-command; null for any other block.
+    api: { verdict: (block: Block): Verdict | null => (block.pending && block.tool !== 'question' ? verdictOf(block) : null) },
+    rules, verdictOf, denied, decided, dropDenied,
+  };
 }
 

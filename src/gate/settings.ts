@@ -52,5 +52,9 @@ export function createSettings(k: Kernel, rules: Rules, loop: ToolLoop, autoAppr
     setStatus({ text, tone: 'info' });
   }
 
-  return { thinking, thinkingOptions, setThinking, renameSession, toggleTool, switchAutoApprove };
+  return {
+    // What the view shows.
+    api: { thinking, thinkingOptions, autoApprove: autoApprove.on },
+    setThinking, renameSession, toggleTool, switchAutoApprove,
+  };
 }
