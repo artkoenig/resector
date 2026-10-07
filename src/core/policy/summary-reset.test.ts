@@ -102,11 +102,13 @@ test('after a reset the work since counts toward half the room the summary and w
   expect(summaryReset({ window: 5400, used: 4500, blocks: context })).toEqual([error(6)]);
 });
 
-test('the error asks for the finished work compacted without code and the changes still to make as patches', () => {
-  expect(ERROR).toContain('what is done, compacted');
-  expect(ERROR).toContain('no code');
-  expect(ERROR).toContain('as a patch: a unified diff');
-  expect(ERROR).toContain('goes into the next steps as a check');
+test('the error asks for a fixed structure: finished work without code, the changes still to make as diffs, not an earlier summary\'s form', () => {
+  expect(ERROR).toContain('## Task\n');
+  expect(ERROR).toContain('## Done\nThe finished work, one line per changed file: what changed and what for. No code');
+  expect(ERROR).toContain('## Patches\nEvery code change still to make, as a unified diff in a ```diff block');
+  expect(ERROR).toContain('## Next steps\n');
+  expect(ERROR).toContain('in this structure, not in its form');
+  expect(ERROR).toContain('A call whose output you did not see is a step that runs it');
 });
 
 test('without the closing tag there is no summary yet', () => {
@@ -115,7 +117,7 @@ test('without the closing tag there is no summary yet', () => {
 
 test('the handover says the files are as the summary describes and its patches apply as they are', () => {
   expect(HANDOVER).toContain('the files are as it describes them');
-  expect(HANDOVER).toContain('its planned changes are patches against them, apply them as they are');
+  expect(HANDOVER).toContain('its Patches are planned against them: apply them as they are');
   expect(HANDOVER).not.toContain('unverified');
 });
 
