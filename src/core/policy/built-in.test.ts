@@ -8,7 +8,7 @@ test('lean-compact, guided-compaction and summary-reset are built in, with their
   expect(BUILT_IN).toEqual([
     { name: 'lean-compact', run: leanCompact, description: 'drops reads and short thinking, compacts at ½' },
     { name: 'guided-compaction', run: guidedCompaction, description: 'compacts at ½, keeps the reads the model asks for' },
-    { name: 'summary-reset', run: summaryReset, description: 'errors tool calls once the work takes ½, keeps only the summary the model writes' },
+    { name: 'summary-reset', run: summaryReset, description: 'errors tool calls once the work takes ½ of the room left, keeps only the summary the model writes' },
   ]);
   expect(DEFAULT_POLICY).toBe('summary-reset');
 });

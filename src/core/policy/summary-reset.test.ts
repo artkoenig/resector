@@ -28,8 +28,8 @@ test('the intro goes right after the System and Tools Block, once', () => {
   expect(summaryReset({ window: 99, used: 10, blocks: others })).toEqual([{ op: 'note', after: 2, content: INTRO }]);
 });
 
-test('the intro tells the model the rules: half, the error, the summary tags, only the summary stays', () => {
-  for (const part of ['takes half of it', 'fails with an error', 'between <summary> and </summary>', 'Only that summary is kept']) expect(INTRO).toContain(part);
+test('the intro tells the model the rules: half the room left, the error, the summary tags, only the summary stays', () => {
+  for (const part of ['takes half of the room left', 'fails with an error', 'between <summary> and </summary>', 'Only that summary is kept']) expect(INTRO).toContain(part);
 });
 
 test('below half the window nothing happens', () => {
@@ -47,6 +47,7 @@ test('the error asks for a summary between summary tags and says the call ran', 
   expect(ERROR).toContain('between <summary> and </summary>');
   expect(ERROR).toContain('do not draft it in your thinking');
   expect(ERROR).toContain('Summarize only what is deleted');
+  expect(ERROR).not.toContain('unverified');
   expect(ERROR).toContain('This command ran, but its output is withheld');
   expect(ERROR).toBe(ERROR.trim());
 });
@@ -94,20 +95,28 @@ test('a summary quoting the tags is kept whole, from the first opening tag to th
   });
 });
 
-test('after a reset only the work since counts toward the half, not the summary and what stays', () => {
+test('after a reset the work since counts toward half the room the summary and what stays leave', () => {
   const context = blocks('System', intro, ['Note', { origin: 'policy', content: `${HANDOVER}\n\nfix x`, tokens: 3000 }], 'User', 'Tool Call', 'Tool Result');
-  // System, intro and handover: 3600 tokens; the work since: 900.
-  expect(summaryReset({ window: 1900, used: 4500, blocks: context })).toEqual([]);
-  expect(summaryReset({ window: 1800, used: 4500, blocks: context })).toEqual([error(6)]);
+  // System, intro and handover: 3600 tokens; the work since: 900, half of 1800 left.
+  expect(summaryReset({ window: 5401, used: 4500, blocks: context })).toEqual([]);
+  expect(summaryReset({ window: 5400, used: 4500, blocks: context })).toEqual([error(6)]);
+});
+
+test('the error asks for the finished work compacted without code and the changes still to make as patches', () => {
+  expect(ERROR).toContain('what is done, compacted');
+  expect(ERROR).toContain('no code');
+  expect(ERROR).toContain('as a patch: a unified diff');
+  expect(ERROR).toContain('goes into the next steps as a check');
 });
 
 test('without the closing tag there is no summary yet', () => {
   expect(summaryReset({ window: 99, used: 10, blocks: blocks('User', ['Assistant', { content: '<summary>half' }], 'User') })).toEqual([]);
 });
 
-test('the handover says the files are as the summary describes: read only what it does not quote or marks as unverified', () => {
+test('the handover says the files are as the summary describes and its patches apply as they are', () => {
   expect(HANDOVER).toContain('the files are as it describes them');
-  expect(HANDOVER).toContain('read only what it does not quote or marks as unverified');
+  expect(HANDOVER).toContain('its planned changes are patches against them, apply them as they are');
+  expect(HANDOVER).not.toContain('unverified');
 });
 
 test('after the reset, nothing more: the Note holds the summary without its tags', () => {
