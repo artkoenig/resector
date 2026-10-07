@@ -17,6 +17,7 @@ const blocks = (...specs: Spec[]): PolicyBlock[] => {
 };
 const intro: Spec = ['Note', { origin: 'policy', content: INTRO }];
 const error = (id: number) => ({ op: 'edit' as const, id, content: ERROR });
+const send = { op: 'send' as const };
 
 test('the intro goes right after the System and Tools Block, once', () => {
   expect(summaryReset({ window: 99, used: 10, blocks: blocks('System', 'Tools', ['Note', { origin: 'environment' }], 'User') })).toEqual([{ op: 'note', after: 2, content: INTRO }]);
@@ -44,11 +45,13 @@ test('from half the window on, the results of the newest calls become the error;
 
 test('the error asks for a summary between summary tags and says the call ran', () => {
   expect(ERROR).toContain('between <summary> and </summary>');
+  expect(ERROR).toContain('do not draft it in your thinking');
+  expect(ERROR).toContain('Summarize only what is deleted');
   expect(ERROR).toContain('This command ran, but its output is withheld');
   expect(ERROR).toBe(ERROR.trim());
 });
 
-test('a summary of the model becomes a Note led by the handover in its place; every block before it goes but the System, Tools Block, intro and the project\'s Notes', () => {
+test('a summary of the model becomes a Note led by the handover in its place; every block before it goes but the System, Tools Block, intro and the project\'s Notes; then it is sent on', () => {
   const context = blocks(
     'System', 'Tools', intro, ['Note', { origin: 'environment' }], ['Note', { origin: 'file' }], 'User', 'Tool Call', ['Tool Result', { content: ERROR }], 'Thinking',
     ['Assistant', { content: 'Here it is.\n<summary>\n## Task\nfix x\n</summary>' }], 'User',
@@ -56,6 +59,7 @@ test('a summary of the model becomes a Note led by the handover in its place; ev
   expect(summaryReset({ window: 99, used: 10, blocks: context })).toEqual([
     { op: 'note', after: 10, content: `${HANDOVER}\n\n## Task\nfix x` },
     ...[6, 7, 9, 10].map(id => ({ op: 'remove' as const, id })),
+    send,
   ]);
 });
 
@@ -67,6 +71,7 @@ test('a later summary overwrites the handover Note instead of adding one', () =>
   expect(summaryReset({ window: 99, used: 10, blocks: context })).toEqual([
     { op: 'edit', id: 3, content: `${HANDOVER}\n\nnew` },
     ...[4, 5, 7].map(id => ({ op: 'remove' as const, id })),
+    send,
   ]);
 });
 
@@ -78,6 +83,7 @@ test('only the policy\'s Note led by the handover is overwritten, no other block
   expect(summaryReset({ window: 99, used: 10, blocks: context })).toEqual([
     { op: 'note', after: 5, content: `${HANDOVER}\n\nnew` },
     ...[3, 4, 5].map(id => ({ op: 'remove' as const, id })),
+    send,
   ]);
 });
 
@@ -97,6 +103,11 @@ test('after a reset only the work since counts toward the half, not the summary 
 
 test('without the closing tag there is no summary yet', () => {
   expect(summaryReset({ window: 99, used: 10, blocks: blocks('User', ['Assistant', { content: '<summary>half' }], 'User') })).toEqual([]);
+});
+
+test('the handover says the files are as the summary describes: read only what it does not quote or marks as unverified', () => {
+  expect(HANDOVER).toContain('the files are as it describes them');
+  expect(HANDOVER).toContain('read only what it does not quote or marks as unverified');
 });
 
 test('after the reset, nothing more: the Note holds the summary without its tags', () => {

@@ -61,7 +61,8 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
 
   // The answer's text and Tool Calls become blocks; its calls are decided by the rules.
   // `policy`: what the active policy did before the request; `speed`: how fast the answer was generated.
-  function finish(result: ChatResult, policy: string | null, speed: string | null = null) {
+  // Returns whether the answer ended the tool loop: complete, without calls.
+  function finish(result: ChatResult, policy: string | null, speed: string | null = null): boolean {
     // Calls to a tool denied by rule are parsed too: they are answered "denied by rule".
     const { events, notRun } = answerBlocks(result, nextId(), [...k.toolsOn(), ...rules.denied()]);
     // At once: a rejected Question is never pending without its Tool Result.
@@ -72,10 +73,14 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
     held = !!notRun;
     const miss = cacheMiss(result);
     // Calls to decide, or only a rejected Question already answered: the loop goes on.
-    if (events.some(e => e.kind === 'Tool Call')) return goOn([policy, notRun && notRunText(notRun), miss && `⚠ ${miss}`].filter((n): n is string => !!n));
+    if (events.some(e => e.kind === 'Tool Call')) {
+      goOn([policy, notRun && notRunText(notRun), miss && `⚠ ${miss}`].filter((n): n is string => !!n));
+      return false;
+    }
     const status = answerStatus(result, notRun);
     const text = [policy, status.text, speed, miss && `⚠ ${miss}`].filter(Boolean).join(' · ');
     setStatus({ text, tone: miss ? 'warn' : status.tone });
+    return status.tone === 'ok';
   }
 
   // Decides the pending calls in order: an allowed one runs, a denied one is answered "denied by rule", the

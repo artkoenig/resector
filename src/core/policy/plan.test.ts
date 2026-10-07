@@ -1,9 +1,9 @@
 import { expect, test } from 'bun:test';
 import { plan, summary, type Change } from './plan';
-import type { PolicyOperation } from './policy';
+import type { ContextOperation } from './policy';
 import { pending, session } from './policy.harness';
 
-const planOf = (op: PolicyOperation, events = session()) => plan(events, op);
+const planOf = (op: ContextOperation, events = session()) => plan(events, op);
 
 test('remove: the block, a Tool Pair as a whole', () => {
   expect(planOf({ op: 'remove', id: 3 })).toEqual({ events: [{ type: 'Remove', id: 3 }], change: { noun: 'Thinking', verb: 'removed' } });

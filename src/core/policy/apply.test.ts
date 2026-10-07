@@ -46,6 +46,21 @@ test('a policy returning nothing changes nothing', async () => {
   expect(added()).toEqual([]);
 });
 
+test('a send is no change: it is reported, and a pass with nothing else ends the run', async () => {
+  const { port, added } = ports(session());
+  expect(await applyPolicy(policy([[{ op: 'remove', id: 3 }, { op: 'send' }], [{ op: 'send' }]]), port)).toEqual({ changes: [{ noun: 'Thinking', verb: 'removed' }], error: null, send: true });
+  expect(added()).toEqual([{ type: 'Remove', id: 3, by: 'trail' }]);
+});
+
+test('only to send: the operations apply if the first pass asks to send on, else nothing changes', async () => {
+  const edits = ports(session());
+  expect(await applyPolicy(policy([[{ op: 'remove', id: 3 }]]), edits.port, { onlyToSend: true })).toEqual({ changes: [], error: null });
+  expect(edits.added()).toEqual([]);
+  const sends = ports(session());
+  const passes: PolicyOperation[][] = [[{ op: 'remove', id: 3 }, { op: 'send' }], [{ op: 'remove', id: 5 }]];
+  expect(await applyPolicy(policy(passes), sends.port, { onlyToSend: true })).toEqual({ changes: [{ noun: 'Thinking', verb: 'removed' }, { noun: 'Tool Pair', verb: 'removed' }], error: null, send: true });
+});
+
 test(`a policy still changing the Context after ${MAX_PASSES} passes stops; what it did stays`, async () => {
   const { port, added } = ports(session());
   const edits = Array.from({ length: MAX_PASSES + 1 }, (_, i): PolicyOperation[] => [{ op: 'edit', id: 7, content: `v${i}` }]);
