@@ -1,7 +1,8 @@
 // The built-in Context Policy summary-reset (ADR 0001): an intro at the front tells the model what is coming. Once the
 // work since the last reset takes half the room the kept blocks leave, the results of the newest Tool Calls are replaced by an error
 // asking the model for a summary between <summary> tags. Once the model wrote one, it alone stays, as a Note led by a handover: everything before it
-// goes but the System, Tools Block, the intro and the project's Notes; the Context is sent on at once.
+// goes but the System, Tools Block, the intro and the project's Notes; the Context is sent on at once. The request
+// asked for the summary goes without thinking: the model would draft the summary there first, twice the room.
 // A policy runs before a request, after the calls ran: the error says the call ran, its output is withheld.
 import instruction from './summary-reset-instruction.md' with { type: 'text' };
 import type { PolicyBlock, PolicyContext, PolicyOperation } from './policy';
@@ -52,18 +53,20 @@ function resetTo(blocks: PolicyBlock[]): PolicyOperation[] {
 }
 
 // Once the work since the last reset takes half the room the kept blocks (System, Tools Block, Notes, the summary)
-// leave, the results of the newest calls (since the last answer) become the error. Half the room, not half the window:
-// a growing summary would push the error past the window's end.
+// leave, the results of the newest calls (since the last answer) become the error, and that request goes without
+// thinking. Half the room, not half the window: a growing summary would push the error past the window's end.
 function errored({ window, used, blocks }: PolicyContext): PolicyOperation[] {
   const handover = blocks.findIndex(isHandover);
   const kept = blocks.slice(0, handover + 1).reduce((sum, b) => sum + b.tokens, 0);
   if (used - kept < (window - kept) * ERROR_FROM) return [];
   const since = blocks.findLastIndex(b => b.kind !== 'Tool Call' && b.kind !== 'Tool Result');
-  return blocks
-    .slice(since + 1)
-    // A Question's answers are the user's, not a tool's.
-    .filter(b => b.kind === 'Tool Result' && b.origin !== 'user' && b.content !== ERROR)
-    .map(b => ({ op: 'edit' as const, id: b.id, content: ERROR }));
+  // A Question's answers are the user's, not a tool's.
+  const results = blocks.slice(since + 1).filter(b => b.kind === 'Tool Result' && b.origin !== 'user');
+  if (!results.length) return [];
+  return [
+    ...results.filter(b => b.content !== ERROR).map(b => ({ op: 'edit' as const, id: b.id, content: ERROR })),
+    { op: 'thinking', mode: 'off' },
+  ];
 }
 
 const isIntro = (b: PolicyBlock) => b.origin === 'policy' && b.content === INTRO;

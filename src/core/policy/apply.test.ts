@@ -52,6 +52,16 @@ test('a send is no change: it is reported, and a pass with nothing else ends the
   expect(added()).toEqual([{ type: 'Remove', id: 3, by: 'trail' }]);
 });
 
+test('a thinking is no change: the last one asked is reported, and a pass with nothing else ends the run', async () => {
+  const { port, added } = ports(session());
+  const passes: PolicyOperation[][] = [[{ op: 'thinking', mode: 'low' }, { op: 'remove', id: 3 }, { op: 'thinking', mode: 'off' }], [{ op: 'thinking', mode: 'off' }]];
+  expect(await applyPolicy(policy(passes), port)).toEqual({ changes: [{ noun: 'Thinking', verb: 'removed' }], error: null, thinking: 'off' });
+  expect(added()).toEqual([{ type: 'Remove', id: 3, by: 'trail' }]);
+  // Asked in one pass, kept when a later one changes the Context without asking again.
+  const kept = ports(session());
+  expect(await applyPolicy(policy([[{ op: 'remove', id: 3 }, { op: 'thinking', mode: 'off' }], [{ op: 'remove', id: 5 }]]), kept.port)).toMatchObject({ thinking: 'off' });
+});
+
 test('only to send: the operations apply if the first pass asks to send on, else nothing changes', async () => {
   const edits = ports(session());
   expect(await applyPolicy(policy([[{ op: 'remove', id: 3 }]]), edits.port, { onlyToSend: true })).toEqual({ changes: [], error: null });

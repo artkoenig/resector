@@ -185,6 +185,8 @@ test('summary-reset: the intro first; from half the window on, a call\'s result 
   expect(g.sent[0]!.request.messages.slice(1).map(m => m.content)).toEqual([INTRO, 'fix x']);
   expect(g.ran).toEqual(['cat a.ts']);
   expect(g.sent[1]!.request.messages.at(-1)!.content).toBe(ERROR);
+  // The summary is asked without thinking; before and after, the session's.
+  expect(g.sent.map(s => s.request.thinking)).toEqual([undefined, 'off', undefined]);
   expect(g.sent).toHaveLength(3);
   expect(g.sent[2]!.request.messages.slice(1).map(m => m.content)).toEqual([INTRO, `${HANDOVER}\n\nfix x: a.ts read`]);
   expect(g.gate.status()?.text).toBe('summary-reset: 1 Note added, 1 User removed, 1 Tool Pair removed, 1 Assistant removed · answer complete');

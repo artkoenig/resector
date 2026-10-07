@@ -3,9 +3,10 @@ import * as compaction from '../core/compaction/compaction';
 import { applyPolicy, type Ports, type Ran } from '../core/policy/apply';
 import { summary } from '../core/policy/plan';
 import type { Policy, Situation } from '../core/policy/policy';
+import type { Thinking } from '../core/log/events';
 import { inContextRequest } from '../core/render/compaction';
 import { renderPrefixes, type Request } from '../core/render/native';
-import { errorText, formatTokens } from './text';
+import { errorText, formatTokens, thinkingLabel } from './text';
 import type { Kernel } from './kernel';
 import type { Compactor, Policies, View } from './types';
 
@@ -13,8 +14,9 @@ export type PolicySlice = ReturnType<typeof createPolicy>;
 
 export function createPolicy(k: Kernel, sel: View, policies: Policies, compactor: () => Promise<Compactor | null>) {
   const { backend, setStatus } = k;
-  // What the policy did before the request being sent, for its status line.
+  // What the policy did before the request being sent, for its status line; the thinking it asked for that request.
   let ran: string | null = null;
+  let thinking: Thinking | undefined;
 
   const ports = (signal: AbortSignal, situation: Situation): Ports => ({
     events: k.events, append: k.append, situation, aborted: () => signal.aborted,
@@ -65,7 +67,8 @@ export function createPolicy(k: Kernel, sel: View, policies: Policies, compactor
   // What the policy did goes into the status line of the request that follows; an error stops the Gate. A run before
   // the request keeps what the run after the answer did.
   function reported(result: Ran, policy: Policy): Ran {
-    const did = result.changes.length ? summary(policy.name, result.changes) : null;
+    const shown = result.thinking === undefined ? result.changes : [...result.changes, { text: `thinking ${thinkingLabel(result.thinking)}` }];
+    const did = shown.length ? summary(policy.name, shown) : null;
     if (result.error) setStatus({ text: [`policy ${policy.name}: ${result.error} – not sent`, did].filter(Boolean).join(' · '), tone: 'error' });
     else ran = did ?? ran;
     return result;
@@ -83,7 +86,9 @@ export function createPolicy(k: Kernel, sel: View, policies: Policies, compactor
     },
     // The active policy edits the Context before a request; an error, its Compaction's too, stops the Gate: nothing is sent.
     async runPolicy(policy: Policy): Promise<boolean> {
-      return !reported(await run(policy, situation()), policy).error;
+      const result = reported(await run(policy, situation()), policy);
+      thinking = result.error ? undefined : result.thinking;
+      return !result.error;
     },
     // After an answer that ended the tool loop: whether the policy edited the Context and asks to send it on.
     async sendsOn(policy: Policy): Promise<boolean> {
@@ -91,11 +96,12 @@ export function createPolicy(k: Kernel, sel: View, policies: Policies, compactor
       return !error && !!send && changes.length > 0;
     },
     switchPolicy,
-    // What the policy did before this request; read once.
+    // What the policy did before this request, and the thinking it asked for it; read once.
     takeRan: () => {
-      const did = ran;
+      const taken = { did: ran, thinking };
       ran = null;
-      return did;
+      thinking = undefined;
+      return taken;
     },
     // A request not sent after the policy ran still says what the policy did.
     withDid: (did: string | null) => void (did && setStatus({ ...k.status()!, text: `${k.status()!.text} · ${did}` })),

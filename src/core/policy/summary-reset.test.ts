@@ -17,6 +17,7 @@ const blocks = (...specs: Spec[]): PolicyBlock[] => {
 };
 const intro: Spec = ['Note', { origin: 'policy', content: INTRO }];
 const error = (id: number) => ({ op: 'edit' as const, id, content: ERROR });
+const thinkingOff = { op: 'thinking' as const, mode: 'off' };
 const send = { op: 'send' as const };
 
 test('the intro goes right after the System and Tools Block, once', () => {
@@ -36,11 +37,13 @@ test('below half the window nothing happens', () => {
   expect(summaryReset({ window: 99, used: 49, blocks: blocks('User', 'Tool Call', 'Tool Result') })).toEqual([]);
 });
 
-test('from half the window on, the results of the newest calls become the error; older ones, a Question\'s answers and errors stay', () => {
+test('from half the window on, the results of the newest calls become the error and the request goes without thinking; older ones, a Question\'s answers and errors stay', () => {
   const context = blocks('User', 'Tool Call', 'Tool Result', 'Assistant', 'Tool Call', 'Tool Call', 'Tool Result', ['Tool Result', { pair: 5 }], 'Tool Call', ['Tool Result', { origin: 'user' }]);
-  expect(summaryReset({ window: 99, used: 50, blocks: context })).toEqual([error(7), error(8)]);
+  expect(summaryReset({ window: 99, used: 50, blocks: context })).toEqual([error(7), error(8), thinkingOff]);
   const done = blocks('User', 'Tool Call', ['Tool Result', { content: ERROR }]);
-  expect(summaryReset({ window: 99, used: 90, blocks: done })).toEqual([]);
+  expect(summaryReset({ window: 99, used: 90, blocks: done })).toEqual([thinkingOff]);
+  // No call since the last answer: nothing to error, thinking as the session's.
+  expect(summaryReset({ window: 99, used: 90, blocks: blocks('User', 'Tool Call', 'Tool Result', 'Assistant', 'User') })).toEqual([]);
 });
 
 test('the error asks for a summary between summary tags and says the call ran', () => {
@@ -99,7 +102,7 @@ test('after a reset the work since counts toward half the room the summary and w
   const context = blocks('System', intro, ['Note', { origin: 'policy', content: `${HANDOVER}\n\nfix x`, tokens: 3000 }], 'User', 'Tool Call', 'Tool Result');
   // System, intro and handover: 3600 tokens; the work since: 900, half of 1800 left.
   expect(summaryReset({ window: 5401, used: 4500, blocks: context })).toEqual([]);
-  expect(summaryReset({ window: 5400, used: 4500, blocks: context })).toEqual([error(6)]);
+  expect(summaryReset({ window: 5400, used: 4500, blocks: context })).toEqual([error(6), thinkingOff]);
 });
 
 test('the error asks for a fixed structure: finished work without code, the changes still to make as diffs, not an earlier summary\'s form', () => {
@@ -108,6 +111,8 @@ test('the error asks for a fixed structure: finished work without code, the chan
   expect(ERROR).toContain('## Patches\nEvery code change still to make, as a unified diff in a ```diff block');
   expect(ERROR).toContain('## Next steps\n');
   expect(ERROR).toContain('in this structure, not in its form');
+  expect(ERROR).toContain('Copy code only into Patches');
+  expect(ERROR).toContain('## Facts\nWhat you found, as results, not as activities. No file contents.');
   expect(ERROR).toContain('A call whose output you did not see is a step that runs it');
 });
 

@@ -83,7 +83,7 @@ Mind the prefix cache: an edit early in the Context makes the server recompute e
 
 ## Automatic: Context Policies
 
-A **Context Policy** is a function over the Context that resector calls before every request. It returns operations — `remove`, `edit`, `move`, `compact`, `note` — each checked like yours.
+A **Context Policy** is a function over the Context that resector calls before every request. It returns operations — `remove`, `edit`, `move`, `compact`, `note` — each checked like yours; besides them `send` (send on after an answer) and `thinking` (the thinking of the next request only).
 
 - **In the open:** every operation lands in the Session Log under the policy's name, and the Gate shows what it did.
 - **The policy wins:** undone operations are applied again. To keep something, switch the policy off.
@@ -115,7 +115,7 @@ Experimental. From half the window on, [`guided-compaction`](src/core/policy/gui
 
 ### Built-in: `summary-reset`
 
-On by default. [`summary-reset`](src/core/policy/summary-reset.ts) puts an intro right after the System prompt and Tools Block that tells the model what is coming. Once the work since the start (or since the last summary) takes half the room the kept blocks leave (the window minus the System prompt, Tools Block, Notes and summary), it replaces the result of every further Tool Call with an error: the context is full, write a summary between `<summary>` and `</summary>`: in a fixed structure: the finished work one line per file without code, the changes still to make as unified diffs under `## Patches`. The call still runs (the policy sees it only after); the error says its output is withheld. Once the model answers with a summary, only that stays, without the tags (they only mark it), as a Note led by a handover (the session continues with the following summary); a later summary overwrites that Note. Everything before it goes but the System prompt, the Tools Block, the intro and the project's Notes. The Context is sent on at once and the model continues from it.
+On by default. [`summary-reset`](src/core/policy/summary-reset.ts) puts an intro right after the System prompt and Tools Block that tells the model what is coming. Once the work since the start (or since the last summary) takes half the room the kept blocks leave (the window minus the System prompt, Tools Block, Notes and summary), it replaces the result of every further Tool Call with an error: the context is full, write a summary between `<summary>` and `</summary>` in a fixed structure: the finished work one line per file, the changes still to make as unified diffs under `## Patches`, code nowhere else. That request goes with thinking off, so the summary is not drafted twice. The call still runs (the policy sees it only after); the error says its output is withheld. Once the model answers with a summary, only that stays, without the tags (they only mark it), as a Note led by a handover (the session continues with the following summary); a later summary overwrites that Note. Everything before it goes but the System prompt, the Tools Block, the intro and the project's Notes. The Context is sent on at once and the model continues from it.
 
 ```bash
 /policy off             # switch off

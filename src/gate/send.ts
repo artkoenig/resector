@@ -96,8 +96,9 @@ export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy:
     // Before the policy: an Esc while it runs stops the loop after the answer.
     loop.setStopping(false);
     if (!(policy ? await readyWith(policy) : ready())) return void loop.setStopping(false);
-    const did = deps.policy.takeRan();
-    const requested = k.prefixes();
+    const { did, thinking } = deps.policy.takeRan();
+    // The thinking the policy asked for goes with this request only (summary-reset: none while summarizing).
+    const requested = k.prefixes().map(r => (thinking === undefined ? r : { ...r, thinking }));
     const payload = requested.at(-1)!;
     const abort = new AbortController();
     let ended = false;

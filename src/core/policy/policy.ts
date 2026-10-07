@@ -30,10 +30,12 @@ const OPERATION = z.discriminatedUnion('op', [
   z.object({ op: z.literal('note'), after: id, content: z.string() }),
   // Not a change: the Context is sent on, after an answer that ended the tool loop too (no user message needed).
   z.object({ op: z.literal('send') }),
+  // Not a change: the next request goes with this thinking ('off', 'on' or an effort), not logged; later ones with the session's.
+  z.object({ op: z.literal('thinking'), mode: z.string() }),
 ]);
 export type PolicyOperation = z.infer<typeof OPERATION>;
 // The operations that change the Context, checked by plan.ts.
-export type ContextOperation = Exclude<PolicyOperation, { op: 'send' }>;
+export type ContextOperation = Exclude<PolicyOperation, { op: 'send' } | { op: 'thinking' }>;
 // A policy module's default export; built-in policies are written the same way.
 export type PolicyFunction = (context: PolicyContext) => PolicyOperation[] | Promise<PolicyOperation[]>;
 // name: the module's file name; description: its `description` export, shown when choosing a policy.

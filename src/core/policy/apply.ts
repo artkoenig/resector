@@ -1,7 +1,7 @@
 // The policy hook before every request (ADR 0001): call the policy, apply its operations as attributed Session Log
 // events, call it again until it returns nothing.
 import * as ops from '../context/operations';
-import type { SessionEvent } from '../log/events';
+import type { SessionEvent, Thinking } from '../log/events';
 import { fold, type Context } from '../log/fold';
 import { plan, type Change, type Compaction } from './plan';
 import { parse, viewOf, type ContextOperation, type Policy, type PolicyContext, type Situation } from './policy';
@@ -20,22 +20,29 @@ export type Ports = {
   // Esc at the Gate: no further pass or operation.
   aborted: () => boolean;
 };
-// What the policy did, why it stopped the Gate (null: the Context may be sent), and whether it asked to send on.
-export type Ran = { changes: Change[]; error: string | null; send?: true };
+// What the policy did, why it stopped the Gate (null: the Context may be sent), whether it asked to send on, and the
+// thinking it asked for the next request (the last one asked).
+export type Ran = { changes: Change[]; error: string | null; send?: true; thinking?: Thinking };
 
 const ABORTED = 'aborted';
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const sends = (op: unknown) => (op as { op?: unknown } | null)?.op === 'send';
+const thinkingOf = (op: unknown): Thinking | undefined => {
+  const o = op as { op?: unknown; mode?: unknown } | null;
+  return o?.op === 'thinking' && typeof o.mode === 'string' ? o.mode : undefined;
+};
+// Asking, not changing: a send or a thinking.
+const asks = (op: unknown) => sends(op) || thinkingOf(op) !== undefined;
 
 // onlyToSend: after an answer that ended the tool loop, the operations apply only if the first pass asks to send on.
 export async function applyPolicy(policy: Policy, ports: Ports, { onlyToSend = false } = {}): Promise<Ran> {
   const run: Run = { policy, ports, onlyToSend, changes: [], send: false };
   let error: string | null | undefined;
   for (let pass = 1; error === undefined; pass++) error = await applyPass(run, pass);
-  return { changes: run.changes, error, ...(run.send && { send: true as const }) };
+  return { changes: run.changes, error, ...(run.send && { send: true as const }), ...(run.thinking !== undefined && { thinking: run.thinking }) };
 }
 
-type Run = { policy: Policy; ports: Ports; onlyToSend: boolean; changes: Change[]; send: boolean };
+type Run = { policy: Policy; ports: Ports; onlyToSend: boolean; changes: Change[]; send: boolean; thinking?: Thinking };
 
 // One pass: undefined to go on, else why the run ended (null: nothing left to do).
 async function applyPass(run: Run, pass: number): Promise<string | null | undefined> {
@@ -45,13 +52,14 @@ async function applyPass(run: Run, pass: number): Promise<string | null | undefi
   const operations = await called(policy, viewOf(context, await ports.count(context), ports.situation));
   if ('error' in operations) return operations.error;
   run.send ||= operations.some(sends);
+  run.thinking = operations.map(thinkingOf).findLast(t => t !== undefined) ?? run.thinking;
   if (done(run, operations)) return null;
   if (pass > MAX_PASSES) return `still changing the Context after ${MAX_PASSES} passes`;
   return (await applyAll(policy.name, operations, ports, run.changes)) ?? undefined;
 }
 
-// Nothing but a send, or after an answer a policy not asking to send on.
-const done = (run: Run, operations: unknown[]) => operations.every(sends) || (run.onlyToSend && !run.send);
+// Nothing but asking (a send, a thinking), or after an answer a policy not asking to send on.
+const done = (run: Run, operations: unknown[]) => operations.every(asks) || (run.onlyToSend && !run.send);
 
 // One pass: the operations in turn, until one is refused or Esc is pressed.
 async function applyAll(by: string, operations: unknown[], ports: Ports, changes: Change[]): Promise<string | null> {
@@ -76,8 +84,8 @@ async function called(policy: Policy, view: PolicyContext): Promise<unknown[] | 
 async function applyOne(by: string, value: unknown, ports: Ports, changes: Change[]): Promise<string | null> {
   const op = parse(value);
   if ('error' in op) return op.error;
-  // A send is no change.
-  if (op.op === 'send') return null;
+  // A send or a thinking is no change.
+  if (op.op === 'send' || op.op === 'thinking') return null;
   const planned = plan(ports.events(), op);
   const events = 'error' in planned ? planned : 'compact' in planned ? await compacted(planned.compact, ports) : planned.events;
   if ('error' in events) return `${opText(op)}: ${events.error}`;
