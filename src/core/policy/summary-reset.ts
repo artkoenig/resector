@@ -1,7 +1,7 @@
 // The built-in Context Policy summary-reset (ADR 0001): an intro at the front tells the model what is coming. Once the
 // work since the last reset takes half the window, the results of the newest Tool Calls are replaced by an error
 // asking the model for a summary between <summary> tags. Once the model wrote one, it alone stays, as a Note led by a handover: everything before it
-// goes but the System, Tools Block, the intro and the project's Notes.
+// goes but the System, Tools Block, the intro and the project's Notes; the Context is sent on at once.
 // A policy runs before a request, after the calls ran: the error says the call ran, its output is withheld.
 import instruction from './summary-reset-instruction.md' with { type: 'text' };
 import type { PolicyBlock, PolicyContext, PolicyOperation } from './policy';
@@ -16,7 +16,7 @@ export const INTRO =
   'How this session works: your context is limited. Once your work since the start (or since the last summary) takes half of it, every tool call fails with an error saying the context is full; the command still runs, but its output is withheld. Then write a summary of the session between <summary> and </summary>, as the error describes. Only that summary is kept: everything else (the user\'s messages, your tool calls, their results, your answers) is deleted, and the session continues from the summary alone.';
 // Before the summary in its Note: the model reads it as a user message, so it is told this is its own work.
 export const HANDOVER =
-  'Continuation of the session with the following summary of your own earlier work; everything before it was deleted. Continue from it, do not redo what is done. Trust it: what it quotes is verbatim, do not read it again.';
+  'Continuation of the session with the following summary of your own earlier work; everything before it was deleted. Continue from it, do not redo what is done. Trust it: the files are as it describes them and what it quotes is verbatim, so do not read it again; read only what it does not quote or marks as unverified.';
 
 export const description = 'errors tool calls once the work takes ½, keeps only the summary the model writes';
 
@@ -35,7 +35,8 @@ function introduced(blocks: PolicyBlock[]): PolicyOperation[] {
 }
 
 // The newest summary of the model, without its tags (only markers for the policy), as the handover Note: the one
-// there is overwritten, else a new one in its place. Every other block before it removed.
+// there is overwritten, else a new one in its place. Every other block before it removed; then sent on, the summary
+// ended the tool loop and the user need not ask to go on.
 function resetTo(blocks: PolicyBlock[]): PolicyOperation[] {
   const answer = blocks.findLast(b => b.kind === 'Assistant' && SUMMARY.test(b.content));
   if (!answer) return [];
@@ -46,6 +47,7 @@ function resetTo(blocks: PolicyBlock[]): PolicyOperation[] {
   return [
     handover ? { op: 'edit', id: handover.id, content } : { op: 'note', after: answer.id, content },
     ...[...before, answer].map(b => ({ op: 'remove' as const, id: b.id })),
+    { op: 'send' },
   ];
 }
 

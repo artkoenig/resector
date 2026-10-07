@@ -26,7 +26,8 @@ test('the active policy edits the Context before the request, attributed to it, 
   await g.gate.send();
   await settled(g.gate);
   expect(g.gate.status()?.text).toBe('trim: 1 User removed, 1 block edited · answer complete');
-  expect(seen).toEqual([[1, 2, 3, 4], [1, 2, 4], [1, 2, 4]]);
+  // Asked again after the answer: it does not ask to send on, so nothing it returns is applied.
+  expect(seen).toEqual([[1, 2, 3, 4], [1, 2, 4], [1, 2, 4], [1, 2, 4, 5]]);
   expect(g.events.slice(5, 7)).toEqual([{ type: 'Remove', id: 3, by: 'trim' }, { type: 'Edit', id: 4, revision: 2, content: 'newer', by: 'trim' }]);
   expect(JSON.stringify(g.sent[0]!.request)).not.toContain('old');
 });
@@ -39,7 +40,7 @@ test('the policy runs before every request, the follow-ups of the tool loop too;
   g.gate.submit('go');
   await settled(g.gate);
   expect(g.sent).toHaveLength(2);
-  expect(seen).toHaveLength(3);
+  expect(seen).toHaveLength(4);
   g.gate.undo();
   expect(g.gate.status()?.text).toStartWith('undone: remove');
   g.reply({ content: 'again' });
@@ -176,7 +177,7 @@ test('guided-compaction: the model compacts the Context as sent, the first User 
   expect(g.gate.status()?.text).toBe('guided-compaction: 1 Assistant → 1 Note, 1 Note added, 1 Tool Pair removed · answer complete');
 });
 
-test('summary-reset: the intro first; from half the window on, a call\'s result is the error; then only the model\'s summary is sent on, led by the handover', async () => {
+test('summary-reset: the intro first; from half the window on, a call\'s result is the error; then only the model\'s summary is sent on at once, led by the handover', async () => {
   const g = policed({ window: 90, users: ['fix x'], policies: [BUILT_IN.find(p => p.name === 'summary-reset')!] });
   g.reply({ calls: [bash('cat a.ts')] }, { content: 'Done.\n<summary>fix x: a.ts read</summary>' }, { content: 'ok' });
   await g.gate.send();
@@ -184,8 +185,47 @@ test('summary-reset: the intro first; from half the window on, a call\'s result 
   expect(g.sent[0]!.request.messages.slice(1).map(m => m.content)).toEqual([INTRO, 'fix x']);
   expect(g.ran).toEqual(['cat a.ts']);
   expect(g.sent[1]!.request.messages.at(-1)!.content).toBe(ERROR);
+  expect(g.sent).toHaveLength(3);
+  expect(g.sent[2]!.request.messages.slice(1).map(m => m.content)).toEqual([INTRO, `${HANDOVER}\n\nfix x: a.ts read`]);
+  expect(g.gate.status()?.text).toBe('summary-reset: 1 Note added, 1 User removed, 1 Tool Pair removed, 1 Assistant removed · answer complete');
+});
+
+// After the model's answer, a Note asking to go on, sent on at once.
+const onward: Policy = {
+  name: 'onward',
+  run: c => (c.blocks.some(b => b.kind === 'Assistant') && !c.blocks.some(b => b.content === 'go on') ? [{ op: 'note', after: c.blocks.at(-1)!.id, content: 'go on' }, { op: 'send' }] : []),
+};
+
+test('after an answer ending the tool loop, a policy asking to send on edits the Context and it goes; one only editing waits for the next request', async () => {
+  const g = policed({ users: ['hi'], policies: [onward, scripted('edit', [[], [{ op: 'note', after: 3, content: 'x' }]])] });
+  g.reply({ content: 'first' }, { content: 'second' });
+  await g.gate.send();
+  await settled(g.gate);
+  expect(g.sent).toHaveLength(2);
+  expect(g.sent[1]!.request.messages.at(-1)!.content).toBe('go on');
+  expect(g.gate.status()?.text).toBe('onward: 1 Note added · answer complete');
+  g.gate.submit('/policy edit');
+  g.reply({ content: 'third' });
   g.gate.submit('next');
   await settled(g.gate);
-  expect(g.sent.at(-1)!.request.messages.slice(1).map(m => m.content)).toEqual([INTRO, `${HANDOVER}\n\nfix x: a.ts read`, 'next']);
-  expect(g.gate.status()?.text).toBe('summary-reset: 1 Note added, 1 User removed, 1 Tool Pair removed, 1 Assistant removed · answer complete');
+  expect(g.sent).toHaveLength(3);
+  expect(ofType(g.events, 'NoteAdded')).toHaveLength(1);
+});
+
+test('Esc while the answer streams, or a policy asking to send on without a change: nothing more is sent', async () => {
+  const g = policed({ users: ['hi'], policies: [onward, { name: 'nudge', run: () => [{ op: 'send' }] }] });
+  g.reply({ content: 'slow', delay: 100 });
+  const sending = g.gate.send();
+  await until(() => g.sent.length === 1);
+  g.gate.abort();
+  await sending;
+  await settled(g.gate);
+  expect(g.sent).toHaveLength(1);
+  expect(g.gate.status()?.text).toBe('answer complete');
+  g.gate.submit('/policy nudge');
+  g.reply({ content: 'ok' });
+  g.gate.submit('next');
+  await settled(g.gate);
+  expect(g.sent).toHaveLength(2);
+  expect(g.gate.status()?.text).toBe('answer complete');
 });

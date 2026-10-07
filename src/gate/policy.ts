@@ -49,11 +49,11 @@ export function createPolicy(k: Kernel, sel: View, policies: Policies, compactor
   }
 
   // The policy edits the Context with what the Gate knows; Esc aborts it. A throw is its error.
-  async function run(policy: Policy, situation: Situation): Promise<Ran> {
+  async function run(policy: Policy, situation: Situation, onlyToSend = false): Promise<Ran> {
     const abort = new AbortController();
     k.setPolicing({ name: policy.name, abort });
     try {
-      return await applyPolicy(policy, ports(abort.signal, situation));
+      return await applyPolicy(policy, ports(abort.signal, situation), { onlyToSend });
     } catch (e) {
       return { changes: [], error: errorText(e) };
     } finally {
@@ -62,6 +62,14 @@ export function createPolicy(k: Kernel, sel: View, policies: Policies, compactor
     }
   }
   const situation = (): Situation => ({ window: backend().window });
+  // What the policy did goes into the status line of the request that follows; an error stops the Gate. A run before
+  // the request keeps what the run after the answer did.
+  function reported(result: Ran, policy: Policy): Ran {
+    const did = result.changes.length ? summary(policy.name, result.changes) : null;
+    if (result.error) setStatus({ text: [`policy ${policy.name}: ${result.error} – not sent`, did].filter(Boolean).join(' · '), tone: 'error' });
+    else ran = did ?? ran;
+    return result;
+  }
 
   return {
     // What the view shows and does.
@@ -75,11 +83,12 @@ export function createPolicy(k: Kernel, sel: View, policies: Policies, compactor
     },
     // The active policy edits the Context before a request; an error, its Compaction's too, stops the Gate: nothing is sent.
     async runPolicy(policy: Policy): Promise<boolean> {
-      const { changes, error } = await run(policy, situation());
-      const did = changes.length ? summary(policy.name, changes) : null;
-      if (error) setStatus({ text: [`policy ${policy.name}: ${error} – not sent`, did].filter(Boolean).join(' · '), tone: 'error' });
-      else ran = did;
-      return !error;
+      return !reported(await run(policy, situation()), policy).error;
+    },
+    // After an answer that ended the tool loop: whether the policy edited the Context and asks to send it on.
+    async sendsOn(policy: Policy): Promise<boolean> {
+      const { changes, error, send } = reported(await run(policy, situation(), true), policy);
+      return !error && !!send && changes.length > 0;
     },
     switchPolicy,
     // What the policy did before this request; read once.

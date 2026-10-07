@@ -100,6 +100,7 @@ export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy:
     const requested = k.prefixes();
     const payload = requested.at(-1)!;
     const abort = new AbortController();
+    let ended = false;
     setStreaming({ thinking: '', text: '', abort, tokens: 0, first: null });
     setStatus(null);
     try {
@@ -123,13 +124,22 @@ export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy:
       const result = await backend().chat(payload, { signal: abort.signal, onDelta, onThinking, onToken, maxTokens: k.budgetOf(total).maxTokens });
       const speed = speedOf(result, streaming()!, sent);
       setStreaming(null);
-      loop.finish(result, did, speed);
+      ended = loop.finish(result, did, speed);
     } catch (e) {
       setStreaming(null);
       setStatus({ text: `backend error: ${errorText(e)}`, tone: 'error' });
       deps.policy.withDid(did);
     }
     sel.keepSelection();
+    if (ended) await sendOn();
+  }
+
+  // After an answer that ended the tool loop, the policy may ask to send on (summary-reset after the summary): it
+  // edits the Context and it goes, without a message of the user. Esc while the answer streamed stops here.
+  async function sendOn() {
+    const policy = deps.policies.active();
+    if (!policy || loop.api.stopping()) return;
+    if (await deps.policy.sendsOn(policy)) await send();
   }
 
   return { api: { send } };

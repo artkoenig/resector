@@ -2,15 +2,15 @@
 import * as ops from '../context/operations';
 import type { SessionEvent } from '../log/events';
 import { fold, pairOf, type Block, type Context } from '../log/fold';
-import type { PolicyOperation } from './policy';
+import type { ContextOperation } from './policy';
 
 // What an operation did, for the status line: counted (`3 Tool Pairs removed`) or as is (a Compaction).
 export type Change = { noun: string; verb: string } | { text: string };
 // The events an operation appends, or the Compaction to run first; or why not.
 export type Plan = { events: SessionEvent[]; change: Change } | { compact: Compaction; change: Change } | { error: string };
 export type Compaction = { sources: number[]; instruction: string; inContext?: boolean };
-type Of<O extends PolicyOperation['op']> = Extract<PolicyOperation, { op: O }>;
-type Planner<O extends PolicyOperation['op']> = (events: SessionEvent[], context: Context, op: Of<O>) => Plan;
+type Of<O extends ContextOperation['op']> = Extract<ContextOperation, { op: O }>;
+type Planner<O extends ContextOperation['op']> = (events: SessionEvent[], context: Context, op: Of<O>) => Plan;
 
 const EDITED = { noun: 'block', verb: 'edited' };
 const MOVED = { noun: 'block', verb: 'moved' };
@@ -18,7 +18,7 @@ const MOVED = { noun: 'block', verb: 'moved' };
 const nounOf = (block: Block) => (ops.inPair(block) ? 'Tool Pair' : block.kind);
 const done = (outcome: ops.Outcome, change: Change): Plan => ('error' in outcome ? outcome : { events: [outcome.event], change });
 
-const PLANNERS: { [O in PolicyOperation['op']]: Planner<O> } = {
+const PLANNERS: { [O in ContextOperation['op']]: Planner<O> } = {
   remove: (_, context, op) => withBlock(context, op.id, block => done(ops.remove(block), { noun: nounOf(block), verb: 'removed' })),
   edit: (events, context, op) => withBlock(context, op.id, block => {
     const error = ops.untouchable(block)?.error ?? ops.editable(block);
@@ -30,8 +30,8 @@ const PLANNERS: { [O in PolicyOperation['op']]: Planner<O> } = {
 };
 
 // The operation checked against the Context of the Session Log; operations refer to blocks by id.
-export function plan(events: SessionEvent[], op: PolicyOperation): Plan {
-  return (PLANNERS[op.op] as Planner<PolicyOperation['op']>)(events, fold(events), op);
+export function plan(events: SessionEvent[], op: ContextOperation): Plan {
+  return (PLANNERS[op.op] as Planner<ContextOperation['op']>)(events, fold(events), op);
 }
 
 const sent = (context: Context, id: number) => context.blocks.find(b => b.id === id);

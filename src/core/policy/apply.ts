@@ -4,7 +4,7 @@ import * as ops from '../context/operations';
 import type { SessionEvent } from '../log/events';
 import { fold, type Context } from '../log/fold';
 import { plan, type Change, type Compaction } from './plan';
-import { parse, viewOf, type Policy, type PolicyContext, type PolicyOperation, type Situation } from './policy';
+import { parse, viewOf, type ContextOperation, type Policy, type PolicyContext, type Situation } from './policy';
 
 // Passes applying operations per request: a call after them still returning operations stops the Gate.
 export const MAX_PASSES = 8;
@@ -20,25 +20,38 @@ export type Ports = {
   // Esc at the Gate: no further pass or operation.
   aborted: () => boolean;
 };
-// What the policy did, and why it stopped the Gate (null: the Context may be sent).
-export type Ran = { changes: Change[]; error: string | null };
+// What the policy did, why it stopped the Gate (null: the Context may be sent), and whether it asked to send on.
+export type Ran = { changes: Change[]; error: string | null; send?: true };
 
 const ABORTED = 'aborted';
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const sends = (op: unknown) => (op as { op?: unknown } | null)?.op === 'send';
 
-export async function applyPolicy(policy: Policy, ports: Ports): Promise<Ran> {
-  const changes: Change[] = [];
-  for (let pass = 1; ; pass++) {
-    if (ports.aborted()) return { changes, error: ABORTED };
-    const context = fold(ports.events());
-    const operations = await called(policy, viewOf(context, await ports.count(context), ports.situation));
-    if ('error' in operations) return { changes, error: operations.error };
-    if (!operations.length) return { changes, error: null };
-    if (pass > MAX_PASSES) return { changes, error: `still changing the Context after ${MAX_PASSES} passes` };
-    const error = await applyAll(policy.name, operations, ports, changes);
-    if (error) return { changes, error };
-  }
+// onlyToSend: after an answer that ended the tool loop, the operations apply only if the first pass asks to send on.
+export async function applyPolicy(policy: Policy, ports: Ports, { onlyToSend = false } = {}): Promise<Ran> {
+  const run: Run = { policy, ports, onlyToSend, changes: [], send: false };
+  let error: string | null | undefined;
+  for (let pass = 1; error === undefined; pass++) error = await applyPass(run, pass);
+  return { changes: run.changes, error, ...(run.send && { send: true as const }) };
 }
+
+type Run = { policy: Policy; ports: Ports; onlyToSend: boolean; changes: Change[]; send: boolean };
+
+// One pass: undefined to go on, else why the run ended (null: nothing left to do).
+async function applyPass(run: Run, pass: number): Promise<string | null | undefined> {
+  const { policy, ports } = run;
+  if (ports.aborted()) return ABORTED;
+  const context = fold(ports.events());
+  const operations = await called(policy, viewOf(context, await ports.count(context), ports.situation));
+  if ('error' in operations) return operations.error;
+  run.send ||= operations.some(sends);
+  if (done(run, operations)) return null;
+  if (pass > MAX_PASSES) return `still changing the Context after ${MAX_PASSES} passes`;
+  return (await applyAll(policy.name, operations, ports, run.changes)) ?? undefined;
+}
+
+// Nothing but a send, or after an answer a policy not asking to send on.
+const done = (run: Run, operations: unknown[]) => operations.every(sends) || (run.onlyToSend && !run.send);
 
 // One pass: the operations in turn, until one is refused or Esc is pressed.
 async function applyAll(by: string, operations: unknown[], ports: Ports, changes: Change[]): Promise<string | null> {
@@ -63,6 +76,8 @@ async function called(policy: Policy, view: PolicyContext): Promise<unknown[] | 
 async function applyOne(by: string, value: unknown, ports: Ports, changes: Change[]): Promise<string | null> {
   const op = parse(value);
   if ('error' in op) return op.error;
+  // A send is no change.
+  if (op.op === 'send') return null;
   const planned = plan(ports.events(), op);
   const events = 'error' in planned ? planned : 'compact' in planned ? await compacted(planned.compact, ports) : planned.events;
   if ('error' in events) return `${opText(op)}: ${events.error}`;
@@ -84,7 +99,7 @@ async function compacted({ sources, instruction, inContext }: Compaction, ports:
 }
 
 // The operation as the status line names it: `remove 5`, `move 5 after 3`, `compact 3 4`, `note after 2`.
-function opText(op: PolicyOperation): string {
+function opText(op: ContextOperation): string {
   if (op.op === 'compact') return `compact ${op.sources.join(' ')}`;
   if (op.op === 'note') return `note after ${op.after}`;
   return `${op.op} ${op.id}${op.op === 'move' ? ` after ${op.after}` : ''}`;
