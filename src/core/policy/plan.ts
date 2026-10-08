@@ -70,7 +70,7 @@ function compactPlan(context: Context, { sources, instruction, inContext }: Of<'
 
 // Counted nouns in plural; a kind reads as is (`2 Thinking removed`).
 const PLURAL = new Set(['Tool Pair', 'block']);
-// The status line after the policy ran: `lean-compact: 3 Tool Pairs removed, 5 Thinking → 1 Note`.
+// The status line after the policy ran: `summary-reset: 3 Tool Pairs removed, 1 Note added`.
 export function summary(name: string, changes: Change[]): string {
   type Counted = { noun: string; verb: string; n: number };
   const counts = new Map<string, Counted>();

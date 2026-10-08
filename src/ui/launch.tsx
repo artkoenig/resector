@@ -110,7 +110,7 @@ export function Launch(props: LaunchOptions) {
     return { opened, events, notice };
   }
 
-  // The configured policy switched on (lean-compact unless set, none with `off`); why not, if no such policy.
+  // The configured policy switched on (summary-reset unless set, none with `off`); why not, if no such policy.
   function switchOnDefault(loaded: Loaded): string | null {
     const name = loaded.config.defaultPolicy ?? DEFAULT_POLICY;
     const policy = name === 'off' ? null : policies.all.find(p => p.name === name);

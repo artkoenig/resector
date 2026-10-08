@@ -1,7 +1,6 @@
 // Context Policy tests without a renderer (ADR 0001): passes before each request, attribution, failures, Compaction.
 import { expect, test } from 'bun:test';
 import { BUILT_IN } from '../core/policy/built-in';
-import { LEAD } from '../core/policy/lean-compact';
 import { ERROR, HANDOVER, INTRO } from '../core/policy/summary-reset';
 import type { Policy, PolicyOperation } from '../core/policy/policy';
 import { bash, gateWith, ofType, scriptedBackend, settled, until } from './gate.harness';
@@ -151,34 +150,8 @@ test('a request failing after the policy ran still says what the policy did', as
   expect(g.gate.status()?.text).toContain('trim: 1 User removed');
 });
 
-test('lean-compact: the Note of its Compaction is sent led by the lead, which says it is the model\'s own work', async () => {
-  const g = policed({ window: 90, users: ['fix x'], policies: BUILT_IN });
-  g.reply({ content: 'fixed' }, { content: '## Goal\nfix x' }, { content: 'ok' });
-  await g.gate.send();
-  await settled(g.gate);
-  g.gate.submit('next');
-  await settled(g.gate);
-  const messages = g.sent.at(-1)!.request.messages.map(m => m.content);
-  expect(messages.slice(-3)).toEqual([LEAD, '## Goal\nfix x', 'next']);
-});
-
-test('guided-compaction: the model compacts the Context as sent, the first User message and the reads it keeps stay, the others go', async () => {
-  const g = policed({ window: 160, users: ['fix x'], policies: [BUILT_IN.find(p => p.name === 'guided-compaction')!] });
-  g.reply({ calls: [bash('cat a.ts')] }, { calls: [bash('cat b.ts')] }, { content: 'fixed' }, { content: 'x\n## Keep\n- b.ts' }, { content: 'ok' });
-  await g.gate.send();
-  await settled(g.gate);
-  g.gate.submit('next');
-  await settled(g.gate);
-  const [compaction, last] = g.sent.slice(-2).map(s => s.request.messages.map(m => m.content));
-  expect(compaction!.at(-1)).toStartWith('Accumulate the knowledge in this conversation');
-  expect(JSON.stringify(compaction)).toContain('ran cat a.ts');
-  expect(last!.slice(1)).toEqual(['fix x', '', 'ran cat b.ts\n[exit 0]', LEAD, '## Facts\nx\n## Keep\n- b.ts', 'next']);
-  expect(JSON.stringify(last)).not.toContain('ran cat a.ts');
-  expect(g.gate.status()?.text).toBe('guided-compaction: 1 Assistant → 1 Note, 1 Note added, 1 Tool Pair removed · answer complete');
-});
-
 test('summary-reset: the intro first; from half the window on, a call\'s result is the error; then only the model\'s summary is sent on at once, led by the handover', async () => {
-  const g = policed({ window: 90, users: ['fix x'], policies: [BUILT_IN.find(p => p.name === 'summary-reset')!] });
+  const g = policed({ window: 90, users: ['fix x'], policies: BUILT_IN });
   g.reply({ calls: [bash('cat a.ts')] }, { content: 'Done.\n<summary>fix x: a.ts read</summary>' }, { content: 'ok' });
   await g.gate.send();
   await settled(g.gate);
