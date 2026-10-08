@@ -34,7 +34,7 @@ function policy(passes: PolicyOperation[][], seen: PolicyContext[] = []): Policy
 test('the policy runs until it returns nothing; its operations are logged in turn, attributed to it', async () => {
   const { port, added, seen } = ports(session());
   const result = await applyPolicy(policy([[{ op: 'remove', id: 3 }, { op: 'remove', id: 5 }], [{ op: 'edit', id: 7, content: 'more' }]], seen), port);
-  expect(result).toEqual({ changes: [{ noun: 'Thinking', verb: 'removed' }, { noun: 'Tool Pair', verb: 'removed' }, { noun: 'block', verb: 'edited' }], error: null });
+  expect(result).toStrictEqual({ changes: [{ noun: 'Thinking', verb: 'removed' }, { noun: 'Tool Pair', verb: 'removed' }, { noun: 'block', verb: 'edited' }], error: null });
   expect(added()).toEqual([{ type: 'Remove', id: 3, by: 'trail' }, { type: 'Remove', id: 5, by: 'trail' }, { type: 'Edit', id: 7, revision: 2, content: 'more', by: 'trail' }]);
   expect(seen.map(c => c.blocks.map(b => b.id))).toEqual([[1, 2, 3, 4, 5, 6, 7], [1, 2, 4, 7], [1, 2, 4, 7]]);
   expect(seen[0]).toMatchObject({ window: 4096, used: 999, blocks: [{ tokens: 10 }, { tokens: 10 }, { tokens: 10 }, { tokens: 10 }, { tokens: 10 }, { tokens: 10 }, { tokens: 10 }] });
@@ -59,7 +59,19 @@ test('a thinking is no change: the last one asked is reported, and a pass with n
   expect(added()).toEqual([{ type: 'Remove', id: 3, by: 'trail' }]);
   // Asked in one pass, kept when a later one changes the Context without asking again.
   const kept = ports(session());
-  expect(await applyPolicy(policy([[{ op: 'remove', id: 3 }, { op: 'thinking', mode: 'off' }], [{ op: 'remove', id: 5 }]]), kept.port)).toMatchObject({ thinking: 'off' });
+  expect(await applyPolicy(policy([[{ op: 'thinking', mode: 'off' }, { op: 'remove', id: 3 }], [{ op: 'remove', id: 5 }]]), kept.port)).toMatchObject({ thinking: 'off' });
+});
+
+test('a policy only asking, pass after pass, ends after the first pass', async () => {
+  const always = (op: PolicyOperation): Policy => ({ name: 'trail', run: () => [op] });
+  expect(await applyPolicy(always({ op: 'send' }), ports(session()).port)).toEqual({ changes: [], error: null, send: true });
+  expect(await applyPolicy(always({ op: 'thinking', mode: 'off' }), ports(session()).port)).toEqual({ changes: [], error: null, thinking: 'off' });
+});
+
+test('a thinking without a mode is refused, not asked for', async () => {
+  const ran = await applyPolicy(policy([[{ op: 'thinking', mode: 5 } as unknown as PolicyOperation]]), ports(session()).port);
+  expect(ran).toStrictEqual({ changes: [], error: ran.error });
+  expect(ran.error).toBeString();
 });
 
 test('only to send: the operations apply if the first pass asks to send on, else nothing changes', async () => {
