@@ -89,30 +89,6 @@ A **Context Policy** is a function over the Context that resector calls before e
 - **The policy wins:** undone operations are applied again. To keep something, switch the policy off.
 - **Fails loudly:** a failing policy stops the Gate instead of sending.
 
-### Built-in: `lean-compact`
-
-From half the window on, [`lean-compact`](src/core/policy/lean-compact.ts) removes read-only `bash` Tool Pairs (`grep`, `cat`, `git diff`, …) and short Thinking, then compacts the rest of the work into one Note. If there is no other work since the last Compaction, the reads and short Thinking are compacted instead, so what the model read survives. Your messages are not compacted, they stay; the Note holds the work, under Goal, Facts, Decisions, Done, Dead ends and Next steps (with the code passages the next edits need, verbatim). A short Note right before it tells the model this is its own earlier work, to continue with Next steps rather than start over. The project's Notes and the newest Tool Pair stay.
-
-Compared with compacting everything (same instruction, 5 synthetic sessions):
-
-| | lean-compact vs. compact everything |
-| --- | --- |
-| Prompt to the model | **−95 %** tokens |
-| Compaction time | **−93 %** |
-| Facts kept | 98 % vs. 95 % |
-
-```bash
-/policy lean-compact
-```
-
-### Built-in: `guided-compaction`
-
-Experimental. From half the window on, [`guided-compaction`](src/core/policy/guided-compaction.ts) asks the model for the Note in the Context as sent (the server's prefix cache holds it), with the sections of `lean-compact` but Goal (your first message stays and is it), plus Keep: the paths of the files it will change next. Per kept path the newest read-only `bash` Tool Pair naming it stays (older ones show the file before later edits), the other reads go; the rest of the work, your later messages with it, is in the Note. A Compaction without Keep (yours, another policy's) removes no reads. Your later requests go under Next steps.
-
-```bash
-/policy guided-compaction
-```
-
 ### Built-in: `summary-reset`
 
 On by default. [`summary-reset`](src/core/policy/summary-reset.ts) puts an intro right after the System prompt and Tools Block that tells the model what is coming. Once the work since the start (or since the last summary) takes half the room the kept blocks leave (the window minus the System prompt, Tools Block, Notes and summary), it replaces the result of every further Tool Call with an error: the context is full, write a summary between `<summary>` and `</summary>` in a fixed structure: the finished work one line per file, the changes still to make as unified diffs under `## Patches`, code nowhere else. That request goes with thinking off, so the summary is not drafted twice. The call still runs (the policy sees it only after); the error says its output is withheld. Once the model answers with a summary, only that stays, without the tags (they only mark it), as a Note led by a handover (the session continues with the following summary); a later summary overwrites that Note. Everything before it goes but the System prompt, the Tools Block, the intro and the project's Notes. The Context is sent on at once and the model continues from it.
@@ -124,12 +100,12 @@ On by default. [`summary-reset`](src/core/policy/summary-reset.ts) puts an intro
 
 ### Write your own
 
-A policy is a module in `~/.config/resector/policies/<name>.ts` (`$XDG_CONFIG_HOME` if set); one named `lean-compact.ts` replaces the built-in.
+A policy is a module in `~/.config/resector/policies/<name>.ts` (`$XDG_CONFIG_HOME` if set); one named `summary-reset.ts` replaces the built-in.
 
 ```ts
-export const description = 'drops reads and short thinking, compacts at ½';
+export const description = 'drops reads, compacts at ½';
 
-export default function leanCompact({ window, used, blocks }: PolicyContext): PolicyOperation[] {
+export default function compactAtHalf({ window, used, blocks }: PolicyContext): PolicyOperation[] {
   if (used < window / 2) return [];
   // … return remove / compact operations
 }
