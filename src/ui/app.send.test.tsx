@@ -45,6 +45,22 @@ test('Enter in input mode adds a User block and sends the Context; the answer st
   ]);
 });
 
+test('a pasted text keeps its lines, shift+Enter breaks one; the input grows with them and Enter sends all', async () => {
+  const { events } = await start();
+  fake.reply({ chunks: ['ok'] });
+  ui.mockInput.pressTab();
+  await ui.flush();
+  await ui.mockInput.pasteBracketedText('const a = 1;\nconst b = 2;');
+  // shift+Enter as kitty-keyboard terminals send it.
+  ui.renderer.stdin.emit('data', Buffer.from('\x1b[13;2u'));
+  await ui.mockInput.typeText('done');
+  const frame = await frameMatching(ui, f => f.includes('done'));
+  expect(frame).toMatch(/┃ const a = 1;\s*\n┃ const b = 2;\s*\n┃ done/);
+  ui.mockInput.pressEnter();
+  await until(() => fake.chatRequests.length === 1);
+  expect(events()[3]).toEqual({ type: 'BlockAdded', id: 3, kind: 'User', origin: 'user', content: 'const a = 1;\nconst b = 2;\ndone' });
+});
+
 // The colour of the header's `tokens / window` (first line, right).
 const headerTone = () => {
   const spans = ui.captureSpans().lines[0]!.spans.filter(s => /\d/.test(s.text));

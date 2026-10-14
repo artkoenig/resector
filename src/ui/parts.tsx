@@ -91,16 +91,21 @@ export function Band(props: { color: string; lines: number; children: JSX.Elemen
   );
 }
 
-// The band below, ┃ in the accent colour: the input line, a meta line.
-export function PromptBand(props: { children: JSX.Element; meta?: JSX.Element }) {
+// The band below, ┃ in the accent colour: the input's lines, a meta line.
+export function PromptBand(props: { children: JSX.Element; meta?: JSX.Element; inputLines: number }) {
   return (
-    <Band color={ACCENT} lines={PROMPT_LINES}>
-      <box flexDirection="row">{props.children}</box>
+    <Band color={ACCENT} lines={promptLines(props.inputLines)}>
+      <box flexDirection="row" height={props.inputLines}>
+        {props.children}
+      </box>
       <text>{props.meta}</text>
     </Band>
   );
 }
-export const PROMPT_LINES = 2;
+export const promptLines = (inputLines: number) => inputLines + 1;
+// A longer draft scrolls within this many lines.
+export const MAX_INPUT_LINES = 8;
+export const inputLinesOf = (draft: string) => Math.min(MAX_INPUT_LINES, draft.split('\n').length);
 
 // An error gets its own band above the prompt, ┃ in the error colour: `✗ source`, then the reason in at most 3 lines.
 const ERROR_BODY_LINES = 3;

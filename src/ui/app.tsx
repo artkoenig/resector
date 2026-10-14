@@ -1,5 +1,5 @@
 // The one screen: header band · block table · preview · prompt band · footer.
-import { type ScrollBoxRenderable } from '@opentui/core';
+import { type ScrollBoxRenderable, type TextareaRenderable } from '@opentui/core';
 import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/solid';
 import { createEffect, createMemo, createSignal, on, onCleanup, Show } from 'solid-js';
 import type { Verdict } from '../core/approval/approval';
@@ -12,7 +12,7 @@ import { count } from '../gate/text';
 import { FilterLine, Header } from './header';
 import { dockMode, type KeyMode, keysOf } from './hints';
 import { createKeys, modifierOf } from './keys';
-import { Band, ErrorBand, errorBandLines, Footer, footerLines, PROMPT_LINES, PromptBand } from './parts';
+import { Band, ErrorBand, errorBandLines, Footer, footerLines, inputLinesOf, PromptBand, promptLines } from './parts';
 import { Checks, Preview, ReferenceHint, type Shown } from './preview';
 import { CompactionMeta, type Mode, PromptMeta, statusOf } from './prompt';
 import { createSuggestions, Suggestions } from './suggestions';
@@ -85,9 +85,10 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   function actionOf(key: string, name: string) {
     const onSuggestion = suggestion() ? suggestionKeys[key] : undefined;
     if (onSuggestion) return onSuggestion;
-    if (phase() === 'instruction') return keyMaps.instruction[key];
+    // By full name: shift+Enter breaks the line, plain Enter sends.
+    if (phase() === 'instruction') return keyMaps.instruction[name];
     if (docked.open()) return docked.keyOf(key, name);
-    return mode() !== 'context' ? keyMaps.input[key] : keyMaps.gateAction(name);
+    return mode() !== 'context' ? keyMaps.input[name] : keyMaps.gateAction(name);
   }
   useKeyboard(key => {
     const action = actionOf(key.name, modifierOf(key) + key.name);
@@ -113,17 +114,44 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   // Block rows that fit: the screen less header band, filter line, column header, Template, preview band, error band, suggestions,
   // prompt band and footer. Preview and error band have a blank line above, the prompt band too. Lines never shrink, so rows cannot overlap.
   const capacity = () =>
-    Math.max(1, size().height - 2 - 2 - (gate.hiding() ? 1 : 0) - (previewHeight() + 1) - errorLines() - 1 - suggestions().length - (docked.open() ? docked.lines() : PROMPT_LINES) - footerLines(footerStatus()?.text ?? '', keys(), width()));
+    Math.max(1, size().height - 2 - 2 - (gate.hiding() ? 1 : 0) - (previewHeight() + 1) - errorLines() - 1 - suggestions().length - (docked.open() ? docked.lines() : promptLines(inputLines())) - footerLines(footerStatus()?.text ?? '', keys(), width()));
   // The rows shown: a window around the selection.
   const visibleRows = () => around(rows(), rows().findIndex(r => isSelected(gate, r)), capacity());
-  // The one input: the draft, the Compaction instruction or the own answer in the dock.
-  const draftInput = (placeholder?: string) => (
+  // The own answer in the dock: one line.
+  const draftInput = () => (
     <input
       focused
       value={draft()}
+      onInput={editDraft}
+      flexGrow={1}
+      backgroundColor={PANEL_BG}
+      focusedBackgroundColor={PANEL_BG}
+      textColor={TEXT}
+      focusedTextColor={TEXT}
+      cursorColor={ACCENT}
+    />
+  );
+  // The draft or the Compaction instruction: several lines, pasted or broken with shift+Enter.
+  const writing = () => mode() !== 'context' || phase() === 'instruction';
+  const inputLines = () => (writing() ? inputLinesOf(draft()) : 1);
+  const [area, setArea] = createSignal<TextareaRenderable>();
+  // The textarea keeps its own text: a draft set from outside (on opening, completion) goes in with the cursor at its end.
+  createEffect(() => {
+    const text = draft();
+    const a = area();
+    if (!a || a.isDestroyed || a.plainText === text) return;
+    a.setText(text);
+    a.cursorOffset = text.length;
+  });
+  const draftArea = (placeholder?: string) => (
+    <textarea
+      ref={setArea}
+      focused
+      onContentChange={() => editDraft(area()!.plainText)}
+      keyBindings={[{ name: 'return', shift: true, action: 'newline' }]}
+      wrapMode="none"
       placeholder={placeholder}
       placeholderColor={FAINT}
-      onInput={editDraft}
       flexGrow={1}
       backgroundColor={PANEL_BG}
       focusedBackgroundColor={PANEL_BG}
@@ -195,18 +223,19 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
         when={docked.open() && docked.state()}
         fallback={
           <PromptBand
+            inputLines={inputLines()}
             meta={
               <Show when={gate.compacting()} fallback={<PromptMeta mode={mode()} />}>
                 {(c: () => Compaction) => <CompactionMeta gate={gate} compaction={c()} />}
               </Show>
             }
           >
-            <Show when={mode() !== 'context' || phase() === 'instruction'} fallback={<text fg={idle().fg}>{idle().text}</text>}>
+            <Show when={writing()} fallback={<text fg={idle().fg}>{idle().text}</text>}>
               <box flexDirection="row" flexGrow={1}>
                 <Show when={phase() === 'instruction'}>
                   <text fg={ACCENT} flexShrink={0}>{'instruction > '}</text>
                 </Show>
-                {draftInput(phase() === 'instruction' ? gate.defaultInstruction() : undefined)}
+                {draftArea(phase() === 'instruction' ? gate.defaultInstruction() : undefined)}
               </box>
             </Show>
           </PromptBand>
