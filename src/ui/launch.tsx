@@ -3,7 +3,7 @@ import { createSignal, onMount, Show } from 'solid-js';
 import { discover, LOCAL_SERVERS, type DiscoveredModel, type LocalServer } from '../adapters/backend/discover';
 import { writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
 import type { SessionStore } from '../adapters/store/sessions';
-import { openWorkspace, type Loaded, type Opened, type Workspace } from '../compose/workspace';
+import { openWorkspace, type Loaded, type Opened, type OpenWith, type Workspace } from '../compose/workspace';
 import type { Editor } from '../gate/ports';
 import type { SessionEvent } from '../core/log/events';
 import { fold } from '../core/log/fold';
@@ -46,9 +46,8 @@ export function Launch(props: LaunchOptions) {
     return loaded;
   };
 
-  // which: a session to resume, else a new session. started: at start.
-  async function open(loaded: Loaded, which: SessionRef | undefined, started = false) {
-    const opened = await workspace.open(loaded, { which, started });
+  async function open(loaded: Loaded, how: OpenWith = {}) {
+    const opened = await workspace.open(loaded, how);
     if (session?.id !== opened.id) session?.release();
     session = opened;
     setCurrent(opened.id);
@@ -57,7 +56,7 @@ export function Launch(props: LaunchOptions) {
   }
 
   // /sessions: switching sessions reconnects; the Gate comes back with the session's logged events.
-  const switchTo = (which?: string) => open(load(), which).then(() => void setView('gate'));
+  const switchTo = (which?: string) => open(load(), { which }).then(() => void setView('gate'));
   const back = () => {
     const events = props.store.read(current());
     setGate({ ...gate()!, events, notice: undefined });
@@ -69,7 +68,7 @@ export function Launch(props: LaunchOptions) {
     const titleOf = (id: string) => summarize(props.store.read(id)).title;
     const title = titleOf(id);
     const switched = id === current();
-    if (switched) await open(load(), props.store.list().find(s => !s.locked && s.id !== id)?.id);
+    if (switched) await open(load(), { which: props.store.list().find(s => !s.locked && s.id !== id)?.id });
     const kept = workspace.removeWorktree(id, force);
     props.store.delete(id);
     return [`deleted "${title}"`, ...(switched ? [`switched to "${titleOf(current())}"`] : []), ...kept].join(' · ');
@@ -99,7 +98,7 @@ export function Launch(props: LaunchOptions) {
   };
   const choose = (model: DiscoveredModel) => {
     writeInitialConfig(props.paths, model);
-    open(load(), undefined).catch(fail);
+    open(load()).catch(fail);
   };
 
   onMount(() => {
@@ -107,7 +106,7 @@ export function Launch(props: LaunchOptions) {
       // A switched worktree: the Gate again, running in the session's directory now.
       workspace = await openWorkspace({ paths: props.paths, store: props.store, cwd: props.cwd, openFile: props.openFile, onReopen: changed => setGate({ ...gate()!, ...changed }) });
       const loaded = workspace.config();
-      return loaded ? open(loaded, props.resume, true) : firstStart();
+      return loaded ? open(loaded, { which: props.resume, started: true }) : firstStart();
     };
     start().catch(fail);
   });

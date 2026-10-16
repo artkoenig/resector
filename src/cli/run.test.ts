@@ -116,7 +116,7 @@ test('--show all puts thinking, calls and results on stderr; stdout is the answe
   reply({ chunks: ['done'] });
   const shown = await resector(p, ['-p', 'go', '--show', 'all', '--auto-approve']);
   expect({ out: shown.out, code: shown.code }).toEqual({ out: 'done\n', code: 0 });
-  expect(shown.err).toStartWith('◆ summary-reset: note How this session works: your context is limited. Once your work since the start…\n');
+  expect(shown.err).toStartWith('◆ summary-reset: note → How this session works: your context is limited. Once your work since the start…\n');
   expect(shown.err).toContain('\n∴ Let me look\n$ echo hi\n  │ hi\n  └ exit 0\n');
   expect(shown.err).toMatch(/\n· answer · 2 turns · \S+ tokens\n$/);
 });
@@ -127,13 +127,14 @@ test('without --show stderr is the closing status line only', async () => {
   expect((await resector(p, ['-p', 'go'])).err).toMatch(/^· answer · 1 turn · \S+ tokens\n$/);
 });
 
-test('a call the rules ask for is asked at the terminal and runs on y', async () => {
+test('a call the rules ask for is asked at the terminal, not on stderr, and runs on y', async () => {
   const asked = project({ tty: ['y'] });
   reply({ calls: [{ name: 'bash', arguments: JSON.stringify({ command: 'touch made' }) }] });
   reply({ chunks: ['done'] });
   const { out, err } = await resector(asked, ['-p', 'go']);
   expect(out).toBe('done\n');
-  expect(err).toStartWith('? approve touch made\n  ? touch made (');
+  expect(err).not.toContain('approve');
+  expect(readFileSync(`${asked.env.RESECTOR_TTY}.out`, 'utf8')).toStartWith('? approve touch made\n  ? touch made (');
   expect(existsSync(join(asked.dir, 'made'))).toBe(true);
 });
 

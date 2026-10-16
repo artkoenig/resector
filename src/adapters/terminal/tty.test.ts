@@ -1,6 +1,6 @@
 // The terminal of a Headless Run: Tool Approval and Questions asked, answered line by line.
 import { expect, test } from 'bun:test';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Block } from '../../core/log/fold';
@@ -59,13 +59,22 @@ test('a terminal that cannot be opened is none; a file is read line by line, an 
   const dir = mkdtempSync(join(tmpdir(), 'resector-tty-'));
   expect(openTty(join(dir, 'gone'))).toBeNull();
   writeFileSync(join(dir, 'tty'), 'n\ny\n');
-  const tty = openTty(join(dir, 'tty'))!;
+  const tty = openTty(join(dir, 'tty'), join(dir, 'out'))!;
   expect([await tty.terminal.approve(call, verdict, signal), await tty.terminal.approve(call, verdict, signal), await tty.terminal.approve(call, verdict, signal)]).toEqual(['reject', 'once', 'reject']);
   tty.close();
   const aborted = AbortSignal.abort();
   writeFileSync(join(dir, 'later'), 'y\n');
-  const later = openTty(join(dir, 'later'))!;
+  const later = openTty(join(dir, 'later'), join(dir, 'out'))!;
   expect(await later.terminal.approve(call, verdict, aborted)).toBe('reject');
   expect(await later.terminal.approve(call, verdict, signal)).toBe('once');
   later.close();
+});
+
+test('the asking goes to the terminal itself, uncolored when it is no TTY', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'resector-tty-'));
+  writeFileSync(join(dir, 'tty'), 'y\n');
+  const tty = openTty(join(dir, 'tty'), join(dir, 'out'))!;
+  await tty.terminal.approve(call, verdict, signal);
+  tty.close();
+  expect(readFileSync(join(dir, 'out'), 'utf8')).toStartWith('? approve touch x && ls\n');
 });

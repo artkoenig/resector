@@ -2,6 +2,7 @@
 // writes it.
 import type { Shown } from '../core/config/config';
 import type { SessionEvent } from '../core/log/events';
+import { palette } from '../core/palette/palette';
 import { resultEnd } from '../core/tools/call';
 import type { Status } from '../gate';
 import { count } from '../gate/text';
@@ -17,7 +18,7 @@ const headline = (text: string) => {
 
 export function createShow(kinds: Shown[], color: boolean) {
   const on = new Set(kinds);
-  const paint = (code: string) => (s: string) => (color ? `\x1b[${code}m${s}\x1b[0m` : s);
+  const paint = palette(color);
   const dim = paint('2');
   const cyan = paint('36');
   // The Thinking printed so far of the answer streaming; open: its last line awaits more.
@@ -31,17 +32,20 @@ export function createShow(kinds: Shown[], color: boolean) {
     if (e.type === 'BlockAdded') return block(e);
     if (e.type === 'FileReferenced') return on.has('notes') ? lines(dim(`◆ @${e.file}`)) : '';
     const by = 'by' in e ? e.by : undefined;
-    const operation = by && by !== 'user' && on.has('policy') ? operationText(e) : null;
-    return operation ? lines(dim(`◆ ${by}: ${operation}`)) : '';
+    if (!by || by === 'user') return '';
+    const operation = on.has('policy') ? operationText(e) : null;
+    if (operation) return lines(dim(`◆ ${by}: ${operation}`));
+    // The policy's line says its Note; without it the Note is shown as one.
+    return (e.type === 'Compact' || e.type === 'NoteAdded') && on.has('notes') ? note(e.content) : '';
   }
 
   function block(e: Extract<SessionEvent, { type: 'BlockAdded' }>): string {
     if (e.kind === 'Tool Call' && on.has('tools')) return lines(`${cyan('$')} ${e.tool === 'search' ? `search ${e.content}` : e.content}`);
     if (e.kind === 'Tool Result' && on.has('tools')) return lines(...resultLines(e.content).map(dim));
-    if (e.kind !== 'Note' || !on.has('notes')) return '';
-    const more = e.content.split('\n').length - 1;
-    return lines(dim(`◆ note: ${headline(e.content)}${more ? ` (+${count(more, 'line')})` : ''}`));
+    return e.kind === 'Note' && on.has('notes') ? note(e.content) : '';
   }
+
+  const note = (content: string) => lines(dim(`◆ note: ${gist(content)}`));
 
   // The new part of the Thinking streaming, each line after ∴.
   function thinking(text: string): string {
@@ -70,14 +74,20 @@ function resultLines(content: string): string[] {
   return [...output.slice(0, RESULT_LINES).map(l => `  │ ${l}`), ...(more > 0 ? [`  │ … ${count(more, 'more line')}`] : []), ...(end ? [`  └ ${end}`] : [])];
 }
 
+// A Note's first line and how many follow.
+function gist(content: string): string {
+  const more = content.split('\n').length - 1;
+  return `${headline(content)}${more ? ` (+${count(more, 'line')})` : ''}`;
+}
+
 const ids = (all: number[]) => all.map(id => `#${id}`).join(', ');
 
 function operationText(e: SessionEvent): string | null {
   switch (e.type) {
     case 'Remove': return `remove ${ids([e.id, ...(e.others ?? [])])}`;
-    case 'Compact': return `compact ${ids(e.sources)}`;
+    case 'Compact': return `compact ${ids(e.sources)} → ${gist(e.content)}`;
     case 'PairToNote': return `note #${e.call}`;
-    case 'NoteAdded': return `note ${headline(e.content)}`;
+    case 'NoteAdded': return `note → ${gist(e.content)}`;
     case 'Edit': return `edit #${e.id}`;
     case 'Move': return `move #${e.id}`;
     default: return null;

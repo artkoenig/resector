@@ -20,12 +20,19 @@ test('Notes and policy operations are ◆ lines', () => {
   const show = all();
   expect(show.event({ type: 'BlockAdded', id: 7, kind: 'Note', origin: 'compaction', content: 'the gist\nmore' })).toBe('◆ note: the gist (+1 line)\n');
   expect(show.event({ type: 'FileReferenced', id: 8, file: 'src/a.ts' })).toBe('◆ @src/a.ts\n');
-  expect(show.event({ type: 'Compact', sources: [3, 4], instruction: 'merge', noteId: 9, content: 'x', by: 'summary-reset' })).toBe('◆ summary-reset: compact #3, #4\n');
+  expect(show.event({ type: 'Compact', sources: [3, 4], instruction: 'merge', noteId: 9, content: 'the gist\nmore', by: 'summary-reset' })).toBe('◆ summary-reset: compact #3, #4 → the gist (+1 line)\n');
   expect(show.event({ type: 'Remove', id: 4, by: 'summary-reset' })).toBe('◆ summary-reset: remove #4\n');
-  expect(show.event({ type: 'NoteAdded', id: 10, after: 9, content: 'go on', by: 'onward' })).toBe('◆ onward: note go on\n');
-  expect(show.event({ type: 'NoteAdded', id: 11, after: 9, content: 'x'.repeat(100), by: 'onward' })).toBe(`◆ onward: note ${'x'.repeat(79)}…\n`);
+  expect(show.event({ type: 'NoteAdded', id: 10, after: 9, content: 'go on', by: 'onward' })).toBe('◆ onward: note → go on\n');
+  expect(show.event({ type: 'NoteAdded', id: 11, after: 9, content: 'x'.repeat(100), by: 'onward' })).toBe(`◆ onward: note → ${'x'.repeat(79)}…\n`);
   expect(show.event({ type: 'Remove', id: 4, by: 'user' })).toBe('');
   expect(show.event({ type: 'RequestSent', hash: 'h', tokens: 3 })).toBe('');
+});
+
+test('without policy, the Notes a policy writes are ◆ note lines', () => {
+  const notes = createShow(['notes'], false);
+  expect(notes.event({ type: 'Compact', sources: [3, 4], instruction: 'merge', noteId: 9, content: 'the gist\nmore', by: 'summary-reset' })).toBe('◆ note: the gist (+1 line)\n');
+  expect(notes.event({ type: 'NoteAdded', id: 10, after: 9, content: 'go on', by: 'onward' })).toBe('◆ note: go on\n');
+  expect(notes.event({ type: 'Remove', id: 4, by: 'summary-reset' })).toBe('');
 });
 
 test('only the kinds chosen are shown; statuses with any of them, errors never', () => {

@@ -70,8 +70,9 @@ async function headless({ prompt, flags }: Run, signal: AbortSignal): Promise<{ 
       });
       // The session's opening notice is not news.
       createEffect(on(gate.status, status => status && toStderr(show.status(status)), { defer: true }));
-      // RESECTOR_TTY: another terminal, for tests.
-      const tty = openTty(process.env.RESECTOR_TTY);
+      // RESECTOR_TTY: a file of lines typed, for tests; the asking goes to <file>.out.
+      const typed = process.env.RESECTOR_TTY;
+      const tty = typed ? openTty(typed, `${typed}.out`) : openTty();
       try {
         return await gate.run({ prompt, signal, maxTurns: settings.maxTurns, terminal: tty?.terminal });
       } finally {

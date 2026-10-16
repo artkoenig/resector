@@ -1,8 +1,10 @@
-// The terminal of a Headless Run: Tool Approval and Questions asked on stderr, answered from /dev/tty, since stdin may
-// carry the prompt.
-import { closeSync, openSync, read } from 'node:fs';
+// The terminal of a Headless Run: Tool Approval and Questions asked and answered at /dev/tty, since stdin may carry
+// the prompt and stderr may go to a file.
+import { closeSync, openSync, read, writeSync } from 'node:fs';
+import { isatty } from 'node:tty';
 import type { Action, Verdict } from '../../core/approval/approval';
 import type { Block } from '../../core/log/fold';
+import { palette } from '../../core/palette/palette';
 import { orderedOptions, isRecommended, type Answer, type Question } from '../../core/tools/question';
 import type { Terminal } from '../../gate/ports';
 
@@ -12,7 +14,7 @@ export type TtyIo = { write(text: string): void; read(signal: AbortSignal): Prom
 const CHOICES = { y: 'once', a: 'session', n: 'reject' } as const;
 
 export function ttyTerminal(io: TtyIo, color: boolean): Terminal {
-  const paint = (code: string) => (s: string) => (color ? `\x1b[${code}m${s}\x1b[0m` : s);
+  const paint = palette(color);
   const bold = paint('1');
   const dim = paint('2');
   const yellow = paint('33');
@@ -64,13 +66,21 @@ function answerOf(line: string, q: Question): Answer {
   return numbers ? (picked as string[]) : [line];
 }
 
-// The terminal at path, asking on stderr; null when it cannot be opened (no terminal: nobody is asked). It is read
-// only while asking: a run in the background is not stopped for reading, and an EOF (Ctrl-D) ends that answer only.
-export function openTty(path = '/dev/tty'): { terminal: Terminal; close(): void } | null {
+// The terminal read at input and written at output; null when it cannot be opened (no terminal: nobody is asked).
+// It is read only while asking: a run in the background is not stopped for reading, and an EOF (Ctrl-D) ends that
+// answer only.
+export function openTty(input = '/dev/tty', output = input): { terminal: Terminal; close(): void } | null {
   let fd: number;
+  let out: number;
   try {
-    fd = openSync(path, 'r');
+    fd = openSync(input, 'r');
   } catch {
+    return null;
+  }
+  try {
+    out = openSync(output, 'a');
+  } catch {
+    closeSync(fd);
     return null;
   }
   // What was read past the line asked for (a paste, a file): the next answers.
@@ -103,6 +113,10 @@ export function openTty(path = '/dev/tty'): { terminal: Terminal; close(): void 
   // An aborted run ends: a line read after it is not wanted.
   const until = (signal: AbortSignal) =>
     signal.aborted ? Promise.resolve(null) : Promise.race([line(), new Promise<null>(resolve => signal.addEventListener('abort', () => resolve(null), { once: true }))]);
-  const write = (text: string) => void process.stderr.write(text);
-  return { terminal: ttyTerminal({ write, read: until }, !!process.stderr.isTTY), close: () => closeSync(fd) };
+  const write = (text: string) => void writeSync(out, text);
+  const close = () => {
+    closeSync(fd);
+    closeSync(out);
+  };
+  return { terminal: ttyTerminal({ write, read: until }, isatty(out)), close };
 }
