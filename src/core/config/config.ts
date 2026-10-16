@@ -31,6 +31,20 @@ const ProfileSchema = z.strictObject({
   systemPrompt: z.string().optional().describe('System prompt file, relative to this config file'),
 });
 
+// What a Headless Run shows on stderr besides the closing line (--show).
+export const SHOWN = ['thinking', 'tools', 'notes', 'policy'] as const;
+// What a Headless Run (`resector -p`) starts with; its flags override it. Permission rules stay shared with the TUI.
+export const HeadlessSchema = z.strictObject({
+  profile: z.string().optional().describe('Model Profile; default: defaultProfile'),
+  policy: z.string().optional().describe('Context Policy, `off` for none; default: defaultPolicy'),
+  thinking: z.string().optional().describe('Reasoning: off, on or an effort level; default: the profile\'s'),
+  tools: z.array(z.string()).optional().describe('Exactly these tools, [] for none; default: a new session\'s'),
+  show: z.array(z.enum(SHOWN)).optional().describe('What goes to stderr besides the closing line'),
+  maxTurns: z.number().int().positive().optional().describe('Requests to the model at most (default 50)'),
+  worktree: z.boolean().optional().describe('Run in its own git worktree'),
+});
+export type Headless = z.infer<typeof HeadlessSchema>;
+
 const PermissionSchema = z.record(z.string(), z.enum(['allow', 'ask', 'deny']));
 
 const ConfigSchema = z.strictObject({
@@ -40,6 +54,7 @@ const ConfigSchema = z.strictObject({
   defaultPolicy: z.string().optional().describe('Context Policy switched on for new sessions (default summary-reset, `off` for none); /policy switches it'),
   permission: PermissionSchema.optional().describe('bash command pattern → decision; the last matching rule decides: built-in, global, project config, session; none → ask'),
   keybindings: z.record(z.string(), z.string()).optional().describe('Action → key'),
+  headless: HeadlessSchema.optional().describe('Settings of `resector -p`'),
   bash: z.strictObject({ timeout: z.number().positive().optional().describe('Seconds (default 120)') }).optional(),
 });
 

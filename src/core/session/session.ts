@@ -2,7 +2,7 @@
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
 import { fileNote } from '../notes/files';
-import { TOOLS } from '../tools/catalog';
+import { TOOLS, toolsWith } from '../tools/catalog';
 
 export type SessionSummary = { title: string; renamed: boolean; profile: string; blocks: number; tokens: number | null };
 
@@ -18,14 +18,15 @@ type RequestSent = Extract<SessionEvent, { type: 'RequestSent' }>;
 // All are ordinary Notes right after the Tools Block, one per file. checkout, no Note: the directory the session
 // starts in, logged with SessionCreated.
 export type Instructions = { file: string; content: string };
-export type SessionNotes = { environment?: string; instructions?: Instructions[]; checkout?: string };
+// tools: exactly these in the Tools Block, else a new session's.
+export type SessionNotes = { environment?: string; instructions?: Instructions[]; checkout?: string; tools?: string[] };
 
-export function newSession(profile: string, systemPrompt: string, { environment, instructions, checkout }: SessionNotes = {}): SessionEvent[] {
+export function newSession(profile: string, systemPrompt: string, { environment, instructions, checkout, tools }: SessionNotes = {}): SessionEvent[] {
   const events: SessionEvent[] = [
     { type: 'SessionCreated', profile, protocol: 'native', ...(checkout ? { checkout } : {}) },
     { type: 'BlockAdded', id: 1, kind: 'System', origin: 'config', content: systemPrompt },
     // Always sent, never edited.
-    { type: 'BlockAdded', id: 2, kind: 'Tools', origin: 'config', content: TOOLS },
+    { type: 'BlockAdded', id: 2, kind: 'Tools', origin: 'config', content: tools ? toolsWith(tools) : TOOLS },
   ];
   if (environment !== undefined) events.push({ type: 'BlockAdded', id: events.length, kind: 'Note', origin: 'environment', content: environment });
   for (const { file, content } of instructions ?? []) {

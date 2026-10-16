@@ -5,14 +5,17 @@ import { createRoot } from 'solid-js';
 import { configPaths } from '../adapters/fs/config';
 import { projectSessionStore } from '../adapters/store/sessions';
 import { openWorkspace } from '../compose/workspace';
+import { headlessSettings, type Flags } from '../core/config/headless';
+import { TOOL_NAMES } from '../core/tools/catalog';
 import { createGate, type Outcome } from '../gate';
 import { minimalView } from '../gate/minimal-view';
 import { count, errorText, formatTokens } from '../gate/text';
 
-// -p <prompt>.
-export type Run = { prompt: string };
+// -p <prompt> and its flags.
+export type Run = { prompt: string; flags: Flags };
 
 const INTERRUPTED = 130;
+const USAGE = 2;
 const EXIT: Record<Outcome['kind'], number> = { answer: 0, error: 1, 'max-turns': 1, aborted: INTERRUPTED };
 
 export async function run(command: Run): Promise<number> {
@@ -21,7 +24,12 @@ export async function run(command: Run): Promise<number> {
   const interrupt = () => (stop.signal.aborted ? process.exit(INTERRUPTED) : stop.abort());
   process.on('SIGINT', interrupt);
   try {
-    const { outcome, id } = await headless(await withPiped(command.prompt), stop.signal).catch(e => ({ outcome: failed(errorText(e)), id: null }));
+    const ran = await headless({ ...command, prompt: await withPiped(command.prompt) }, stop.signal).catch(e => ({ outcome: failed(errorText(e)), id: null }));
+    if ('usage' in ran) {
+      process.stderr.write(`resector: ${ran.usage}\n`);
+      return USAGE;
+    }
+    const { outcome, id } = ran;
     if (outcome.kind === 'answer') process.stdout.write(`${outcome.text}\n`);
     process.stderr.write(closing(outcome, id));
     return EXIT[outcome.kind];
@@ -30,18 +38,21 @@ export async function run(command: Run): Promise<number> {
   }
 }
 
-// The run on a new session; without a config it fails before one is opened.
-async function headless(prompt: string, signal: AbortSignal): Promise<{ outcome: Outcome; id: string | null }> {
+// The run on a new session with the settings; without a config, or with flags naming what does not exist, it fails
+// before one is opened.
+async function headless({ prompt, flags }: Run, signal: AbortSignal): Promise<{ outcome: Outcome; id: string | null } | { usage: string }> {
   const paths = configPaths({ home: homedir(), cwd: process.cwd(), env: process.env });
   const workspace = await openWorkspace({ paths, store: projectSessionStore(paths), openFile: async () => {}, onReopen: () => {} });
   const loaded = workspace.config();
   if (!loaded) return { outcome: failed(`no config at ${paths.global} – run resector once to set it up`), id: null };
-  const opened = await workspace.open(loaded);
+  const settings = headlessSettings(loaded.config, flags, { policies: workspace.policies.all.map(p => p.name), tools: TOOL_NAMES });
+  if ('usage' in settings) return settings;
+  const opened = await workspace.open(loaded, undefined, false, settings);
   try {
     const outcome = await createRoot(async dispose => {
       const gate = createGate({ ...opened.options, editor: async text => text, clipboard: async () => {}, openSessions: () => {} }, minimalView);
       try {
-        return await gate.run({ prompt, signal });
+        return await gate.run({ prompt, signal, maxTurns: settings.maxTurns });
       } finally {
         dispose();
       }

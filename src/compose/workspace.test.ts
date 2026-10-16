@@ -69,6 +69,17 @@ test('a new session with an unknown defaultPolicy starts without one and says wh
   expect(options.notice).toEqual({ text: 'new session · defaultPolicy nope – no such policy', tone: 'warn' });
 });
 
+test('a new session starts with what it is opened with: profile, policy, thinking, tools, worktree, Auto-approve', async () => {
+  const { ws, open, log, paths } = await workspace({ git: true });
+  const { id, options } = await open(undefined, false, { profile: 'local', policy: 'off', thinking: 'high', tools: ['bash'], worktree: true, autoApprove: true });
+  const events = log(id);
+  expect(events[0]).toMatchObject({ type: 'SessionCreated', profile: 'local' });
+  expect(events.find(e => e.type === 'BlockAdded' && e.kind === 'Tools')).toMatchObject({ content: expect.not.stringContaining('question') });
+  expect(events.filter(e => e.type === 'ThinkingSet' || e.type === 'WorktreeSet')).toEqual([{ type: 'ThinkingSet', thinking: 'high' }, { type: 'WorktreeSet', on: true }]);
+  expect([ws.policies.active(), options.autoApprove!.on()]).toEqual([null, true]);
+  expect(options.approval.root).toBe(join(paths.projectHome.data, 'worktrees', id));
+});
+
 const chat = (profile: string, checkout?: string): SessionEvent[] => [
   ...newSession(profile, 'You are terse.', checkout ? { checkout } : undefined),
   { type: 'BlockAdded', id: 3, kind: 'User', origin: 'user', content: 'hi there' },

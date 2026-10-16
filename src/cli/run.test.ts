@@ -11,14 +11,14 @@ const MAIN = join(import.meta.dir, '..', 'main.ts');
 let fake: ReturnType<typeof startFakeLlamaCpp>;
 afterEach(() => fake.stop());
 
-// A project with a config on the fake server, unless config is false.
-function project({ config = true } = {}) {
+// A project with a config on the fake server, unless config is false; headless: its headless section.
+function project({ config = true, headless = {} } = {}) {
   fake = startFakeLlamaCpp({ nCtx: 4096 });
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'resector-cli-')));
   const dir = join(root, 'project');
   mkdirSync(dir);
   const env = { HOME: join(root, 'home'), XDG_CONFIG_HOME: join(root, 'config'), XDG_DATA_HOME: join(root, 'data'), RESECTOR_CONFIG: join(root, 'config.jsonc') };
-  if (config) writeFileSync(env.RESECTOR_CONFIG, JSON.stringify({ profiles: { local: { backend: 'llamacpp', endpoint: fake.url, window: 2048 } }, defaultProfile: 'local' }));
+  if (config) writeFileSync(env.RESECTOR_CONFIG, JSON.stringify({ profiles: { local: { backend: 'llamacpp', endpoint: fake.url, window: 2048 } }, defaultProfile: 'local', headless }));
   const sessions = () => {
     const at = projectSessionsDir(configPaths({ home: env.HOME, cwd: dir, env }));
     return readdirSync(at).filter(f => f.endsWith('.jsonl')).map(f => readFileSync(join(at, f), 'utf8'));
@@ -78,11 +78,29 @@ test('without a config the run fails with a hint', async () => {
   expect(err).toMatch(/^resector: no config at .*\n· error · 0 turns · 0 tokens\n$/);
 });
 
-test('a usage error exits 2', async () => {
+test('a usage error exits 2: -p with -c, a flag of -p without it', async () => {
   const p = project();
-  const { out, err, code } = await resector(p, ['-p', 'hi', '-c']);
-  expect({ out, code }).toEqual({ out: '', code: 2 });
-  expect(err).toStartWith('usage: resector');
+  for (const args of [['-p', 'hi', '-c'], ['-m', 'local']]) {
+    const { out, err, code } = await resector(p, args);
+    expect({ out, code }).toEqual({ out: '', code: 2 });
+    expect(err).toStartWith('usage: resector');
+  }
+});
+
+test('a flag beats the headless config section', async () => {
+  const p = project({ headless: { tools: ['bash'] } });
+  reply({ chunks: ['ok'] });
+  reply({ chunks: ['ok'] });
+  expect((await resector(p, ['-p', 'hi'])).code).toBe(0);
+  expect((await resector(p, ['-p', 'hi', '--tools', 'none'])).code).toBe(0);
+  const tools = fake.chatRequests.map(r => (r as { tools?: { function: { name: string } }[] }).tools?.map(t => t.function.name));
+  expect(tools).toEqual([['bash'], undefined]);
+});
+
+test('an unknown profile is a usage error naming the valid ones', async () => {
+  const p = project();
+  const { out, err, code } = await resector(p, ['-p', 'hi', '-m', 'big']);
+  expect({ out, err, code }).toEqual({ out: '', err: 'resector: unknown profile big (profiles: local)\n', code: 2 });
 });
 
 test('Ctrl-C aborts the run: exit 130, nothing on stdout', async () => {

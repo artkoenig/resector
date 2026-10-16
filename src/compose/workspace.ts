@@ -17,6 +17,7 @@ import { fold } from '../core/log/fold';
 import { environmentText } from '../core/notes/environment';
 import { BUILT_IN, DEFAULT_POLICY } from '../core/policy/built-in';
 import type { Policy } from '../core/policy/policy';
+import type { Settings } from '../core/config/headless';
 import { checkoutOf, inWorktree, newSession, summarize, type SessionRef } from '../core/session/session';
 import type { AutoApprove, GateOptions, Git, Policies, Status } from '../gate';
 import { errorText } from '../gate/text';
@@ -36,6 +37,8 @@ export type Loaded = NonNullable<ReturnType<typeof loadConfig>>;
 type Running = 'runner' | 'searcher' | 'approval' | 'project' | 'git';
 // What a view adds to the Gate's options.
 type ViewOptions = 'editor' | 'clipboard' | 'openSessions';
+// What a new session starts with instead of the config's defaults (a Headless Run's settings).
+export type StartWith = Omit<Settings, 'show' | 'maxTurns'>;
 export type Opened = { id: string; options: Omit<GateOptions, ViewOptions>; release: () => void };
 export type Workspace = Awaited<ReturnType<typeof openWorkspace>>;
 
@@ -78,26 +81,29 @@ export async function openWorkspace(options: WorkspaceOptions) {
     return other && other !== name ? { profile: other, backend: await connect(config.profile(other), `${session}:compaction`) } : null;
   };
 
-  function create(loaded: Loaded) {
+  function create(loaded: Loaded, start: StartWith | undefined) {
     const opened = store.create();
-    const profile = loaded.profile();
+    const profile = loaded.profile(start?.profile);
     // The project instructions are read once, now.
     const events = newSession(profile.name, loaded.systemPrompt(profile), {
       environment: projectAt(here).environment(),
       // From the checkout's top level, also when started in a subdirectory.
       instructions: projectInstructions(topLevel(here), paths.projectHome.config),
       checkout: here,
+      tools: start?.tools,
     });
+    if (start?.thinking !== undefined) events.push({ type: 'ThinkingSet', thinking: start.thinking });
+    if (start?.worktree) events.push({ type: 'WorktreeSet', on: true });
     events.forEach(opened.log.append);
+    if (start) setAutoOn(start.autoApprove);
     // A new session starts with the configured policy on; when switched to, a resumed one keeps the app's.
-    const missing = switchOnDefault(loaded);
+    const missing = switchOnDefault(loaded, start?.policy);
     const notice = missing ? { text: `new session · ${missing}`, tone: 'warn' as const } : { text: 'new session', tone: 'ok' as const };
     return { opened, events, notice };
   }
 
   // The configured policy switched on (summary-reset unless set, none with `off`); why not, if no such policy.
-  function switchOnDefault(loaded: Loaded): string | null {
-    const name = loaded.config.defaultPolicy ?? DEFAULT_POLICY;
+  function switchOnDefault(loaded: Loaded, name = loaded.config.defaultPolicy ?? DEFAULT_POLICY): string | null {
     const policy = name === 'off' ? null : policies.all.find(p => p.name === name);
     if (policy) setActive(policy);
     return policy === undefined ? `defaultPolicy ${name} – no such policy` : null;
@@ -121,10 +127,11 @@ export async function openWorkspace(options: WorkspaceOptions) {
     return { opened, events, notice: { text: texts.join(' · '), tone: texts.length > 1 ? ('warn' as const) : ('ok' as const) } };
   }
 
-  // which: a session to resume, else a new session; a new one is dropped again if its backend fails. started: at start.
-  async function open(loaded: Loaded, which?: SessionRef, started = false): Promise<Opened> {
+  // which: a session to resume, else a new session (with start); a new one is dropped again if its backend fails.
+  // started: at start.
+  async function open(loaded: Loaded, which?: SessionRef, started = false, start?: StartWith): Promise<Opened> {
     split ??= await createSplit();
-    const { opened, events, notice } = which ? resume(loaded, which, started) : create(loaded);
+    const { opened, events, notice } = which ? resume(loaded, which, started) : create(loaded, start);
     const profile = fold(events).profile;
     const backend = await connect(loaded.profile(profile), opened.id).catch(e => {
       opened.release();
