@@ -69,6 +69,10 @@ _Avoid_: batch mode, print mode, non-interactive mode
 View restriction at the Review Gate by Kind: System (with the Tools Block), User, Thinking, Assistant, Note, or Tool Calls with their Tool Results (never one without the other). Each is switched on or off on its own; the blocks shown are those of the Kinds on. Tool Calls are off at start; a Tool Call awaiting approval or running is shown regardless. Changes nothing about the Context and is not recorded in the Session Log.
 _Avoid_: search, hide
 
+**Headless Run**:
+One prompt run from the command line (`resector -p`) without the Review Gate: the Tool Loop goes on through Holds until the model answers without calls or `--max-turns` is reached, and only the last answer goes to stdout. Tool Approval and Questions are asked on the terminal, or declined without one. Always a new Session, logged and resumable at the Review Gate.
+_Avoid_: batch mode, print mode, non-interactive mode
+
 ### Measurement
 
 **Budget**:
