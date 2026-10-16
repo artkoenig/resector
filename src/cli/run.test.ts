@@ -1,6 +1,6 @@
 // Headless Run end to end: `resector -p` as a process against the fake llama.cpp server.
 import { afterEach, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startFakeLlamaCpp, type Reply } from '../../test/fake-llamacpp';
@@ -11,13 +11,15 @@ const MAIN = join(import.meta.dir, '..', 'main.ts');
 let fake: ReturnType<typeof startFakeLlamaCpp>;
 afterEach(() => fake.stop());
 
-// A project with a config on the fake server, unless config is false; headless: its headless section.
-function project({ config = true, headless = {} } = {}) {
+// A project with a config on the fake server, unless config is false; headless: its headless section; tty: the lines
+// typed at the terminal, none when there is no terminal.
+function project({ config = true, headless = {}, tty }: { config?: boolean; headless?: object; tty?: string[] } = {}) {
   fake = startFakeLlamaCpp({ nCtx: 4096 });
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'resector-cli-')));
   const dir = join(root, 'project');
   mkdirSync(dir);
-  const env = { HOME: join(root, 'home'), XDG_CONFIG_HOME: join(root, 'config'), XDG_DATA_HOME: join(root, 'data'), RESECTOR_CONFIG: join(root, 'config.jsonc') };
+  const env = { HOME: join(root, 'home'), XDG_CONFIG_HOME: join(root, 'config'), XDG_DATA_HOME: join(root, 'data'), RESECTOR_CONFIG: join(root, 'config.jsonc'), RESECTOR_TTY: join(root, 'tty') };
+  if (tty) writeFileSync(env.RESECTOR_TTY, tty.map(l => `${l}\n`).join(''));
   if (config) writeFileSync(env.RESECTOR_CONFIG, JSON.stringify({ profiles: { local: { backend: 'llamacpp', endpoint: fake.url, window: 2048 } }, defaultProfile: 'local', headless }));
   const sessions = () => {
     const at = projectSessionsDir(configPaths({ home: env.HOME, cwd: dir, env }));
@@ -118,6 +120,25 @@ test('without --show stderr is the closing status line only', async () => {
   const p = project();
   reply({ thinking: ['hm'], chunks: ['quiet'] });
   expect((await resector(p, ['-p', 'go'])).err).toMatch(/^· answer · 1 turn · \S+ tokens\n$/);
+});
+
+test('a call the rules ask for is asked at the terminal and runs on y', async () => {
+  const asked = project({ tty: ['y'] });
+  reply({ calls: [{ name: 'bash', arguments: JSON.stringify({ command: 'touch made' }) }] });
+  reply({ chunks: ['done'] });
+  const { out, err } = await resector(asked, ['-p', 'go']);
+  expect(out).toBe('done\n');
+  expect(err).toStartWith('? approve touch made\n  ? touch made (');
+  expect(existsSync(join(asked.dir, 'made'))).toBe(true);
+});
+
+test('without a terminal a call the rules ask for is not run; the run goes on', async () => {
+  const unattended = project();
+  reply({ calls: [{ name: 'bash', arguments: JSON.stringify({ command: 'touch made' }) }] });
+  reply({ chunks: ['done'] });
+  expect((await resector(unattended, ['-p', 'go'])).out).toBe('done\n');
+  expect(existsSync(join(unattended.dir, 'made'))).toBe(false);
+  expect(unattended.sessions()[0]).toContain('no user to approve');
 });
 
 test('Ctrl-C aborts the run: exit 130, nothing on stdout', async () => {

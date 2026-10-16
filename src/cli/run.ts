@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { createEffect, createRoot, on } from 'solid-js';
 import { configPaths } from '../adapters/fs/config';
 import { projectSessionStore } from '../adapters/store/sessions';
+import { openTty } from '../adapters/terminal/tty';
 import { openWorkspace } from '../compose/workspace';
 import { headlessSettings, type Flags } from '../core/config/headless';
 import type { SessionEvent } from '../core/log/events';
@@ -69,9 +70,12 @@ async function headless({ prompt, flags }: Run, signal: AbortSignal): Promise<{ 
       });
       // The session's opening notice is not news.
       createEffect(on(gate.status, status => status && toStderr(show.status(status)), { defer: true }));
+      // RESECTOR_TTY: another terminal, for tests.
+      const tty = openTty(process.env.RESECTOR_TTY);
       try {
-        return await gate.run({ prompt, signal, maxTurns: settings.maxTurns });
+        return await gate.run({ prompt, signal, maxTurns: settings.maxTurns, terminal: tty?.terminal });
       } finally {
+        tty?.close();
         dispose();
       }
     });
