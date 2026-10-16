@@ -4,7 +4,7 @@
 
 Everything else stays as in the TUI. The Context Policy, the Permission Rules, Auto-approve and the Session Log work unchanged. Every Headless Run is a new Session, logged and resumable in the TUI (`/sessions`). There is no `-c`, no `--no-session` and no headless-only permission preset.
 
-A person runs it, so the run asks that person. A Question or a Tool Call that the Permission Rules leave at `ask` is asked on stderr, and the answer is read from `/dev/tty` through a new port, since stdin may carry the prompt. Without a terminal the Question is declined and `ask` turns into `deny` with the result text "no user to approve". The run goes on either way. Without config of its own, a run without a terminal can therefore only run what the rules allow, which by default means read-only commands.
+A person runs it, so the run asks that person. A Question or a Tool Call that the Permission Rules leave at `ask` is asked and answered at `/dev/tty` through a new port, since stdin may carry the prompt and stderr may go to a file. Without a terminal the Question is declined and `ask` turns into `deny` with the result text "no user to approve". The run goes on either way. Without config of its own, a run without a terminal can therefore only run what the rules allow, which by default means read-only commands.
 
 The wiring that is not UI moves out of `ui/launch.tsx` into `src/compose/`: loading config and policies, opening or resuming a Session, the Session Worktree, the runner, the compactor and the lock. Both `ui/` and the new root `src/cli/run.ts` import it; `compose` never imports `ui`. The minimal `View` (rows = blocks sent, follow moves the selection) moves from `gate.harness.ts` into `gate/` for both the CLI and the tests.
 
@@ -29,7 +29,7 @@ The wiring that is not UI moves out of `ui/launch.tsx` into `src/compose/`: load
   - `◆` policy operation
   - `·` status
 
-  After those, one closing status line with outcome, turns and tokens, also without `--show`. Color only when stderr is a TTY. Tool Approval shows each sub-command with its verdict and its reason and asks `y`/`a`/`n`. A Question numbers its options and takes a number or free text: empty means the Recommended Option, `-` skips the question.
+  After those, one closing status line with outcome, turns and tokens, also without `--show`. Color only when stderr is a TTY; the asking, at `/dev/tty`, is colored when that is one. Tool Approval shows each sub-command with its verdict and its reason and asks `y`/`a`/`n`. A Question numbers its options and takes a number or free text: empty means the Recommended Option, `-` skips the question.
 - **Exit codes.**
   - 0: answer.
   - 1: error or max-turns. Errors include an unreachable backend, a missing File Reference, a Context that leaves no Budget, and a failed policy or Compaction. stdout stays empty and stderr shows the Gate's status text.
