@@ -2,16 +2,16 @@ import { expect, test } from 'bun:test';
 import pkg from '../package.json';
 import { main } from './main';
 
-const USAGE = 'usage: resector [-c [id]] | resector --export-fixture [id] | resector --version\n';
+const USAGE = 'usage: resector [-c [id]] | resector -p <prompt> | resector --export-fixture [id] | resector --version\n';
 
 test('--version prints the package version', () => {
   expect(main(['--version'])).toEqual({ code: 0, out: `resector ${pkg.version}\n` });
 });
 
 test('unknown arguments print usage and fail', () => {
-  expect(main(['--bogus'])).toEqual({ code: 1, out: USAGE });
-  expect(main(['stray'])).toEqual({ code: 1, out: USAGE });
-  expect(main(['-c', 'a', 'b'])).toEqual({ code: 1, out: USAGE });
+  expect(main(['--bogus'])).toEqual({ code: 2, out: USAGE });
+  expect(main(['stray'])).toEqual({ code: 2, out: USAGE });
+  expect(main(['-c', 'a', 'b'])).toEqual({ code: 2, out: USAGE });
 });
 
 test('without arguments Resector starts a new session', () => {
@@ -35,5 +35,13 @@ test('--export-fixture prints the last or a given Session Log', () => {
 });
 
 test('the endpoint comes from the Model Profile, not the command line', () => {
-  expect(main(['--endpoint', 'http://gpu:9000'])).toEqual({ code: 1, out: USAGE });
+  expect(main(['--endpoint', 'http://gpu:9000'])).toEqual({ code: 2, out: USAGE });
+});
+
+test('-p runs a prompt without the TUI; with -c or a stray argument it is a usage error', () => {
+  expect(main(['-p', 'list the files'])).toEqual({ run: { prompt: 'list the files' } });
+  expect(main(['--prompt', 'hi'])).toEqual({ run: { prompt: 'hi' } });
+  expect(main(['-p', 'hi', '-c'])).toEqual({ code: 2, out: USAGE });
+  expect(main(['-p', 'hi', 'stray'])).toEqual({ code: 2, out: USAGE });
+  expect(main(['-p'])).toEqual({ code: 2, out: USAGE });
 });
