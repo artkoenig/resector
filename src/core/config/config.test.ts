@@ -152,3 +152,12 @@ test('the first-start config holds the chosen model as the default Model Profile
   expect(name('models/Qwen3-8B-Q4_K_M.gguf')).toBe('Qwen3-8B-Q4_K_M');
   expect(name('my.gguf-v2.gguf')).toBe('my.gguf-v2');
 });
+
+test('the headless section is merged from global and project config; permission and autoApprove are not in it', () => {
+  const { config } = readConfig([
+    { source: 'global', text: '{ "headless": { "policy": "off", "tools": ["bash"], "maxTurns": 10 } }' },
+    { source: 'project', text: '{ "headless": { "tools": [], "show": ["tools"], "worktree": true } }', project: true },
+  ]);
+  expect(config.headless).toEqual({ policy: 'off', tools: [], maxTurns: 10, show: ['tools'], worktree: true });
+  expect(() => readConfig([{ source: 'global', text: '{ "headless": { "permission": {}, "autoApprove": true } }' }])).toThrow(/headless: Unrecognized keys: "permission", "autoApprove"/);
+});

@@ -7,7 +7,7 @@ module.exports = {
       comment: 'Core has no I/O and never imports the Gate, UI or adapters; adapters are injected.',
       severity: 'error',
       from: { path: '^src/core' },
-      to: { path: '^src/(ui|gate|adapters)' },
+      to: { path: '^src/(ui|gate|adapters|compose|cli)' },
     },
     // Layers of docs/strategic-design.md: ui → gate → core, adapters → core. Exceptions list the known violations;
     // they only shrink.
@@ -16,21 +16,28 @@ module.exports = {
       comment: 'Adapters implement the Gate ports of gate/ports.ts; nothing else of the Gate or UI.',
       severity: 'error',
       from: { path: '^src/adapters' },
-      to: { path: '^src/(ui|gate)', pathNot: '^src/gate/ports\\.ts$' },
+      to: { path: '^src/(ui|gate|compose|cli)', pathNot: '^src/gate/ports\\.ts$' },
     },
     {
       name: 'gate-not-to-adapters',
       comment: 'The Review Gate declares its ports; the composition root wires adapters in.',
       severity: 'error',
       from: { path: '^src/gate' },
-      to: { path: '^src/adapters' },
+      to: { path: '^src/(adapters|compose)' },
     },
     {
       name: 'gate-not-to-ui',
       comment: 'The Review Gate is the application layer below the views.',
       severity: 'error',
       from: { path: '^src/gate' },
-      to: { path: '^src/ui' },
+      to: { path: '^src/(ui|cli)' },
+    },
+    {
+      name: 'compose-not-to-views',
+      comment: 'The wiring shared by the TUI and runs without it knows neither of them.',
+      severity: 'error',
+      from: { path: '^src/compose' },
+      to: { path: '^src/(ui|cli)' },
     },
     {
       name: 'ui-not-to-adapters',

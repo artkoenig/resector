@@ -70,10 +70,11 @@ src/core/        domain, no I/O (rule unchanged)
   session/ config/                             Sessions & Workspace
 src/gate/        Review Gate application layer: workflow, its state, its ports. No TSX, no adapters, no ui/.
 src/adapters/    implement ports of core and gate
+src/compose/     wiring outside any view: config, sessions, where they run; never ui/
 src/ui/          OpenTUI views and view state (selection, marks, Kind Filter, keys, hints)
 ```
 
-Dependency rules: `ui → gate → core`, `adapters → core | gate/ports.ts` (types only; a port belongs to the Gate, which calls it), composition root (`ui/launch.tsx`, `ui/start.tsx`) wires adapters into the Gate. `core` imports nothing outside `core`.
+Dependency rules: `ui → gate → core`, `adapters → core | gate/ports.ts` (types only; a port belongs to the Gate, which calls it), composition root (`compose/`, used by `ui/launch.tsx`, `ui/start.tsx`) wires adapters into the Gate. `core` imports nothing outside `core`.
 
 ## Roadmap
 

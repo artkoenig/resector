@@ -6,6 +6,7 @@ import { createCommands } from './commands';
 import { createCompaction } from './compaction';
 import { createEdits } from './edits';
 import { createGit } from './git';
+import { createHeadless } from './headless';
 import { createKernel } from './kernel';
 import { createPolicy } from './policy';
 import { createRules } from './rules';
@@ -18,6 +19,7 @@ import type { AutoApprove, GateOptions, Policies, View } from './types';
 export * from './types';
 export type * from './ports';
 export { COMMANDS } from './commands';
+export { MAX_TURNS, type Outcome, type RunInput } from './headless';
 export type { Kernel } from './kernel';
 
 const NO_POLICIES: Policies = { all: [], active: () => null, set: () => {} };
@@ -35,7 +37,8 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   const rules = createRules(k, approval, autoApprove);
   const loop = createToolLoop(k, sel, rules, repo, { runner, searcher, send: () => void sender.api.send() });
   const policy = createPolicy(k, sel, policies, compactor);
-  const sender = createSend(k, sel, { loop, policy, git: repo, project, policies });
+  const headless = createHeadless(k, loop, rules, text => input.api.submit(text));
+  const sender = createSend(k, sel, { loop, policy, git: repo, project, policies, mayRequest: headless.mayRequest });
   const compacting = createCompaction(k, sel, { editor, instruction, compactor });
   const edits = createEdits(k, sel, loop, { editor, clipboard, project });
   const settings = createSettings(k, rules, loop, autoApprove);
@@ -79,6 +82,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     ...sender.api,
     ...compacting.api,
     ...edits.api,
+    ...headless.api,
   };
 }
 

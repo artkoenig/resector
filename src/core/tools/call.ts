@@ -42,3 +42,10 @@ export function resultText({ output, exit, stopped }: RunResult, timeout: number
   const text = output.trimEnd();
   return text ? `${text}\n${end}` : end;
 }
+
+// resultText read back: the output's lines and how the run ended, null when the result does not say (denied, rejected).
+export function resultEnd(content: string): { output: string[]; end: string | null } {
+  const lines = content.split('\n');
+  const end = lines.at(-1)!.match(/^\[(.+)\]$/)?.[1] ?? null;
+  return { output: end === null ? lines : lines.slice(0, -1), end };
+}

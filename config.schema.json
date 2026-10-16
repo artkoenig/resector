@@ -121,6 +121,55 @@
         "type": "string"
       }
     },
+    "headless": {
+      "description": "Settings of `resector -p`",
+      "type": "object",
+      "properties": {
+        "profile": {
+          "description": "Model Profile; default: defaultProfile",
+          "type": "string"
+        },
+        "policy": {
+          "description": "Context Policy, `off` for none; default: defaultPolicy",
+          "type": "string"
+        },
+        "thinking": {
+          "description": "Reasoning: off, on or an effort level; default: the profile's",
+          "type": "string"
+        },
+        "tools": {
+          "description": "Exactly these tools, [] for none; default: a new session's",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "show": {
+          "description": "What goes to stderr besides the closing line",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "thinking",
+              "tools",
+              "notes",
+              "policy"
+            ]
+          }
+        },
+        "maxTurns": {
+          "description": "Requests to the model at most (default 50)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "worktree": {
+          "description": "Run in its own git worktree",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
     "bash": {
       "type": "object",
       "properties": {

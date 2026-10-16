@@ -1,9 +1,13 @@
-// Ports the Gate runs on and adapters implement: the model server, the runners, $EDITOR, the Session Log, the clipboard.
+// Ports the Gate runs on and adapters implement: the model server, the runners, $EDITOR, the Session Log, the clipboard,
+// the terminal of a Headless Run.
+import type { Verdict } from '../core/approval/approval';
 import type { SessionEvent, Thinking } from '../core/log/events';
+import type { Block } from '../core/log/fold';
 import type { Request } from '../core/render/native';
 import type { TokenSplit } from '../core/tokens/split';
 import type { ChatResult } from '../core/tools/answer';
 import type { RunResult } from '../core/tools/call';
+import type { Answer, Question } from '../core/tools/question';
 
 // onThinking: reasoning as it streams; onToken: a stream event with generated output (reasoning, text or a call's
 // pieces), about one token; maxTokens: the window minus the Context, no reserve – the Gate always sets it,
@@ -43,3 +47,9 @@ export type Editor = (text: string) => Promise<string>;
 export type SessionLog = { append: (event: SessionEvent) => void };
 // Copies a text to the system clipboard.
 export type Clipboard = (text: string) => Promise<void>;
+// The person running a Headless Run, asked at the terminal: whether a call the rules ask for runs (once, allowed for
+// the session, or rejected), and the answers to a Question, null when declined. signal: the run was aborted, stop asking.
+export type Terminal = {
+  approve(call: Block, verdict: Verdict, signal: AbortSignal): Promise<'once' | 'session' | 'reject'>;
+  answer(questions: Question[], signal: AbortSignal): Promise<Answer[] | null>;
+};

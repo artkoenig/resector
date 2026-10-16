@@ -1,27 +1,16 @@
 // Startup: read the config (or run the first-start setup), open a new or resumed session, then show the Gate.
-import { join, resolve } from 'node:path';
 import { createSignal, onMount, Show } from 'solid-js';
-import { connect } from '../adapters/backend/connect';
 import { discover, LOCAL_SERVERS, type DiscoveredModel, type LocalServer } from '../adapters/backend/discover';
-import { createRunner } from '../adapters/bash/runner';
-import { createSearcher } from '../adapters/search/ddgr';
-import { createSplit } from '../adapters/bash/split';
-import { loadConfig, writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
-import { ensureWorktree, isRepository, listBranches, locateCheckout, mainCheckout, topLevel, removeWorktree, status, switchBranch, watchHead, worktreeDirty } from '../adapters/git/git';
-import { loadPolicies } from '../adapters/fs/policies';
-import { listProjectFiles, probeEnvironment, projectFiles, projectInstructions, tilde } from '../adapters/fs/project';
-import type { OpenSession, SessionStore } from '../adapters/store/sessions';
-import type { Split } from '../core/approval/approval';
+import { writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
+import type { SessionStore } from '../adapters/store/sessions';
+import { openWorkspace, type Loaded, type Opened, type OpenWith, type Workspace } from '../compose/workspace';
 import type { Editor } from '../gate/ports';
 import type { SessionEvent } from '../core/log/events';
 import { fold } from '../core/log/fold';
-import { environmentText } from '../core/notes/environment';
-import { BUILT_IN, DEFAULT_POLICY } from '../core/policy/built-in';
-import type { Policy } from '../core/policy/policy';
-import { checkoutOf, inWorktree, newSession, summarize, type SessionRef } from '../core/session/session';
+import { summarize, type SessionRef } from '../core/session/session';
 import { App } from './app';
 import { errorText } from '../gate/text';
-import type { AutoApprove, Clipboard, GateOptions, Git, Policies, Status } from '../gate';
+import type { Clipboard, GateOptions } from '../gate';
 import { Sessions } from './sessions';
 import { Setup } from './setup';
 
@@ -42,168 +31,32 @@ export type LaunchOptions = {
   onFatal: (message: string) => void;
 };
 
-type Loaded = NonNullable<ReturnType<typeof loadConfig>>;
-
-const DEFAULT_TIMEOUT = 120;
-// A search runs into this timeout (seconds).
-const SEARCH_TIMEOUT = 30;
-
 export function Launch(props: LaunchOptions) {
   const [found, setFound] = createSignal<DiscoveredModel[] | null>(null);
   const [gate, setGate] = createSignal<GateOptions | null>(null);
   const [view, setView] = createSignal<'gate' | 'sessions'>('gate');
-  let session: OpenSession | null = null;
-  // tree-sitter-bash, loaded once.
-  let split: Split | undefined;
+  let session: Opened | null = null;
   const [current, setCurrent] = createSignal('');
-  // Context Policies (ADR 0001), loaded at start: the active one belongs to the app, it stays when switching sessions.
-  const [active, setActive] = createSignal<Policy | null>(null);
-  const policies: Policies = { all: [], active, set: setActive };
-  // Auto-approve belongs to the app like the active policy: off at start, kept when switching sessions.
-  const [autoOn, setAutoOn] = createSignal(false);
-  const autoApprove: AutoApprove = { on: autoOn, set: setAutoOn };
-  // Policies that failed to load, reported once in the first status line.
-  let failed: string[] = [];
-  // The checkout started in (or its subdirectory), as a real path, so that sessions logged with it are found.
-  const cwd = props.cwd ?? process.cwd();
-  const here = locateCheckout(cwd, null) ?? cwd;
-  const repository = isRepository(here);
-  const project = mainCheckout(here);
-  // Session Worktrees live in the Project Home's data root (ADR 0004).
-  const worktrees = join(props.paths.projectHome.data, 'worktrees');
-  // The project as seen from where a session runs: its checkout or its worktree.
-  const projectAt = (dir: string, checkout = here) => ({
-    read: projectFiles(dir),
-    list: () => listProjectFiles(dir),
-    environment: () => environmentText({ ...probeEnvironment(dir), worktree: dir !== checkout }),
-    open: (path: string) => props.openFile(resolve(dir, path)),
-  });
+  // Set once the Context Policies are loaded, before the first session opens.
+  let workspace: Workspace;
 
   const load = () => {
-    const loaded = loadConfig(props.paths);
+    const loaded = workspace.config();
     if (!loaded) throw new Error(`no config at ${props.paths.global}`);
     return loaded;
   };
-  // The config as read when the session was opened.
-  let config: Loaded;
-  // Compaction runs on the profile's compactionProfile, else on the session's own backend (null). Its own slot
-  // where the server has several, so the session cache stays.
-  const compactor = (name: string, session: string) => async () => {
-    const other = config.profile(name).compactionProfile;
-    return other && other !== name ? { profile: other, backend: await connect(config.profile(other), `${session}:compaction`) } : null;
-  };
 
-  function create(loaded: Loaded) {
-    const opened = props.store.create();
-    const profile = loaded.profile();
-    // The project instructions are read once, now.
-    const events = newSession(profile.name, loaded.systemPrompt(profile), {
-      environment: projectAt(here).environment(),
-      // From the checkout's top level, also when started in a subdirectory.
-      instructions: projectInstructions(topLevel(here), props.paths.projectHome.config),
-      checkout: here,
-    });
-    events.forEach(opened.log.append);
-    // A new session starts with the configured policy on; when switched to, a resumed one keeps the app's.
-    const missing = switchOnDefault(loaded);
-    const notice = missing ? { text: `new session · ${missing}`, tone: 'warn' as const } : { text: 'new session', tone: 'ok' as const };
-    return { opened, events, notice };
-  }
-
-  // The configured policy switched on (summary-reset unless set, none with `off`); why not, if no such policy.
-  function switchOnDefault(loaded: Loaded): string | null {
-    const name = loaded.config.defaultPolicy ?? DEFAULT_POLICY;
-    const policy = name === 'off' ? null : policies.all.find(p => p.name === name);
-    if (policy) setActive(policy);
-    return policy === undefined ? `defaultPolicy ${name} – no such policy` : null;
-  }
-
-  // Resume = replay; a Model Profile missing from the config falls back to the default one.
-  // started: resumed at start (-c), so the app has no policy yet; it starts with the configured one, as a new session.
-  function resume(loaded: Loaded, which: SessionRef, started = false) {
-    const opened = props.store.open(which);
-    const events: SessionEvent[] = [...opened.events];
-    const texts = [`resumed "${summarize(events).title}"`];
-    const missing = started && switchOnDefault(loaded);
-    if (missing) texts.push(missing);
-    const { profile } = fold(events);
-    if (!(profile in loaded.config.profiles)) {
-      const fallback: SessionEvent = { type: 'ProfileFallback', profile: loaded.profile().name };
-      opened.log.append(fallback);
-      events.push(fallback);
-      texts.push(`profile "${profile}" not in config → ${fallback.profile}`);
-    }
-    return { opened, events, notice: { text: texts.join(' · '), tone: texts.length > 1 ? ('warn' as const) : ('ok' as const) } };
-  }
-
-  // which: a session to resume, else a new session; a new one is dropped again if its backend fails. started: at start.
-  async function open(loaded: Loaded, which: SessionRef | undefined, started = false) {
-    split ??= await createSplit();
-    const { opened, events, notice } = which ? resume(loaded, which, started) : create(loaded);
-    const profile = fold(events).profile;
-    const backend = await connect(loaded.profile(profile), opened.id).catch(e => {
-      opened.release();
-      if (!which) props.store.delete(opened.id);
-      throw e;
-    });
-    config = loaded;
+  async function open(loaded: Loaded, how: OpenWith = {}) {
+    const opened = await workspace.open(loaded, how);
     if (session?.id !== opened.id) session?.release();
     session = opened;
     setCurrent(opened.id);
     setFound(null);
-    const { dir, checkout, warning } = sessionDir(events, opened.id);
-    const instruction = () => config.compactionInstruction();
-    setGate({ backend, ...runningIn(dir, checkout, opened.id), editor: props.editor, clipboard: props.clipboard, log: opened.log, events, notice: withFailed(withWarning(notice, warning)), openSessions: () => setView('sessions'), instruction, compactor: compactor(profile, opened.id), policies, autoApprove });
-  }
-  // The checkout the session started in, from any worktree of the Project; the current one if that is gone, or for
-  // older logs that name none.
-  function checkoutFor(events: SessionEvent[]): { checkout: string; warning: string | null } {
-    const started = checkoutOf(events);
-    const now = started ? locateCheckout(started, project) : here;
-    return now ? { checkout: now, warning: null } : { checkout: here, warning: `checkout ${tilde(started!)} gone – runs in ${tilde(here)}` };
-  }
-  // Where the session runs: its worktree, created again if it is gone; its checkout if that fails.
-  function sessionDir(events: SessionEvent[], id: string): { dir: string; checkout: string; warning: string | null } {
-    const { checkout, warning } = checkoutFor(events);
-    if (!repository || !inWorktree(events)) return { dir: checkout, checkout, warning };
-    try {
-      return { dir: ensureWorktree(checkout, worktrees, id), checkout, warning };
-    } catch (e) {
-      return { dir: checkout, checkout, warning: `worktree: ${errorText(e)} – runs in ${checkout}` };
-    }
-  }
-  // What depends on where the session runs: bash and search, the arguments' root, the project, git.
-  function runningIn(dir: string, checkout: string, id: string): Pick<GateOptions, 'runner' | 'searcher' | 'approval' | 'project' | 'git'> {
-    const git: Git = {
-      branches: () => listBranches(dir),
-      status: () => status(dir),
-      switchBranch: name => switchBranch(dir, name),
-      watch: onChange => watchHead(dir, onChange),
-      worktree: on => (on ? ensureWorktree(checkout, worktrees, id) : checkout),
-      // The Gate again, running in the session's directory now; its events as logged.
-      reopen: notice => {
-        const events = props.store.read(id);
-        const at = sessionDir(events, id);
-        setGate({ ...gate()!, ...runningIn(at.dir, at.checkout, id), events, notice });
-      },
-    };
-    return {
-      runner: createRunner({ cwd: dir, timeout: config.config.bash?.timeout ?? DEFAULT_TIMEOUT }),
-      searcher: createSearcher({ cwd: dir, timeout: SEARCH_TIMEOUT }),
-      approval: { split: split!, root: dir, permissions: () => config.permissions },
-      project: projectAt(dir, checkout),
-      git: repository ? git : null,
-    };
-  }
-  const withWarning = (notice: Status, warning: string | null): Status => (warning ? { text: `${notice.text} · ${warning}`, tone: 'warn' } : notice);
-  function withFailed(notice: Status): Status {
-    const text = failed.map(f => `policy ${f} – not loaded`);
-    failed = [];
-    return text.length ? { text: [notice.text, ...text].join(' · '), tone: 'warn' } : notice;
+    setGate({ ...opened.options, editor: props.editor, clipboard: props.clipboard, openSessions: () => setView('sessions') });
   }
 
   // /sessions: switching sessions reconnects; the Gate comes back with the session's logged events.
-  const switchTo = (which?: string) => open(load(), which).then(() => void setView('gate'));
+  const switchTo = (which?: string) => open(load(), { which }).then(() => void setView('gate'));
   const back = () => {
     const events = props.store.read(current());
     setGate({ ...gate()!, events, notice: undefined });
@@ -215,29 +68,14 @@ export function Launch(props: LaunchOptions) {
     const titleOf = (id: string) => summarize(props.store.read(id)).title;
     const title = titleOf(id);
     const switched = id === current();
-    if (switched) await open(load(), props.store.list().find(s => !s.locked && s.id !== id)?.id);
-    const kept = removeWorktreeOf(id, force);
+    if (switched) await open(load(), { which: props.store.list().find(s => !s.locked && s.id !== id)?.id });
+    const kept = workspace.removeWorktree(id, force);
     props.store.delete(id);
     return [`deleted "${title}"`, ...(switched ? [`switched to "${titleOf(current())}"`] : []), ...kept].join(' · ');
   }
-  // The status text for an unmerged branch kept; none outside a repository.
-  function removeWorktreeOf(id: string, force: boolean): string[] {
-    const removed = repository ? removeWorktree(here, worktrees, id, force) : null;
-    return removed?.kept ? [`branch ${removed.branch} kept – not merged`] : [];
-  }
-  // Where a listed session started, when that is another checkout of the Project: its branch and directory.
-  function origin(events: SessionEvent[]): string | null {
-    const started = checkoutOf(events);
-    if (!started) return null;
-    const now = locateCheckout(started, project);
-    if (now === here) return null;
-    if (!now) return `${tilde(started)} (gone)`;
-    const { branch } = probeEnvironment(now);
-    return `${branch ? `⎇ ${branch} in ` : ''}${tilde(now)}`;
-  }
   const rename = (id: string, title: string) => {
     const event: SessionEvent = { type: 'SessionRenamed', title };
-    if (id === current()) session!.log.append(event);
+    if (id === current()) session!.options.log.append(event);
     else props.store.append(id, event);
   };
   const windowOf = (profile: string) => {
@@ -260,14 +98,15 @@ export function Launch(props: LaunchOptions) {
   };
   const choose = (model: DiscoveredModel) => {
     writeInitialConfig(props.paths, model);
-    open(load(), undefined).catch(fail);
+    open(load()).catch(fail);
   };
 
   onMount(() => {
     const start = async () => {
-      ({ policies: policies.all, failed } = await loadPolicies(props.paths.policies, BUILT_IN));
-      const loaded = loadConfig(props.paths);
-      return loaded ? open(loaded, props.resume, true) : firstStart();
+      // A switched worktree: the Gate again, running in the session's directory now.
+      workspace = await openWorkspace({ paths: props.paths, store: props.store, cwd: props.cwd, openFile: props.openFile, onReopen: changed => setGate({ ...gate()!, ...changed }) });
+      const loaded = workspace.config();
+      return loaded ? open(loaded, { which: props.resume, started: true }) : firstStart();
     };
     start().catch(fail);
   });
@@ -287,8 +126,8 @@ export function Launch(props: LaunchOptions) {
           open={id => (id === current() ? Promise.resolve(back()) : switchTo(id))}
           create={() => switchTo()}
           remove={remove}
-          worktreeDirty={id => repository && worktreeDirty(worktrees, id)}
-          origin={s => origin(s.events)}
+          worktreeDirty={id => workspace.worktreeDirty(id)}
+          origin={s => workspace.origin(s.events)}
           rename={rename}
           back={back}
         />

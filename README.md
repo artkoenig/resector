@@ -116,6 +116,58 @@ Interface: [`src/core/policy/policy.ts`](src/core/policy/policy.ts), design: [AD
 > [!NOTE]
 > Policies are only loaded from your home directory, never from a project: a cloned repository cannot run code in your harness.
 
+## Headless: `resector -p`
+
+One prompt from the shell or a script, without the Review Gate: the tool loop runs until the model answers without calls, and the answer goes to stdout ([ADR 0005](docs/adr/0005-headless-run-without-review-gate.md)). Piped input is appended to the prompt.
+
+```bash
+resector -p "why does the build fail?"
+git diff | resector -p "review this" --show tools > review.md
+```
+
+Context Policy, Permission Rules and Session Log work as in the TUI. Every run is a new Session; to continue it, open it in the TUI with `/sessions`.
+
+| Flag | Default |
+| --- | --- |
+| `-p, --prompt <text>` | the prompt; the flags below need it (else a usage error) |
+| `-m, --model <profile>` | `defaultProfile` |
+| `--policy <name\|off>` | `defaultPolicy` |
+| `--thinking <off\|on\|level>` | the profile's |
+| `--tools <bash,search\|none>` | a new session's tools |
+| `--show <thinking,tools,notes,policy\|all>` | nothing: stderr gets the closing line only |
+| `--max-turns <n>` | 50 requests to the model |
+| `-w, --worktree` | off: run in its own git worktree |
+| `--auto-approve` | off: run every call the rules leave at `ask`, unasked |
+
+The `headless` section of the [config](#configuration) (global, then project) sets the same; flags win. `permission` stays shared with the TUI; `--auto-approve` is a flag only.
+
+```jsonc
+{
+  "headless": { "profile": "qwen", "tools": ["bash"], "show": ["tools"], "maxTurns": 20 },
+  "permission": { "git commit *": "deny", "git push *": "deny" }
+}
+```
+
+**Output.** stdout gets only the last answer, once the run has ended. stderr gets the `--show` lines, then one closing line; with `--show thinking,tools,policy`:
+
+```text
+∴ The test fails because…
+$ bun test src/core/tokens/split.test.ts
+  │ 2 pass
+  └ exit 0
+◆ summary-reset: compact #12, #13 → split.ts counts the template twice
+· answer · 3 turns · 4.2k tokens
+```
+
+| Exit | Means |
+| --- | --- |
+| `0` | answer |
+| `1` | error, no config (run `resector` once to set it up), or `--max-turns` used up (stderr names the session and how to go on) |
+| `2` | usage error: bad flag, unknown profile, policy or tool, `-w` outside a git repository |
+| `130` | Ctrl-C (a second one exits at once) |
+
+**Asking.** A call the rules leave at `ask`, or a Question, is asked at the terminal itself (`/dev/tty`), so it shows even with stderr redirected: `y` / `a` / `n` for a call; for a Question a number, your own answer, empty for the recommended one, `-` to skip; Ctrl-D rejects the call or declines the Question. Without a terminal (CI, cron) a Question is declined and such a call is not run (`no user to approve`); the run goes on. So unattended, only the built-in read-only commands run: `allow` what the run needs, `deny` what it must never do.
+
 ## Configuration
 
 `~/.config/resector/config.jsonc` (`$XDG_CONFIG_HOME` if set, `RESECTOR_CONFIG` to use another file), then `config.jsonc` in the [Project Home](#project-home), which overrides it. All options: [`config.schema.json`](config.schema.json).

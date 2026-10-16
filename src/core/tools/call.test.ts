@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { callArguments, parseCall, resultText } from './call';
+import { callArguments, parseCall, resultEnd, resultText } from './call';
 
 test('a call of a tool switched off is not run', () => {
   expect(parseCall({ name: 'bash', arguments: '{"command":"ls"}' }, [])).toEqual({ error: 'tool bash is off (/tools)' });
@@ -43,4 +43,13 @@ test('the result is the output, then how the run ended', () => {
   expect(resultText({ output: '  \n', exit: 1, stopped: null }, 120)).toBe('[exit 1]');
   expect(resultText({ output: 'partial', exit: null, stopped: 'killed' }, 120)).toBe('partial\n[killed]');
   expect(resultText({ output: '', exit: null, stopped: 'timeout' }, 5)).toBe('[timeout after 5 s]');
+});
+
+test('how the run ended is read back from the result; a result without that line has none', () => {
+  expect(resultEnd('a\nb\n[exit 0]')).toEqual({ output: ['a', 'b'], end: 'exit 0' });
+  expect(resultEnd('[timeout after 5 s]')).toEqual({ output: [], end: 'timeout after 5 s' });
+  expect(resultEnd('denied by rule')).toEqual({ output: ['denied by rule'], end: null });
+  // Only a whole last line in brackets says it.
+  expect(resultEnd('[a] b')).toEqual({ output: ['[a] b'], end: null });
+  expect(resultEnd('a [b]')).toEqual({ output: ['a [b]'], end: null });
 });
