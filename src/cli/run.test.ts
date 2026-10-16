@@ -23,7 +23,7 @@ function project({ config = true, headless = {}, tty }: { config?: boolean; head
   if (config) writeFileSync(env.RESECTOR_CONFIG, JSON.stringify({ profiles: { local: { backend: 'llamacpp', endpoint: fake.url, window: 2048 } }, defaultProfile: 'local', headless }));
   const sessions = () => {
     const at = projectSessionsDir(configPaths({ home: env.HOME, cwd: dir, env }));
-    return readdirSync(at).filter(f => f.endsWith('.jsonl')).map(f => readFileSync(join(at, f), 'utf8'));
+    return (existsSync(at) ? readdirSync(at) : []).filter(f => f.endsWith('.jsonl')).map(f => readFileSync(join(at, f), 'utf8'));
   };
   return { dir, env, sessions };
 }
@@ -101,8 +101,13 @@ test('a flag beats the headless config section', async () => {
 
 test('an unknown profile is a usage error naming the valid ones', async () => {
   const p = project();
-  const { out, err, code } = await resector(p, ['-p', 'hi', '-m', 'big']);
-  expect({ out, err, code }).toEqual({ out: '', err: 'resector: unknown profile big (profiles: local)\n', code: 2 });
+  expect(await resector(p, ['-p', 'hi', '-m', 'big'])).toEqual({ out: '', err: 'resector: unknown profile big (profiles: local)\n', code: 2 });
+});
+
+test('a worktree outside a git repository is a usage error; no session is made', async () => {
+  const p = project();
+  expect(await resector(p, ['-p', 'hi', '-w'])).toEqual({ out: '', err: 'resector: worktree: not a git repository\n', code: 2 });
+  expect(p.sessions()).toEqual([]);
 });
 
 test('--show all puts thinking, calls and results on stderr; stdout is the answer only', async () => {

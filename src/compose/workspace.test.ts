@@ -9,7 +9,7 @@ import { projectSessionsDir } from '../adapters/store/session-log';
 import { openSessionStore } from '../adapters/store/sessions';
 import type { SessionEvent } from '../core/log/events';
 import { newSession } from '../core/session/session';
-import { openWorkspace } from './workspace';
+import { openWorkspace, type OpenWith } from './workspace';
 
 let fake: ReturnType<typeof startFakeLlamaCpp>;
 const released: (() => void)[] = [];
@@ -44,8 +44,8 @@ async function workspace({ extra = '', sessions = {}, git = false }: { extra?: s
   for (const [id, events] of Object.entries(sessions)) put(join(sessionsDir, `${id}.jsonl`), events.map(e => JSON.stringify(e) + '\n').join(''));
   const store = openSessionStore(sessionsDir, { id: () => 'ses_new' });
   const ws = await openWorkspace({ paths, store, cwd: project, openFile: async () => {}, onReopen: () => {} });
-  const open = async (...args: Parameters<typeof ws.open> extends [unknown, ...infer R] ? R : never) => {
-    const opened = await ws.open(ws.config()!, ...args);
+  const open = async (how?: OpenWith) => {
+    const opened = await ws.open(ws.config()!, how);
     released.push(opened.release);
     return opened;
   };
@@ -71,7 +71,7 @@ test('a new session with an unknown defaultPolicy starts without one and says wh
 
 test('a new session starts with what it is opened with: profile, policy, thinking, tools, worktree, Auto-approve', async () => {
   const { ws, open, log, paths } = await workspace({ git: true });
-  const { id, options } = await open(undefined, false, { profile: 'local', policy: 'off', thinking: 'high', tools: ['bash'], worktree: true, autoApprove: true });
+  const { id, options } = await open({ start: { profile: 'local', policy: 'off', thinking: 'high', tools: ['bash'], worktree: true, autoApprove: true } });
   const events = log(id);
   expect(events[0]).toMatchObject({ type: 'SessionCreated', profile: 'local' });
   expect(events.find(e => e.type === 'BlockAdded' && e.kind === 'Tools')).toMatchObject({ content: expect.not.stringContaining('question') });
@@ -87,7 +87,7 @@ const chat = (profile: string, checkout?: string): SessionEvent[] => [
 
 test('a resumed session whose profile is gone falls back to the default one', async () => {
   const { open, log } = await workspace({ sessions: { ses_old: chat('gone') } });
-  const { id, options } = await open('ses_old');
+  const { id, options } = await open({ which: 'ses_old' });
   expect(id).toBe('ses_old');
   expect(log(id).at(-1)).toEqual({ type: 'ProfileFallback', profile: 'local' });
   expect(options.notice).toEqual({ text: 'resumed "hi there" · profile "gone" not in config → local', tone: 'warn' });
@@ -95,13 +95,13 @@ test('a resumed session whose profile is gone falls back to the default one', as
 
 test('a session in its worktree runs there', async () => {
   const { open, paths } = await workspace({ git: true, sessions: { ses_old: [...chat('local'), { type: 'WorktreeSet', on: true }] } });
-  const { options } = await open('ses_old');
+  const { options } = await open({ which: 'ses_old' });
   expect(options.approval.root).toBe(join(paths.projectHome.data, 'worktrees', 'ses_old'));
 });
 
 test('a session whose checkout is gone runs in the current one and says so', async () => {
   const { open, project } = await workspace({ sessions: { ses_old: chat('local', '/nowhere/gone') } });
-  const { options } = await open('ses_old');
+  const { options } = await open({ which: 'ses_old' });
   expect(options.approval.root).toBe(project);
   expect(options.notice?.text).toContain('checkout /nowhere/gone gone – runs in');
 });

@@ -48,9 +48,9 @@ async function headless({ prompt, flags }: Run, signal: AbortSignal): Promise<{ 
   const workspace = await openWorkspace({ paths, store: projectSessionStore(paths), openFile: async () => {}, onReopen: () => {} });
   const loaded = workspace.config();
   if (!loaded) return { outcome: failed(`no config at ${paths.global} – run resector once to set it up`), id: null };
-  const settings = headlessSettings(loaded.config, flags, { policies: workspace.policies.all.map(p => p.name), tools: TOOL_NAMES });
+  const settings = headlessSettings(loaded.config, flags, { policies: workspace.policies.all.map(p => p.name), tools: TOOL_NAMES, repository: workspace.repository });
   if ('usage' in settings) return settings;
-  const opened = await workspace.open(loaded, undefined, false, settings);
+  const opened = await workspace.open(loaded, { start: settings });
   try {
     const show = createShow(settings.show ?? [], !!process.stderr.isTTY);
     const toStderr = (text: string) => void (text && process.stderr.write(text));

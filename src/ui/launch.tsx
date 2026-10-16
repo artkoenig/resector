@@ -48,7 +48,7 @@ export function Launch(props: LaunchOptions) {
 
   // which: a session to resume, else a new session. started: at start.
   async function open(loaded: Loaded, which: SessionRef | undefined, started = false) {
-    const opened = await workspace.open(loaded, which, started);
+    const opened = await workspace.open(loaded, { which, started });
     if (session?.id !== opened.id) session?.release();
     session = opened;
     setCurrent(opened.id);

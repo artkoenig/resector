@@ -46,6 +46,9 @@ const DEFAULT_TIMEOUT = 120;
 // A search runs into this timeout (seconds).
 const SEARCH_TIMEOUT = 30;
 
+// which: a session to resume, else a new session (with start); started: at start.
+export type OpenWith = { which?: SessionRef; started?: boolean; start?: StartWith };
+
 // Loads the Context Policies once; the active policy and Auto-approve belong to the app, they stay when switching
 // sessions.
 export async function openWorkspace(options: WorkspaceOptions) {
@@ -127,9 +130,8 @@ export async function openWorkspace(options: WorkspaceOptions) {
     return { opened, events, notice: { text: texts.join(' · '), tone: texts.length > 1 ? ('warn' as const) : ('ok' as const) } };
   }
 
-  // which: a session to resume, else a new session (with start); a new one is dropped again if its backend fails.
-  // started: at start.
-  async function open(loaded: Loaded, which?: SessionRef, started = false, start?: StartWith): Promise<Opened> {
+  // A new one is dropped again if its backend fails.
+  async function open(loaded: Loaded, { which, started = false, start }: OpenWith = {}): Promise<Opened> {
     split ??= await createSplit();
     const { opened, events, notice } = which ? resume(loaded, which, started) : create(loaded, start);
     const profile = fold(events).profile;
@@ -195,6 +197,7 @@ export async function openWorkspace(options: WorkspaceOptions) {
 
   return {
     policies,
+    repository,
     // The config as on disk now; null when there is none.
     config: () => loadConfig(paths),
     open,

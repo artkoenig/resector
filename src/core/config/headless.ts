@@ -5,10 +5,10 @@ import type { Config, Headless } from './config';
 // Flags of `resector -p`: the headless section's keys, and Auto-approve, which is a flag only.
 export type Flags = Headless & { autoApprove?: boolean };
 export type Settings = Headless & { autoApprove: boolean };
-// The names that exist: Context Policies loaded, tools in the catalog.
-export type Known = { policies: string[]; tools: string[] };
+// What exists: Context Policies loaded, tools in the catalog, whether the run is in a git repository.
+export type Known = { policies: string[]; tools: string[]; repository: boolean };
 
-// Unknown names are a usage error listing the valid ones.
+// Unknown names are a usage error listing the valid ones; so is a worktree where none can be made.
 export function headlessSettings(config: Config, flags: Flags, known: Known): Settings | { usage: string } {
   const settings: Settings = { ...config.headless, ...defined(flags), autoApprove: flags.autoApprove ?? false };
   const profiles = Object.keys(config.profiles);
@@ -17,6 +17,7 @@ export function headlessSettings(config: Config, flags: Flags, known: Known): Se
   if (settings.policy !== undefined && !policies.includes(settings.policy)) return { usage: `unknown policy ${settings.policy} (policies: ${policies.join(', ')})` };
   const unknown = (settings.tools ?? []).filter(t => !known.tools.includes(t));
   if (unknown.length) return { usage: `unknown tools ${unknown.join(', ')} (tools: ${known.tools.join(', ')})` };
+  if (settings.worktree && !known.repository) return { usage: 'worktree: not a git repository' };
   return settings;
 }
 
