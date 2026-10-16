@@ -90,9 +90,12 @@ export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy:
     return halt;
   }
 
+  // Not while a step runs, past a Headless Run's turns, or when pending calls go on instead.
+  const held = () => !k.idle() || !deps.mayRequest() || loop.wentOn();
+
   // The check stays synchronous without a policy: a second send in the same tick finds the first streaming.
   async function send() {
-    if (!k.idle() || !deps.mayRequest() || loop.wentOn()) return;
+    if (held()) return;
     const policy = deps.policies.active();
     // Before the policy: an Esc while it runs stops the loop after the answer.
     loop.setStopping(false);

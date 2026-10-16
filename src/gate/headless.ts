@@ -40,19 +40,23 @@ export function createHeadless(k: Kernel, loop: ToolLoop, rules: Rules, submit: 
   async function ask(r: Run, call: Block) {
     r.waiting++;
     try {
-      if (call.tool === 'question') {
-        const asked = loop.api.asked();
-        const answers = asked && r.terminal ? await until(r.terminal.answer(asked.questions, r.signal), r.signal) : null;
-        if (!r.signal.aborted) void (answers ? loop.api.answer(answers) : loop.api.decline());
-      } else {
-        const choice = r.terminal ? await until(r.terminal.approve(call, rules.verdictOf(call), r.signal), r.signal) : 'unattended';
-        if (choice && !r.signal.aborted) loop.decide(call, choice);
-      }
+      await (call.tool === 'question' ? answer(r) : approve(r, call));
     } catch (e) {
       k.setStatus({ text: `terminal: ${errorText(e)}`, tone: 'error' });
     } finally {
       r.waiting--;
     }
+  }
+
+  async function answer(r: Run) {
+    const asked = loop.api.asked();
+    const answers = asked && r.terminal ? await until(r.terminal.answer(asked.questions, r.signal), r.signal) : null;
+    if (!r.signal.aborted) void (answers ? loop.api.answer(answers) : loop.api.decline());
+  }
+
+  async function approve(r: Run, call: Block) {
+    const choice = r.terminal ? await until(r.terminal.approve(call, rules.verdictOf(call), r.signal), r.signal) : 'unattended';
+    if (choice && !r.signal.aborted) loop.decide(call, choice);
   }
 
   // The run has ended once the Gate stays idle over a timer tick: a step hands over to the next synchronously or

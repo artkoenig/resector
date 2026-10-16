@@ -31,11 +31,13 @@ export function createShow(kinds: Shown[], color: boolean) {
   function event(e: SessionEvent): string {
     if (e.type === 'BlockAdded') return block(e);
     if (e.type === 'FileReferenced') return on.has('notes') ? lines(dim(`◆ @${e.file}`)) : '';
-    const by = 'by' in e ? e.by : undefined;
-    if (!by || by === 'user') return '';
-    const operation = on.has('policy') ? operationText(e) : null;
-    if (operation) return lines(dim(`◆ ${by}: ${operation}`));
-    // The policy's line says its Note; without it the Note is shown as one.
+    return 'by' in e && e.by && e.by !== 'user' ? operation(e, e.by) : '';
+  }
+
+  // The policy's line says its Note; without it the Note is shown as one.
+  function operation(e: Operation, by: string): string {
+    const text = on.has('policy') ? operationText(e) : null;
+    if (text) return lines(dim(`◆ ${by}: ${text}`));
     return (e.type === 'Compact' || e.type === 'NoteAdded') && on.has('notes') ? note(e.content) : '';
   }
 
@@ -82,7 +84,10 @@ function gist(content: string): string {
 
 const ids = (all: number[]) => all.map(id => `#${id}`).join(', ');
 
-function operationText(e: SessionEvent): string | null {
+// The events a policy logs (`by`).
+type Operation = Extract<SessionEvent, { by?: string }>;
+
+function operationText(e: Operation): string {
   switch (e.type) {
     case 'Remove': return `remove ${ids([e.id, ...(e.others ?? [])])}`;
     case 'Compact': return `compact ${ids(e.sources)} → ${gist(e.content)}`;
@@ -90,6 +95,5 @@ function operationText(e: SessionEvent): string | null {
     case 'NoteAdded': return `note → ${gist(e.content)}`;
     case 'Edit': return `edit #${e.id}`;
     case 'Move': return `move #${e.id}`;
-    default: return null;
   }
 }

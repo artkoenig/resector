@@ -49,4 +49,7 @@ test('how the run ended is read back from the result; a result without that line
   expect(resultEnd('a\nb\n[exit 0]')).toEqual({ output: ['a', 'b'], end: 'exit 0' });
   expect(resultEnd('[timeout after 5 s]')).toEqual({ output: [], end: 'timeout after 5 s' });
   expect(resultEnd('denied by rule')).toEqual({ output: ['denied by rule'], end: null });
+  // Only a whole last line in brackets says it.
+  expect(resultEnd('[a] b')).toEqual({ output: ['[a] b'], end: null });
+  expect(resultEnd('a [b]')).toEqual({ output: ['a [b]'], end: null });
 });

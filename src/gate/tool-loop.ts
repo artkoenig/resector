@@ -20,6 +20,9 @@ const cacheMiss = ({ predicted, cached }: ChatResult) =>
   predicted !== null && cached !== null && cached < predicted ? `cache: predicted ${predicted} · server reused ${cached}` : null;
 const notRunText = (why: string) => `⚠ tool call not run: ${why}`;
 
+// The results held at the Gate: what happened, or that the loop paused.
+const heldStatus = (notes: string[]): Status => ({ text: `${notes.join(' · ') || 'tool loop paused'} – review the results, Enter sends`, tone: notes.length ? 'warn' : 'ok' });
+
 export type ToolLoop = ReturnType<typeof createToolLoop>;
 // Who decides the calls the rules ask for instead of the user at the Gate (a Headless Run); with one, a Hold does not
 // stop the loop: the results of calls not run go back to the model.
@@ -104,7 +107,7 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
       notes = [...notes, `⚠ denied by rule: ${titleOf(call)}`];
     }
     if (!held || driver) return void tools.send();
-    setStatus({ text: `${notes.join(' · ') || 'tool loop paused'} – review the results, Enter sends`, tone: notes.length ? 'warn' : 'ok' });
+    setStatus(heldStatus(notes));
   }
   // Calls left pending by a stop go on as the rules decide them; one to ask for still blocks the send.
   function wentOn(): boolean {

@@ -47,12 +47,15 @@ export function main(argv: string[], exportLog = projectLog): Result | { start: 
 // id: the one positional, taken by -c only.
 function command(values: Values, id?: string): Result | { start: Start } | { run: Run } {
   if (values.version) return { code: 0, out: `resector ${pkg.version}\n` };
-  if (values.prompt !== undefined) {
-    const flags = values.continue || id ? null : runFlags(values);
-    return flags ? { run: { prompt: values.prompt, flags } } : USAGE_ERROR;
-  }
+  if (values.prompt !== undefined) return runCommand(values.prompt, values, id);
   if (values.continue) return { start: { resume: id ?? true } };
   return id ? USAGE_ERROR : { start: {} };
+}
+
+// -p takes neither -c nor an id.
+function runCommand(prompt: string, values: Values, id?: string): Result | { run: Run } {
+  const flags = values.continue || id ? null : runFlags(values);
+  return flags ? { run: { prompt, flags } } : USAGE_ERROR;
 }
 
 // The flags as the headless config section names them, checked like it; null for a bad value.
@@ -76,7 +79,8 @@ if (import.meta.main) {
   if ('start' in command || 'run' in command) (await import('@opentui/solid/bun-plugin')).ensureSolidTransformPlugin();
   if ('start' in command) await (await import('./ui/start')).start(command.start);
   else if ('run' in command) {
-    process.exit(await (await import('./cli/run')).run(command.run));
+    const { run, processIo } = await import('./cli/run');
+    process.exit(await run(command.run, processIo()));
   } else {
     (command.code ? process.stderr : process.stdout).write(command.out);
     process.exit(command.code);

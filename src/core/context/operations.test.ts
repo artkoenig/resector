@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
 import { TOOLS } from '../tools/catalog';
-import { addNote, approvable, attributed, decline, deny, edit, isFixed, inPair, move, moveAfter, nextCall, reject, remove, removeAll, revise, toggleTool, untouchable, withoutDenied, toNote, toolResult, undo } from './operations';
+import { addNote, approvable, attributed, decline, deny, edit, isFixed, inPair, move, moveAfter, nextCall, reject, remove, removeAll, revise, toggleTool, untouchable, withoutDenied, toNote, toolResult, unattended, undo } from './operations';
 
 const session = (...then: SessionEvent[]): SessionEvent[] => [
   { type: 'SessionCreated', profile: 'default', protocol: 'native' },
@@ -136,6 +136,12 @@ test('reject answers the call with a Tool Result "rejected by user"', () => {
     event: { type: 'BlockAdded', id: 8, kind: 'Tool Result', origin: 'tool', content: 'rejected by user', call: 6 },
   });
   expect(reject(...at(events, 7), 8)).toEqual({ error: 'approve the earlier Tool Call first' });
+});
+
+test('without a user to approve, the call is answered with a Tool Result "no user to approve"', () => {
+  expect(unattended(...at(session(call(6)), 6), 7)).toEqual({
+    event: { type: 'BlockAdded', id: 7, kind: 'Tool Result', origin: 'tool', content: 'no user to approve', call: 6 },
+  });
 });
 
 test('a denied call is answered with a Tool Result "denied by rule"', () => {

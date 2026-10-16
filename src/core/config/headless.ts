@@ -11,14 +11,19 @@ export type Known = { policies: string[]; tools: string[]; repository: boolean }
 // Unknown names are a usage error listing the valid ones; so is a worktree where none can be made.
 export function headlessSettings(config: Config, flags: Flags, known: Known): Settings | { usage: string } {
   const settings: Settings = { ...config.headless, ...defined(flags), autoApprove: flags.autoApprove ?? false };
-  const profiles = Object.keys(config.profiles);
-  if (settings.profile !== undefined && !profiles.includes(settings.profile)) return { usage: `unknown profile ${settings.profile} (profiles: ${profiles.join(', ')})` };
-  const policies = [...known.policies, 'off'];
-  if (settings.policy !== undefined && !policies.includes(settings.policy)) return { usage: `unknown policy ${settings.policy} (policies: ${policies.join(', ')})` };
-  const unknown = (settings.tools ?? []).filter(t => !known.tools.includes(t));
-  if (unknown.length) return { usage: `unknown tools ${unknown.join(', ')} (tools: ${known.tools.join(', ')})` };
-  if (settings.worktree && !known.repository) return { usage: 'worktree: not a git repository' };
-  return settings;
+  const usage = [
+    unknown(['profile', 'profiles'], [settings.profile], Object.keys(config.profiles)),
+    unknown(['policy', 'policies'], [settings.policy], [...known.policies, 'off']),
+    unknown(['tools', 'tools'], settings.tools ?? [], known.tools),
+    settings.worktree && !known.repository ? 'worktree: not a git repository' : null,
+  ].find(u => u !== null);
+  return usage ? { usage } : settings;
+}
+
+// The names given that are not valid, listing the valid ones; null when all are (or none is given).
+function unknown([one, all]: [string, string], given: (string | undefined)[], valid: string[]): string | null {
+  const bad = given.filter(n => n !== undefined && !valid.includes(n));
+  return bad.length ? `unknown ${one} ${bad.join(', ')} (${all}: ${valid.join(', ')})` : null;
 }
 
 // A flag not given leaves the config's value.

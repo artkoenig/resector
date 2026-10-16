@@ -21,7 +21,10 @@ test('Notes and policy operations are ◆ lines', () => {
   expect(show.event({ type: 'BlockAdded', id: 7, kind: 'Note', origin: 'compaction', content: 'the gist\nmore' })).toBe('◆ note: the gist (+1 line)\n');
   expect(show.event({ type: 'FileReferenced', id: 8, file: 'src/a.ts' })).toBe('◆ @src/a.ts\n');
   expect(show.event({ type: 'Compact', sources: [3, 4], instruction: 'merge', noteId: 9, content: 'the gist\nmore', by: 'summary-reset' })).toBe('◆ summary-reset: compact #3, #4 → the gist (+1 line)\n');
-  expect(show.event({ type: 'Remove', id: 4, by: 'summary-reset' })).toBe('◆ summary-reset: remove #4\n');
+  expect(show.event({ type: 'Remove', id: 4, others: [5], by: 'summary-reset' })).toBe('◆ summary-reset: remove #4, #5\n');
+  expect(show.event({ type: 'PairToNote', id: 9, call: 5, by: 'lean' })).toBe('◆ lean: note #5\n');
+  expect(show.event({ type: 'Edit', id: 3, revision: 1, content: 'x', by: 'lean' })).toBe('◆ lean: edit #3\n');
+  expect(show.event({ type: 'Move', id: 3, after: 1, by: 'lean' })).toBe('◆ lean: move #3\n');
   expect(show.event({ type: 'NoteAdded', id: 10, after: 9, content: 'go on', by: 'onward' })).toBe('◆ onward: note → go on\n');
   expect(show.event({ type: 'NoteAdded', id: 11, after: 9, content: 'x'.repeat(100), by: 'onward' })).toBe(`◆ onward: note → ${'x'.repeat(79)}…\n`);
   expect(show.event({ type: 'Remove', id: 4, by: 'user' })).toBe('');
