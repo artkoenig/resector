@@ -58,8 +58,12 @@ _Avoid_: breakpoint, approval
 The follow-up requests after an answer with Tool Calls: its calls are decided in order, run, and their results sent, until the model answers without calls or the loop is held.
 
 **Hold**:
-Stop of the Tool Loop at the Review Gate with the results unsent, for the user to review: asked for with Esc, or because a call was not run (rejected, denied) or was stopped (killed, timeout).
+Stop of the Tool Loop at the Review Gate with the results unsent, for the user to review: asked for with Esc, or because a call was not run (rejected, denied) or was stopped (killed, timeout). A Headless Run does not stop at a Hold: the results go back to the model.
 _Avoid_: pause, break
+
+**Headless Run**:
+One prompt run without the Review Gate: the Tool Loop goes on through Holds until the model answers without calls or the turns are used, and the run ends with its Outcome (the last answer, an error, aborted, or max turns). Tool Approval and Questions are asked on the terminal, or declined without one.
+_Avoid_: batch mode, print mode, non-interactive mode
 
 **Kind Filter**:
 View restriction at the Review Gate by Kind: System (with the Tools Block), User, Thinking, Assistant, Note, or Tool Calls with their Tool Results (never one without the other). Each is switched on or off on its own; the blocks shown are those of the Kinds on. Tool Calls are off at start; a Tool Call awaiting approval or running is shown regardless. Changes nothing about the Context and is not recorded in the Session Log.

@@ -169,3 +169,5 @@ export const reject = notRun('rejected by user');
 export const deny = notRun('denied by rule');
 // Esc in the dock: the user declines to answer the Question.
 export const decline = notRun('declined');
+// A Headless Run without a terminal: nobody can approve the call.
+export const unattended = notRun('no user to approve');

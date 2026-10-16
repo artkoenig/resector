@@ -5,7 +5,7 @@ import type { ChatResult } from '../core/tools/answer';
 import * as ops from '../core/context/operations';
 import type { Block } from '../core/log/fold';
 import { answerBlocks } from '../core/tools/answer';
-import type { Runner } from './ports';
+import type { Runner, Terminal } from './ports';
 import { answerText, parseQuestions, type Answer } from '../core/tools/question';
 import { errorText, titleOf } from './text';
 import type { GitSlice } from './git';
@@ -21,6 +21,12 @@ const cacheMiss = ({ predicted, cached }: ChatResult) =>
 const notRunText = (why: string) => `⚠ tool call not run: ${why}`;
 
 export type ToolLoop = ReturnType<typeof createToolLoop>;
+// Who decides the calls the rules ask for instead of the user at the Gate (a Headless Run); with one, a Hold does not
+// stop the loop: the results of calls not run go back to the model.
+// stopped: the run was aborted, no further call is decided.
+export type Driver = { ask: (call: Block) => void; stopped: () => boolean };
+// How a call the rules ask for is decided: the terminal's choice, or no user to ask.
+export type Choice = Awaited<ReturnType<Terminal['approve']>> | 'unattended';
 
 export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice, tools: { runner: Runner; searcher: Runner; send: () => void }) {
   const { context, nextId, append, apply, setStatus, running, setRunning } = k;
@@ -29,6 +35,7 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
   // Whether the answer's calls leave the results for review at the Gate: one was not run (rejected, denied, not a
   // bash call) or was stopped (killed, timeout). Otherwise, once every call ran, the results are sent.
   let held = false;
+  let driver: Driver | null = null;
 
   // Esc while an answer streams or a call runs: the step finishes, then the tool loop stops at the Gate for changes;
   // Esc again aborts the step. Enter goes on.
@@ -86,6 +93,7 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
   // Decides the pending calls in order: an allowed one runs, a denied one is answered "denied by rule", the
   // first to ask for is selected. Then the results are sent, or held at the Gate. notes: what happened so far.
   function advance(notes: string[] = []) {
+    if (driver?.stopped()) return;
     for (let call = ops.nextCall(context()); call; call = ops.nextCall(context())) {
       const action = rules.decided(call);
       if (action === 'allow') return void run(call, notes);
@@ -95,7 +103,7 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
       apply(ops.deny(context(), call, nextId()));
       notes = [...notes, `⚠ denied by rule: ${titleOf(call)}`];
     }
-    if (!held) return void tools.send();
+    if (!held || driver) return void tools.send();
     setStatus({ text: `${notes.join(' · ') || 'tool loop paused'} – review the results, Enter sends`, tone: notes.length ? 'warn' : 'ok' });
   }
   // Calls left pending by a stop go on as the rules decide them; one to ask for still blocks the send.
@@ -110,6 +118,7 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
   // The call waits for the user: a Question for its answer in the dock (it never needs Tool Approval), others for approval.
   function awaitUser(call: Block, notes: string[]) {
     follow(call.id);
+    if (driver) return driver.ask(call);
     setStatus({ text: [...notes, call.tool === 'question' ? `? ${QUESTION_HINT}` : `? approve – ${APPROVE}`].join(' · '), tone: 'warn' });
   }
 
@@ -177,17 +186,31 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
   // are saved as Session Log events, then the call runs as allowed.
   function allowForSession() {
     const call = decidable();
-    if (!call) return;
+    if (call) allowFor(call);
+  }
+  // Whether the call's prefixes could be allowed.
+  function allowFor(call: Block): boolean {
     const found = sessionRules(rules.verdictOf(call));
-    if ('error' in found) return setStatus({ text: found.error, tone: 'info' });
+    if ('error' in found) {
+      setStatus({ text: found.error, tone: 'info' });
+      return false;
+    }
     for (const pattern of found.patterns) append({ type: 'AllowRuleAdded', pattern });
     advance([`allowed for session: ${quoted(found.patterns)}`]);
+    return true;
   }
   // n: not run; the result says "rejected by user".
   function reject() {
     const call = decidable();
     if (!call) return;
     notRun(ops.reject, call);
+  }
+  // The call the rules ask for, decided by the driver; not by `decidable`, which acts on the selection. A call whose
+  // prefixes cannot be allowed for the session runs once.
+  function decide(call: Block, choice: Choice) {
+    if (choice === 'session' && allowFor(call)) return;
+    if (choice !== 'reject' && choice !== 'unattended') return void run(call, []);
+    notRun(choice === 'reject' ? ops.reject : ops.unattended, call);
   }
   // The call is answered without running; the results are held at the Gate.
   function notRun(operation: typeof ops.reject, call: Block, notes: string[] = []) {
@@ -202,6 +225,7 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
       stopping, abort, asked, answer, decline, approve, allowForSession, reject,
       nextCall: () => ops.nextCall(context()),
     },
-    setStopping, finish, advance, wentOn,
+    setStopping, finish, advance, wentOn, decide,
+    drive: (d: Driver | null) => void (driver = d),
   };
 }
