@@ -1,15 +1,17 @@
 // Headless Run from the command line (`resector -p`): a new session, the Gate without a screen, the answer on stdout,
 // the closing status on stderr, the outcome as exit code.
 import { homedir } from 'node:os';
-import { createRoot } from 'solid-js';
+import { createEffect, createRoot, on } from 'solid-js';
 import { configPaths } from '../adapters/fs/config';
 import { projectSessionStore } from '../adapters/store/sessions';
 import { openWorkspace } from '../compose/workspace';
 import { headlessSettings, type Flags } from '../core/config/headless';
+import type { SessionEvent } from '../core/log/events';
 import { TOOL_NAMES } from '../core/tools/catalog';
 import { createGate, type Outcome } from '../gate';
 import { minimalView } from '../gate/minimal-view';
 import { count, errorText, formatTokens } from '../gate/text';
+import { createShow } from './show';
 
 // -p <prompt> and its flags.
 export type Run = { prompt: string; flags: Flags };
@@ -49,8 +51,24 @@ async function headless({ prompt, flags }: Run, signal: AbortSignal): Promise<{ 
   if ('usage' in settings) return settings;
   const opened = await workspace.open(loaded, undefined, false, settings);
   try {
+    const show = createShow(settings.show ?? [], !!process.stderr.isTTY);
+    const toStderr = (text: string) => void (text && process.stderr.write(text));
+    // Each event logged is shown as it happens.
+    const log = {
+      ...opened.options.log,
+      append: (e: SessionEvent) => {
+        opened.options.log.append(e);
+        toStderr(show.event(e));
+      },
+    };
     const outcome = await createRoot(async dispose => {
-      const gate = createGate({ ...opened.options, editor: async text => text, clipboard: async () => {}, openSessions: () => {} }, minimalView);
+      const gate = createGate({ ...opened.options, log, editor: async text => text, clipboard: async () => {}, openSessions: () => {} }, minimalView);
+      createEffect(() => {
+        const streaming = gate.streaming();
+        toStderr(streaming ? show.thinking(streaming.thinking) : show.end());
+      });
+      // The session's opening notice is not news.
+      createEffect(on(gate.status, status => status && toStderr(show.status(status)), { defer: true }));
       try {
         return await gate.run({ prompt, signal, maxTurns: settings.maxTurns });
       } finally {

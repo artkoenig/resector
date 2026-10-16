@@ -103,6 +103,23 @@ test('an unknown profile is a usage error naming the valid ones', async () => {
   expect({ out, err, code }).toEqual({ out: '', err: 'resector: unknown profile big (profiles: local)\n', code: 2 });
 });
 
+test('--show all puts thinking, calls and results on stderr; stdout is the answer only', async () => {
+  const p = project();
+  reply({ thinking: ['Let me', ' look'], chunks: [], calls: [{ name: 'bash', arguments: JSON.stringify({ command: 'echo hi' }) }] });
+  reply({ chunks: ['done'] });
+  const shown = await resector(p, ['-p', 'go', '--show', 'all', '--auto-approve']);
+  expect({ out: shown.out, code: shown.code }).toEqual({ out: 'done\n', code: 0 });
+  expect(shown.err).toStartWith('◆ summary-reset: note How this session works: your context is limited. Once your work since the start…\n');
+  expect(shown.err).toContain('\n∴ Let me look\n$ echo hi\n  │ hi\n  └ exit 0\n');
+  expect(shown.err).toMatch(/\n· answer · 2 turns · \S+ tokens\n$/);
+});
+
+test('without --show stderr is the closing status line only', async () => {
+  const p = project();
+  reply({ thinking: ['hm'], chunks: ['quiet'] });
+  expect((await resector(p, ['-p', 'go'])).err).toMatch(/^· answer · 1 turn · \S+ tokens\n$/);
+});
+
 test('Ctrl-C aborts the run: exit 130, nothing on stdout', async () => {
   const p = project();
   reply({ chunks: ['partial'], hang: true });

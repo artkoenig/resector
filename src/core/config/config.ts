@@ -33,6 +33,7 @@ const ProfileSchema = z.strictObject({
 
 // What a Headless Run shows on stderr besides the closing line (--show).
 export const SHOWN = ['thinking', 'tools', 'notes', 'policy'] as const;
+export type Shown = (typeof SHOWN)[number];
 // What a Headless Run (`resector -p`) starts with; its flags override it. Permission rules stay shared with the TUI.
 export const HeadlessSchema = z.strictObject({
   profile: z.string().optional().describe('Model Profile; default: defaultProfile'),
