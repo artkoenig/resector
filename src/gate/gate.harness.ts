@@ -9,7 +9,8 @@ import type { Request } from '../core/render/native';
 import { newSession } from '../core/session/session';
 import type { RawCall } from '../core/tools/call';
 import type { RunResult } from '../core/tools/call';
-import { createGate, type Compactor, type Gate, type Kernel, type View } from '.';
+import { createGate, type Compactor, type Gate, type View } from '.';
+import { minimalView } from './minimal-view';
 import type { Backend, RunOptions } from './ports';
 
 // One simple command per line, its words as arguments: enough for the rules to decide.
@@ -91,7 +92,7 @@ export type GateSetup = {
   runner?: Parameters<typeof scriptedRunner>[0];
 } & Parameters<typeof scriptedBackend>[0];
 
-// The Gate on a stub view: rows are the blocks sent next, the selection follows. focused: the blocks the Gate
+// The Gate on the minimal view: rows are the blocks sent next, the selection follows. focused: the blocks the Gate
 // moved the selection to. events: the Session Log as appended.
 export function gateWith(setup: GateSetup = {}) {
   const { users = [], calls = [], tools = BASH_TOOLS, global, project, policies = [], compactor, files = {}, editor = async text => text } = setup;
@@ -108,20 +109,6 @@ export function gateWith(setup: GateSetup = {}) {
   const focused: number[] = [];
   const [active, setActive] = createSignal<Policy | null>(null);
   const [autoOn, setAutoOn] = createSignal(false);
-  const view = (k: Kernel): View => {
-    const [selected, setSelected] = createSignal(1);
-    const [marked, setMarked] = createSignal<ReadonlySet<number>>(new Set());
-    const rows = () => k.sent().map(b => b.id);
-    return {
-      rows, shown: rows, hiding: () => false, selected, setSelected, marked, setMarked,
-      selectedBlock: () => k.sent().find(b => b.id === selected()),
-      selectAt: i => setSelected(rows()[i] ?? selected()),
-      keepSelection: () => {},
-      follow: id => void (focused.push(id), setSelected(id)),
-      release: () => {},
-      filterBy: () => {},
-    };
-  };
   const searcher = { timeout: 30, run: async (query: string) => ({ output: `results for ${query}\n`, exit: 0, stopped: null }) };
   let selection: View;
   const gate = createRoot(() => createGate({
@@ -133,7 +120,7 @@ export function gateWith(setup: GateSetup = {}) {
     policies: { all: policies, active, set: setActive },
     autoApprove: { on: autoOn, set: setAutoOn },
     openSessions: () => {},
-  }, k => (selection = view(k))));
+  }, k => (selection = minimalView(k, id => focused.push(id)))));
   const select = (id: number) => selection.setSelected(id);
   const mark = (...ids: number[]) => selection.setMarked(new Set(ids));
   return { gate, sent, reply, ran, focused, events: logged, select, mark };
