@@ -114,9 +114,12 @@ export function openTty(input = '/dev/tty', output = input): { terminal: Termina
   const until = (signal: AbortSignal) =>
     signal.aborted ? Promise.resolve(null) : Promise.race([line(), new Promise<null>(resolve => signal.addEventListener('abort', () => resolve(null), { once: true }))]);
   const write = (text: string) => void writeSync(out, text);
+  // A read still waiting for a line (after an abort) would block closing a terminal until a line is typed; it is
+  // closed once that read ends, or with the process, which `resector -p` exits.
   const close = () => {
-    closeSync(fd);
     closeSync(out);
+    if (pending) void pending.then(() => closeSync(fd)).catch(() => {});
+    else closeSync(fd);
   };
   return { terminal: ttyTerminal({ write, read: until }, isatty(out)), close };
 }

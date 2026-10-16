@@ -1,6 +1,6 @@
 // The terminal of a Headless Run: Tool Approval and Questions asked, answered line by line.
 import { expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { closeSync, mkdtempSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Block } from '../../core/log/fold';
@@ -77,4 +77,23 @@ test('the asking goes to the terminal itself, uncolored when it is no TTY', asyn
   await tty.terminal.approve(call, verdict, signal);
   tty.close();
   expect(readFileSync(join(dir, 'out'), 'utf8')).toStartWith('? approve touch x && ls\n');
+});
+
+// macOS blocks closing a terminal while a read waits on it; a regression hangs here. Linux does not block.
+test('after an abort the terminal closes though its read still waits for a line', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'resector-tty-'));
+  const fifo = join(dir, 'fifo');
+  expect(Bun.spawnSync(['mkfifo', fifo]).exitCode).toBe(0);
+  // Held open so the terminal's reads wait for a line instead of ending.
+  const typing = openSync(fifo, 'r+');
+  try {
+    const tty = openTty(fifo, join(dir, 'out'))!;
+    const stop = new AbortController();
+    const asked = tty.terminal.approve(call, verdict, stop.signal);
+    stop.abort();
+    expect(await asked).toBe('reject');
+    tty.close();
+  } finally {
+    closeSync(typing);
+  }
 });
