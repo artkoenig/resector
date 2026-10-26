@@ -26,7 +26,7 @@ const MODE_KEYS: Partial<Record<KeyMode, Hint[]>> = {
   complete: [['↑↓', 'choose'], ['tab/enter', 'complete'], ['esc', 'back']],
   input: [['enter', 'send'], ['tab/esc', 'back']],
   question: [['↑↓', 'choose'], ['enter', 'pick'], ['esc', 'decline'], ['q', 'quit']],
-  questions: [['↑↓', 'choose'], ['enter', 'pick'], ['←→', 'question'], ['r', 'recommended'], ['esc', 'decline'], ['q', 'quit']],
+  questions: [['↑↓', 'choose'], ['enter', 'pick'], ['tab ←→', 'question'], ['r', 'recommended'], ['esc', 'decline'], ['q', 'quit']],
   answer: [['enter', 'answer'], ['esc', 'back']],
 };
 // Streaming, running or a policy running: the first Esc stops the loop after the step, the second aborts it.

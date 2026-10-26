@@ -166,6 +166,18 @@ test('skipped questions come back as Unanswered; ←→ switch tabs (#34)', asyn
   expect(answerSent()).toMatchObject({ content: `${RUNTIME.question}: Unanswered\nWhich linters should run?: Unanswered` });
 });
 
+test('Tab and l switch to the next tab, shift+Tab and h back (#34)', async () => {
+  await questioned(RUNTIME, LINTERS);
+  ui.mockInput.pressTab();
+  await frameMatching(ui, f => f.includes('Which linters should run?'));
+  await press('l');
+  await frameMatching(ui, f => f.includes('enter sends'));
+  await press('h');
+  await frameMatching(ui, f => f.includes('Which linters should run?'));
+  ui.mockInput.pressTab({ shift: true });
+  await frameMatching(ui, f => f.includes('Which runtime should we use?'));
+});
+
 test('r fills the unanswered questions with their Recommended Options and jumps to Confirm; own answers join the toggles (#34)', async () => {
   await questioned(RUNTIME, LINTERS, { ...RUNTIME, question: 'Which package manager?', header: 'Packages' });
   await choose(1);
