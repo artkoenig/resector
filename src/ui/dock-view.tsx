@@ -44,11 +44,16 @@ export function createDockControl(gate: Screen, ui: Ui) {
     }
     if (i < dock.choices(s).length) step(dock.pick(s, i), dock.direct(s));
   }
+  const tabBy = (delta: number) => () => setDock(dock.switchTab(state()!, delta));
   const keys: Record<string, () => void> = {
     up: () => setDock(dock.moveRow(state()!, -1)),
     down: () => setDock(dock.moveRow(state()!, 1)),
-    right: () => setDock(dock.switchTab(state()!, 1)),
-    left: () => setDock(dock.switchTab(state()!, -1)),
+    right: tabBy(1),
+    left: tabBy(-1),
+    tab: tabBy(1),
+    'shift+tab': tabBy(-1),
+    l: tabBy(1),
+    h: tabBy(-1),
     return: () => (dock.confirming(state()!) ? step(state()!, true) : pickRow(state()!.row)),
     r: () => step(dock.recommend(state()!)),
     'shift+up': () => ui.scrollPreview(-1),
