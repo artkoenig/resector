@@ -21,7 +21,7 @@ if [ ! -e "\$STAMP" ] || [ "\$REPO/bun.lock" -nt "\$STAMP" ]; then
 fi
 # The checkout's bunfig.toml preloads the Solid JSX runtime; Bun would otherwise read the
 # bunfig.toml of the current directory. Like the release binary, ignore the project's .env.
-exec bun --config="\$REPO/bunfig.toml" --no-env-file "\$REPO/src/main.ts" "\$@"
+exec bun --config=/dev/null --preload="\$REPO/node_modules/@opentui/solid/scripts/preload.js" --no-env-file "\$REPO/src/main.ts" "\$@"
 EOF
 chmod 755 "$BIN_DIR/resector"
 
