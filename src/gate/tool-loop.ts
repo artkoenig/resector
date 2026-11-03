@@ -12,7 +12,7 @@ import type { GitSlice } from './git';
 import type { Kernel } from './kernel';
 import type { Rules } from './rules';
 import type { Asked, Status, View } from './types';
-import { skillOf, type Skill } from '../core/skills/skills';
+import { skillDeps, skillOf, type Skill } from '../core/skills/skills';
 
 export const APPROVE = 'y run once · a allow for session · n reject · e edit';
 export const QUESTION_HINT = 'the model asks – answer in the dock';
@@ -130,10 +130,22 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
   async function run(call: Block, notes: string[]) {
     if (call.tool === 'skill') {
       const skill = skillOf(tools.skills ?? [], call.content);
-      // The body as a Note first, then a short Tool Result resolving the call: the result lands right after the
-      // call, the Note follows it, and the resolved call is no longer pending.
-      append({ type: 'SkillLoaded', id: nextId(), after: call.id, file: skill?.file ?? call.content, content: skill?.body ?? '' });
-      append(ops.toolResult(call, nextId(), skill ? { output: `loaded ${skill.name}`, exit: 0, stopped: null } : { output: `unknown skill: ${call.content}`, exit: 1, stopped: null }, 0));
+      // The body as a Note, then its dependencies (already-loaded ones skipped), then a short Tool Result.
+      const loaded = new Set(context().blocks.filter(b => b.origin === 'skill').map(b => b.file));
+      let after = call.id;
+      if (skill) {
+        if (!loaded.has(skill.file)) {
+          append({ type: 'SkillLoaded', id: nextId(), after, file: skill.file, content: skill.body });
+          after = nextId() - 1;
+        }
+        for (const dep of skillDeps(skill, tools.skills ?? [])) {
+          if (loaded.has(dep.file)) continue;
+          append({ type: 'SkillLoaded', id: nextId(), after, file: dep.file, content: dep.body });
+          after = nextId() - 1;
+        }
+      }
+      const names = skill ? [skill.name, ...skillDeps(skill, tools.skills ?? []).map(d => d.name)].join(', ') : call.content;
+      append(ops.toolResult(call, nextId(), skill ? { output: `loaded ${names}`, exit: 0, stopped: null } : { output: `unknown skill: ${call.content}`, exit: 1, stopped: null }, 0));
       goOn(notes);
       return;
     }

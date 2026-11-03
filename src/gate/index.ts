@@ -15,7 +15,7 @@ import { createSettings } from './settings';
 import { createToolLoop } from './tool-loop';
 import type { Kernel } from './kernel';
 import type { AutoApprove, GateOptions, Policies, View } from './types';
-import { skillOf } from '../core/skills/skills';
+import { skillDeps, skillOf } from '../core/skills/skills';
 
 export * from './types';
 export type * from './ports';
@@ -50,9 +50,21 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     const skill = skillOf(skills ?? [], arg);
     if (!skill) return k.setStatus({ text: `unknown skill ${arg}: ${names.join(' ')}`, tone: 'error' });
     const blocks = k.context().blocks;
-    const after = blocks.length ? blocks[blocks.length - 1]!.id : 0;
-    k.append({ type: 'SkillLoaded', id: k.nextId(), after, file: skill.file, content: skill.body });
-    k.setStatus({ text: `loaded ${skill.name}`, tone: 'ok' });
+    const loaded = new Set(blocks.filter(b => b.origin === 'skill').map(b => b.file));
+    let after = blocks.length ? blocks[blocks.length - 1]!.id : 0;
+    const loadedNames: string[] = [];
+    if (!loaded.has(skill.file)) {
+      k.append({ type: 'SkillLoaded', id: k.nextId(), after, file: skill.file, content: skill.body });
+      after = k.nextId() - 1;
+      loadedNames.push(skill.name);
+    }
+    for (const dep of skillDeps(skill, skills ?? [])) {
+      if (loaded.has(dep.file)) continue;
+      k.append({ type: 'SkillLoaded', id: k.nextId(), after, file: dep.file, content: dep.body });
+      after = k.nextId() - 1;
+      loadedNames.push(dep.name);
+    }
+    k.setStatus({ text: loadedNames.length ? `loaded ${loadedNames.join(', ')}` : `already loaded: ${skill.name}`, tone: 'ok' });
   }
   const input = createCommands(k, sel, {
     '/sessions': openSessions, '/rename': settings.renameSession, '/tools': settings.toggleTool, '/filter': sel.filterBy, '/policy': policy.switchPolicy,

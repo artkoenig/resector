@@ -266,7 +266,7 @@ test('a session rule beats global and project rules', async () => {
 // The `skill` tool: no approval, the body becomes a Note, the call resolves, the loop continues.
 test('a skill call loads its body as a Note and resolves without approval; the loop continues', async () => {
   const g = gateWith({ tools: toolsWith(['bash', 'skill']),
-    skills: [{ name: 'tdd', description: 'test driven development', file: '/skills/tdd/SKILL.md', body: 'Write tests first.' }],
+    skills: [{ name: 'tdd', description: 'test driven development', file: '/skills/tdd/SKILL.md', body: 'Write tests first.', requires: [] }],
   });
   g.reply(
     { content: 'I will use TDD.', calls: [{ name: 'skill', arguments: JSON.stringify({ name: 'tdd' }) }] },
@@ -284,4 +284,28 @@ test('a skill call loads its body as a Note and resolves without approval; the l
     { type: 'BlockAdded', id: 8, kind: 'Assistant', origin: 'model', content: 'done' },
     { type: 'ResponseReceived', usage: null, cached: null },
   ]);
+});
+
+test('a skill with requires auto-loads its dependencies as separate Notes', async () => {
+  const g = gateWith({ tools: toolsWith(['bash', 'skill']),
+    skills: [
+      { name: 'wayfinder', description: 'Find the way', file: '/skills/wayfinder/SKILL.md', body: 'Wayfinder body.', requires: ['grilling', 'domain-modeling'] },
+      { name: 'grilling', description: 'Grill', file: '/skills/grilling/SKILL.md', body: 'Grilling body.', requires: [] },
+      { name: 'domain-modeling', description: 'Model', file: '/skills/domain-modeling/SKILL.md', body: 'Domain modeling body.', requires: [] },
+    ],
+  });
+  g.reply(
+    { content: 'Let me use wayfinder.', calls: [{ name: 'skill', arguments: JSON.stringify({ name: 'wayfinder' }) }] },
+    { content: 'done' },
+  );
+  g.gate.submit('go');
+  await settled(g.gate);
+  const skillNotes = g.gate.context().blocks.filter(b => b.origin === 'skill');
+  expect(skillNotes).toHaveLength(3);
+  expect(skillNotes[0]!.content).toBe('Wayfinder body.');
+  expect(skillNotes[1]!.content).toBe('Grilling body.');
+  expect(skillNotes[2]!.content).toBe('Domain modeling body.');
+  // The Tool Result mentions all loaded names.
+  const result = g.events.find(e => e.type === 'BlockAdded' && e.kind === 'Tool Result');
+  expect(result).toMatchObject({ content: 'loaded wayfinder, grilling, domain-modeling\n[exit 0]' });
 });
