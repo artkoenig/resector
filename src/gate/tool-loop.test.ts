@@ -1,6 +1,7 @@
 // Tool loop tests without a renderer: approval, rules, /auto, stopping and killing calls.
 import { expect, test } from 'bun:test';
 import { bash, gateWith, ofType, results, settled, until } from './gate.harness';
+import { toolsWith } from '../core/tools/catalog';
 
 const APPROVE = '? approve – y run once · a allow for session · n reject · e edit';
 
@@ -72,7 +73,7 @@ test('several calls are decided one by one in order; results keep call order', a
 });
 
 test('Esc while a call runs: it finishes, the next call waits and nothing is sent; send goes on', async () => {
-  const g = gateWith({ global: { 'sleep *': 'allow' }, runner: { slow: ['sleep 1'] } });
+  const g = gateWith({ tools: toolsWith(['bash', 'skill']), global: { 'sleep *': 'allow' }, runner: { slow: ['sleep 1'] } });
   g.reply({ calls: [bash('sleep 1'), bash('ls')] });
   g.gate.submit('go');
   await until(() => g.gate.running() !== null);
@@ -89,7 +90,7 @@ test('Esc while a call runs: it finishes, the next call waits and nothing is sen
 });
 
 test('Esc again kills a running command: its partial output is kept, the results are held', async () => {
-  const g = gateWith({ runner: { hang: ['sleep 5'] } });
+  const g = gateWith({ tools: toolsWith(['bash', 'skill']), runner: { hang: ['sleep 5'] } });
   g.reply({ calls: [bash('sleep 5')] });
   g.gate.submit('go');
   await settled(g.gate);
@@ -242,7 +243,7 @@ test('a is refused where an argument points outside the project', async () => {
 });
 
 test('calls pending when the Gate opens are decided by the rules at once', async () => {
-  const g = gateWith({ users: ['go'], calls: ['ls -d .', 'touch resumed.txt'] });
+  const g = gateWith({ tools: toolsWith(['bash', 'skill']), users: ['go'], calls: ['ls -d .', 'touch resumed.txt'] });
   await settled(g.gate);
   expect(g.events.at(-1)).toEqual({ type: 'BlockAdded', id: 6, kind: 'Tool Result', origin: 'tool', content: 'ran ls -d .\n[exit 0]', call: 4 });
   expect(g.gate.nextCall()?.content).toBe('touch resumed.txt');
@@ -260,4 +261,27 @@ test('a session rule beats global and project rules', async () => {
   g.gate.allowForSession();
   await settled(g.gate);
   expect(g.ran).toEqual(['touch one.txt', 'touch secret.txt']);
+});
+
+// The `skill` tool: no approval, the body becomes a Note, the call resolves, the loop continues.
+test('a skill call loads its body as a Note and resolves without approval; the loop continues', async () => {
+  const g = gateWith({ tools: toolsWith(['bash', 'skill']),
+    skills: [{ name: 'tdd', description: 'test driven development', file: '/skills/tdd/SKILL.md', body: 'Write tests first.' }],
+  });
+  g.reply(
+    { content: 'I will use TDD.', calls: [{ name: 'skill', arguments: JSON.stringify({ name: 'tdd' }) }] },
+    { content: 'done' },
+  );
+  g.gate.submit('go');
+  await settled(g.gate);
+  expect(g.events.slice(-8)).toEqual([
+    { type: 'BlockAdded', id: 4, kind: 'Assistant', origin: 'model', content: 'I will use TDD.' },
+    { type: 'BlockAdded', id: 5, kind: 'Tool Call', origin: 'model', tool: 'skill', content: 'tdd' },
+    { type: 'ResponseReceived', usage: null, cached: null },
+    { type: 'SkillLoaded', id: 6, after: 5, file: '/skills/tdd/SKILL.md', content: 'Write tests first.' },
+    { type: 'BlockAdded', id: 7, kind: 'Tool Result', origin: 'tool', content: 'loaded tdd\n[exit 0]', call: 5 },
+    { type: 'RequestSent', hash: expect.any(String), tokens: expect.any(Number) },
+    { type: 'BlockAdded', id: 8, kind: 'Assistant', origin: 'model', content: 'done' },
+    { type: 'ResponseReceived', usage: null, cached: null },
+  ]);
 });

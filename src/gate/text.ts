@@ -4,6 +4,7 @@ import { callText, type Block } from '../core/log/fold';
 import type { Reviewed } from './review';
 import { toolNames } from '../core/tools/catalog';
 import { questionTitle } from '../core/tools/question';
+import { skillName } from '../core/skills/skills';
 import type { Speed } from '../core/tools/answer';
 
 export const formatTokens = (t: number): string =>
@@ -59,6 +60,7 @@ function originTitle(block: Titled, blocks: readonly Called[]): string | null {
   const tool = toolTitle(block, blocks);
   if (tool !== null) return tool;
   if (block.source !== undefined) return `⇄ ${firstLine(block.source)}`;
+  if (block.origin === 'skill') return block.file !== undefined ? `Skill: ${skillName(block.file)}` : 'Skills';
   if (block.file !== undefined) return `@${block.file}`;
   if (block.origin === 'environment') return 'Environment';
   if (block.origin === 'policy') return 'Context Policy';

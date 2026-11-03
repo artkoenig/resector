@@ -36,9 +36,9 @@ export function createSuggestions(gate: Screen, draft: () => string, mode: () =>
   // The values after `/filter `, `all` first while one is off, `/policy `, `off` first while one is on, `/thinking `
   // and the /git: commands; null for any other draft.
   function valueSuggestions(text: string): Suggestion[] | null {
-    const [, command, typed] = /^\/(filter|policy|thinking|git:branch|git:worktree) (\S*)$/.exec(text) ?? [];
+    const [, command, typed] = /^\/(filter|policy|thinking|git:branch|git:worktree|skill) (\S*)$/.exec(text) ?? [];
     if (!command || !gate.commands.some(c => c.name === `/${command}`)) return null;
-    const values = { filter: filterValues, policy: policyValues, thinking: thinkingValues, 'git:branch': branchValues, 'git:worktree': worktreeValues }[command]!();
+    const values = { filter: filterValues, policy: policyValues, thinking: thinkingValues, 'git:branch': branchValues, 'git:worktree': worktreeValues, skill: skillValues }[command]!();
     return values
       .filter(v => v.name.toLowerCase().startsWith(typed!.toLowerCase()))
       .map(v => ({ label: v.name, description: v.description, draft: `/${command} ${v.name}`, run: `/${command} ${v.name}` }));
@@ -55,6 +55,7 @@ export function createSuggestions(gate: Screen, draft: () => string, mode: () =>
     }),
   ];
   const thinkingValues = () => gate.thinkingOptions().map(o => ({ name: o.name, description: o.value === gate.thinking() ? 'active' : 'switch on' }));
+  const skillValues = () => gate.skillNames().map(name => ({ name, description: 'load' }));
   // Branches in another worktree last: git refuses to switch to them.
   const branchValues = () =>
     gate

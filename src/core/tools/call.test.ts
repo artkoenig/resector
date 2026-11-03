@@ -9,6 +9,8 @@ test('a bash call yields its command, a search call its query', () => {
   expect(parseCall({ name: 'bash', arguments: '{"command":"ls -la"}' }, ['bash'])).toEqual({ tool: 'bash', content: 'ls -la' });
   expect(parseCall({ name: 'search', arguments: '{"query":"bun"}' }, ['bash', 'search'])).toEqual({ tool: 'search', content: 'bun' });
   expect(parseCall({ name: 'search', arguments: '{"query":"bun"}' }, ['bash'])).toEqual({ error: 'tool search is off (/tools)' });
+  expect(parseCall({ name: 'skill', arguments: '{"name":"refactor"}' }, ['skill'])).toEqual({ tool: 'skill', content: 'refactor' });
+  expect(parseCall({ name: 'skill', arguments: '{"name":"refactor"}' }, ['bash'])).toEqual({ error: 'tool skill is off (/tools)' });
 });
 
 const QUESTION = { questions: [{ question: 'Which?', header: 'Pick', options: [{ label: 'A', description: 'a' }, { label: 'B', description: 'b' }], recommended: 'A' }] };
@@ -24,6 +26,7 @@ test('a question call yields its arguments as content; an invalid one is rejecte
 test('a call is sent back with the arguments it came with', () => {
   expect(callArguments('bash', 'ls -la')).toBe('{"command":"ls -la"}');
   expect(callArguments('search', 'bun')).toBe('{"query":"bun"}');
+  expect(callArguments('skill', 'refactor')).toBe('{"name":"refactor"}');
   expect(callArguments('question', JSON.stringify(QUESTION))).toBe(JSON.stringify(QUESTION));
 });
 
@@ -35,6 +38,7 @@ test('other tools, broken JSON or a missing command are not runnable', () => {
   expect(parseCall({ name: 'bash', arguments: '{"command":1}' }, ['bash'])).toEqual({ error: 'no command string' });
   expect(parseCall({ name: 'toString', arguments: '{}' }, ['toString'])).toEqual({ error: 'unknown tool toString' });
   expect(parseCall({ name: 'search', arguments: '{"command":"ls"}' }, ['search'])).toEqual({ error: 'no query string' });
+  expect(parseCall({ name: 'skill', arguments: '{"cmd":"x"}' }, ['skill'])).toEqual({ error: 'no name string' });
 });
 
 test('the result is the output, then how the run ended', () => {

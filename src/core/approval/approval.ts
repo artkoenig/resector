@@ -96,7 +96,7 @@ function questionVerdict(rules: Rule[]): Verdict {
 }
 // search only reads the web: always allowed, no rule decides it.
 export function verdictOf(call: Pick<Block, 'tool' | 'content'>, input: ApprovalInput): Verdict {
-  if (call.tool === 'search') return ALLOWED;
+  if (call.tool === 'search' || call.tool === 'skill') return ALLOWED;
   return call.tool === 'question' ? questionVerdict(input.rules) : evaluate(call.content, input);
 }
 // The tools rules switch off: kept out of the Tools Block, calls denied.

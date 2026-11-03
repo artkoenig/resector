@@ -3,12 +3,12 @@
 export type Kind = 'System' | 'Tools' | 'User' | 'Thinking' | 'Assistant' | 'Tool Call' | 'Tool Result' | 'Note';
 // file: an @path snapshot or the project instructions; environment: the environment Note;
 // policy: a Note a Context Policy added.
-export type Origin = 'config' | 'user' | 'model' | 'tool' | 'compaction' | 'file' | 'environment' | 'policy';
+export type Origin = 'config' | 'user' | 'model' | 'tool' | 'compaction' | 'file' | 'environment' | 'policy' | 'skill';
 // How a bash run ended early: Esc killed it, or it ran into the timeout.
 export type Stopped = 'killed' | 'timeout';
 export type ToolProtocol = 'native';
 // The tools the harness runs.
-export type Tool = 'bash' | 'search' | 'question';
+export type Tool = 'bash' | 'search' | 'question' | 'skill';
 // Reasoning: 'off', 'on', or an effort level the model's chat template accepts (e.g. 'low', 'xhigh').
 export type Thinking = string;
 
@@ -48,6 +48,8 @@ export type SessionEvent =
   | ({ type: 'Compact'; sources: number[]; instruction: string; noteId: number; content: string } & By)
   // A Context Policy's Note `id` with `content` right after block `after`.
   | ({ type: 'NoteAdded'; id: number; after: number; content: string } & By)
+  // A skill's body as a Note `id` with `content`, read from `file`, right after block `after` (its `skill` call).
+  | { type: 'SkillLoaded'; id: number; after: number; file: string; content: string }
   // Display label only, never sent; empty = reset to the default title.
   | { type: 'Rename'; id: number; title: string }
   // "Allow for session": an allow rule for the rest of the session, also after resume.

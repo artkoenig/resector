@@ -90,7 +90,7 @@ test('/tools switches a tool in the Tools Block as its next Revision; unknown to
   const events = session(on);
   const [context] = at(events, 5);
   expect(toggleTool(events, context, 'search', [])).toEqual({ event: { type: 'Edit', id: 5, revision: 2, content: expect.stringContaining('"search"') } });
-  expect(toggleTool(events, context, 'python', [])).toEqual({ error: 'unknown tool python – bash search question' });
+  expect(toggleTool(events, context, 'python', [])).toEqual({ error: 'unknown tool python – bash search question skill' });
   expect(toggleTool(session(), fold(session()), 'search', [])).toEqual({ error: 'no Tools Block' });
 });
 

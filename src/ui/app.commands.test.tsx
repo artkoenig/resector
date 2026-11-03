@@ -63,7 +63,7 @@ test('typing / suggests the commands, filtered while typing; ↑↓ choose, Ente
   await write('/sessions');
   await until(() => opened.length > 0);
   await write('/nope');
-  await frameMatching(ui, f => f.includes('✗ unknown command /nope') && f.includes('/sessions /rename /tools /filter /policy /auto /thinking'));
+  await frameMatching(ui, f => f.includes('✗ unknown command /nope') && f.includes('/sessions /rename /tools /filter /policy /auto /skill /thinking'));
   // Config is read when a session opens: a change needs a restart (ADR 0001).
   await write('/reload');
   await frameMatching(ui, f => f.includes('✗ unknown command /reload'));

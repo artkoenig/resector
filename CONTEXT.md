@@ -28,7 +28,7 @@ Context Block holding the model's reasoning for one answer, placed before that a
 _Avoid_: reasoning, chain of thought
 
 **Note**:
-Context Block of free text without API role semantics, keeping a reference to its origin: a moved Tool Pair, a Compaction result, a Context Policy, the Environment Note, Project Instructions or a File Reference.
+Context Block of free text without API role semantics, keeping a reference to its origin: a moved Tool Pair, a Compaction result, a Context Policy, the Environment Note, Project Instructions, a File Reference or a Skill.
 
 **File Reference**:
 `@<path>` (optionally with a line range) in the user's input: a Note that shows the file as it is now until the Context is sent, then becomes a snapshot that is never refreshed. A file missing at send stops the send.
@@ -39,6 +39,12 @@ Note describing where the Session runs (working directory, OS and shell, date, b
 
 **Project Instructions**:
 Notes holding `AGENTS.md` and `CLAUDE.md` at the root of the checkout the Session runs in, then the user's own from the Project Home, one per file, read once when the Session starts.
+
+**Skill**:
+A `SKILL.md` folder in the project's `.claude/skills/` or the user's `~/.claude/skills/` that the model loads on demand. Its metadata (name, description) is listed in the Skills note; its body is added to the Context as a Note (origin `skill`) when the model calls the `skill` tool.
+
+**Skills note**:
+Note at the start of a Session listing the available Skills and what each does, so the model can decide to load one.
 
 **Compaction**:
 Rewrite of selected Context Blocks by the LLM, following an instruction, into one Note at the position of the first source. The model sees only the selected blocks and the instruction. Started by the user, who reviews the proposal and accepts, discards or refines it (refine starts again from the sources), or by a Context Policy, whose result is accepted without review. On accept the sources count as removed; undo brings them back.

@@ -40,27 +40,33 @@ const QUESTION_TOOL = {
   },
 };
 
-test('a new Tools Block offers bash with one command parameter and question', () => {
-  expect(JSON.parse(TOOLS)).toEqual([BASH, QUESTION_TOOL]);
+const SKILL = {
+  name: 'skill',
+  description: expect.stringContaining('Load a skill'),
+  parameters: { type: 'object', properties: { name: { type: 'string', description: "the name of the skill to load" } }, required: ['name'] },
+};
+
+test('a new Tools Block offers bash, question and skill', () => {
+  expect(JSON.parse(TOOLS)).toEqual([BASH, QUESTION_TOOL, SKILL]);
   expect(QUESTION_DEFINITION.description).toContain('always a recommendation');
   expect(QUESTION_DEFINITION.description).toContain('never add an "Other" option');
-  expect(toolNames(TOOLS)).toBe('bash, question');
+  expect(toolNames(TOOLS)).toBe('bash, question, skill');
   expect(toolNames('[{"name":"a"},{"name":"b"}]')).toBe('a, b');
   expect(toolNames('[]')).toBe('no tools');
 });
 
 test('/tools switches a tool off and on again; an unknown one is refused', () => {
   const off = toggleTool(TOOLS, 'bash') as { content: string };
-  expect(toolNames(off.content)).toBe('question');
+  expect(toolNames(off.content)).toBe('question, skill');
   expect(toggleTool(off.content, 'bash')).toEqual({ content: TOOLS });
-  expect(toggleTool(TOOLS, 'python')).toEqual({ error: 'unknown tool python – bash search question' });
-  expect(toggleTool(TOOLS, 'toString')).toEqual({ error: 'unknown tool toString – bash search question' });
+  expect(toggleTool(TOOLS, 'python')).toEqual({ error: 'unknown tool python – bash search question skill' });
+  expect(toggleTool(TOOLS, 'toString')).toEqual({ error: 'unknown tool toString – bash search question skill' });
 });
 
 test('/tools search switches search on after bash, with one query parameter; off again, bash stays', () => {
   const on = toggleTool(TOOLS, 'search') as { content: string };
-  expect(JSON.parse(on.content)).toEqual([BASH, SEARCH, QUESTION_TOOL]);
-  expect(toolNames(on.content)).toBe('bash, search, question');
+  expect(JSON.parse(on.content)).toEqual([BASH, SEARCH, QUESTION_TOOL, SKILL]);
+  expect(toolNames(on.content)).toBe('bash, search, question, skill');
   expect(toggleTool('[]', 'search')).toEqual({ content: JSON.stringify([JSON.parse(on.content)[1]], null, 2) });
   expect(toggleTool(on.content, 'search')).toEqual({ content: TOOLS });
 });

@@ -8,6 +8,7 @@ import { createSplit } from '../adapters/bash/split';
 import { loadConfig, type ConfigPaths } from '../adapters/fs/config';
 import { loadPolicies } from '../adapters/fs/policies';
 import { listProjectFiles, probeEnvironment, projectFiles, projectInstructions, tilde } from '../adapters/fs/project';
+import { discoverSkills } from '../adapters/fs/skills';
 import { ensureWorktree, isRepository, listBranches, locateCheckout, mainCheckout, removeWorktree, status, switchBranch, topLevel, watchHead, worktreeDirty } from '../adapters/git/git';
 import { createSearcher } from '../adapters/search/ddgr';
 import type { SessionStore } from '../adapters/store/sessions';
@@ -94,6 +95,7 @@ export async function openWorkspace(options: WorkspaceOptions) {
       instructions: projectInstructions(topLevel(here), paths.projectHome.config),
       checkout: here,
       tools: start?.tools,
+      skills: discoverSkills(here, paths.home),
     });
     if (start?.thinking !== undefined) events.push({ type: 'ThinkingSet', thinking: start.thinking });
     if (start?.worktree) events.push({ type: 'WorktreeSet', on: true });
@@ -145,7 +147,7 @@ export async function openWorkspace(options: WorkspaceOptions) {
     return {
       id: opened.id,
       release: opened.release,
-      options: { backend, ...runningIn(loaded, dir, checkout, opened.id), log: opened.log, events, notice: withFailed(withWarning(notice, warning)), instruction, compactor: compactor(loaded, profile, opened.id), policies, autoApprove },
+      options: { backend, ...runningIn(loaded, dir, checkout, opened.id), log: opened.log, events, notice: withFailed(withWarning(notice, warning)), instruction, compactor: compactor(loaded, profile, opened.id), policies, autoApprove, skills: discoverSkills(here, paths.home) },
     };
   }
   // The checkout the session started in, from any worktree of the Project; the current one if that is gone, or for

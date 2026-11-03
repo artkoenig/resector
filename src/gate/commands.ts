@@ -12,6 +12,7 @@ export const COMMANDS = [
   { name: '/filter', arg: '<kind>', description: 'show or hide blocks of a Kind' },
   { name: '/policy', arg: '<name>', description: 'switch a Context Policy on or off' },
   { name: '/auto', arg: '', description: 'switch auto-approve of Tool Calls on or off' },
+  { name: '/skill', arg: '<name>', description: 'load a skill into the context' },
   { name: '/thinking', arg: '<mode>', description: 'set thinking for the next requests' },
   { name: '/git:branch', arg: '<branch>', description: 'show or switch the git branch' },
   { name: '/git:worktree', arg: '<on|off>', description: 'run the session in its own git worktree' },

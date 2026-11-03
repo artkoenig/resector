@@ -3,10 +3,11 @@ import type { SessionEvent } from '../src/core/log/events';
 import { fold } from '../src/core/log/fold';
 import { renderPrefixes, type Message, type Request } from '../src/core/render/native';
 import { newSession } from '../src/core/session/session';
-import { toggleTool, TOOLS } from '../src/core/tools/catalog';
+import { toolsWith } from '../src/core/tools/catalog';
+export { toolsWith };
 
 // A Tools Block of bash only: fixtures whose token counts do not follow the default tools.
-export const BASH_TOOLS = (toggleTool(TOOLS, 'question') as { content: string }).content;
+export const BASH_TOOLS = toolsWith(['bash']);
 // A new session's events with `tools` as its Tools Block.
 export const withTools = (events: SessionEvent[], tools: string): SessionEvent[] =>
   events.map(e => (e.type === 'BlockAdded' && e.kind === 'Tools' ? { ...e, content: tools } : e));

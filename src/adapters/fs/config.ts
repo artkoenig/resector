@@ -7,7 +7,7 @@ import { DEFAULT_SYSTEM_PROMPT } from '../../core/config/system-prompt';
 import { mainCheckout } from '../git/git';
 
 // projectHome: what the user edits for the Project (config) and what resector writes for it (data).
-export type ConfigPaths = { global: string; project: string; policies: string; projectHome: { config: string; data: string } };
+export type ConfigPaths = { home: string; global: string; project: string; policies: string; projectHome: { config: string; data: string } };
 
 export function configPaths({ home, cwd, env }: { home: string; cwd: string; env: Record<string, string | undefined> }): ConfigPaths {
   // XDG values count only if absolute, as the spec says.
@@ -16,6 +16,7 @@ export function configPaths({ home, cwd, env }: { home: string; cwd: string; env
   const key = projectKey(cwd);
   const projectHome = { config: join(config, 'projects', key), data: join(xdg('XDG_DATA_HOME', '.local/share'), 'projects', key) };
   return {
+    home,
     global: env.RESECTOR_CONFIG ?? join(config, 'config.jsonc'),
     project: join(projectHome.config, 'config.jsonc'),
     policies: join(config, 'policies'),

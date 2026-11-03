@@ -101,6 +101,10 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
     state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'policy', content: e.content, cutOff: false, ...NEW_ENTRY });
     insert(state, state.order.indexOf(e.after) + 1, e.id);
   },
+  SkillLoaded: (state, e) => {
+    state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'skill', file: e.file, content: e.content, cutOff: false, ...NEW_ENTRY });
+    insert(state, state.order.indexOf(e.after) + 1, e.id);
+  },
 };
 
 // Indices of Session Log events cancelled by an Undo counter-event.

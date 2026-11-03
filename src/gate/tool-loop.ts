@@ -12,6 +12,7 @@ import type { GitSlice } from './git';
 import type { Kernel } from './kernel';
 import type { Rules } from './rules';
 import type { Asked, Status, View } from './types';
+import { skillOf, type Skill } from '../core/skills/skills';
 
 export const APPROVE = 'y run once · a allow for session · n reject · e edit';
 export const QUESTION_HINT = 'the model asks – answer in the dock';
@@ -31,7 +32,7 @@ export type Driver = { ask: (call: Block) => void; stopped: () => boolean };
 // How a call the rules ask for is decided: the terminal's choice, or no user to ask.
 export type Choice = Awaited<ReturnType<Terminal['approve']>> | 'unattended';
 
-export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice, tools: { runner: Runner; searcher: Runner; send: () => void }) {
+export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice, tools: { runner: Runner; searcher: Runner; skills?: Skill[]; send: () => void }) {
   const { context, nextId, append, apply, setStatus, running, setRunning } = k;
   const { follow } = sel;
 
@@ -127,6 +128,15 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
 
   // Runs the call with its tool's runner; its output streams into a live Tool Result row, then the next call is decided.
   async function run(call: Block, notes: string[]) {
+    if (call.tool === 'skill') {
+      const skill = skillOf(tools.skills ?? [], call.content);
+      // The body as a Note first, then a short Tool Result resolving the call: the result lands right after the
+      // call, the Note follows it, and the resolved call is no longer pending.
+      append({ type: 'SkillLoaded', id: nextId(), after: call.id, file: skill?.file ?? call.content, content: skill?.body ?? '' });
+      append(ops.toolResult(call, nextId(), skill ? { output: `loaded ${skill.name}`, exit: 0, stopped: null } : { output: `unknown skill: ${call.content}`, exit: 1, stopped: null }, 0));
+      goOn(notes);
+      return;
+    }
     const abort = new AbortController();
     const tool = call.tool === 'search' ? tools.searcher : tools.runner;
     setStopping(false);

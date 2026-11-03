@@ -10,6 +10,7 @@ import { newSession } from '../core/session/session';
 import type { RawCall } from '../core/tools/call';
 import type { RunResult } from '../core/tools/call';
 import { createGate, type Compactor, type Gate, type View } from '.';
+import type { Skill } from '../core/skills/skills';
 import { minimalView } from './minimal-view';
 import type { Backend, RunOptions } from './ports';
 
@@ -90,12 +91,13 @@ export type GateSetup = {
   files?: Record<string, string>;
   editor?: (text: string) => Promise<string>;
   runner?: Parameters<typeof scriptedRunner>[0];
+  skills?: Skill[];
 } & Parameters<typeof scriptedBackend>[0];
 
 // The Gate on the minimal view: rows are the blocks sent next, the selection follows. focused: the blocks the Gate
 // moved the selection to. events: the Session Log as appended.
 export function gateWith(setup: GateSetup = {}) {
-  const { users = [], calls = [], tools = BASH_TOOLS, global, project, policies = [], compactor, files = {}, editor = async text => text } = setup;
+  const { users = [], calls = [], tools = BASH_TOOLS, global, project, policies = [], compactor, files = {}, editor = async text => text, skills } = setup;
   const { backend, sent, reply } = scriptedBackend(setup);
   const { runner, ran } = scriptedRunner(setup.runner);
   const opening = withTools(newSession('default', 'You are an agent.'), tools);
@@ -119,7 +121,7 @@ export function gateWith(setup: GateSetup = {}) {
     compactor: async () => compactor ?? null,
     policies: { all: policies, active, set: setActive },
     autoApprove: { on: autoOn, set: setAutoOn },
-    openSessions: () => {},
+    openSessions: () => {}, skills,
   }, k => (selection = minimalView(k, id => focused.push(id)))));
   const select = (id: number) => selection.setSelected(id);
   const mark = (...ids: number[]) => selection.setMarked(new Set(ids));

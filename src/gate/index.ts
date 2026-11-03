@@ -15,6 +15,7 @@ import { createSettings } from './settings';
 import { createToolLoop } from './tool-loop';
 import type { Kernel } from './kernel';
 import type { AutoApprove, GateOptions, Policies, View } from './types';
+import { skillOf } from '../core/skills/skills';
 
 export * from './types';
 export type * from './ports';
@@ -30,21 +31,33 @@ function ownAutoApprove(): AutoApprove {
   return { on, set };
 }
 
-export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, policies = NO_POLICIES, autoApprove = ownAutoApprove(), git = null, ...options }: GateOptions, view: (k: Kernel) => View) {
+export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, skills, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, policies = NO_POLICIES, autoApprove = ownAutoApprove(), git = null, ...options }: GateOptions, view: (k: Kernel) => View) {
   const k = createKernel({ log, project, backend: options.backend, events: options.events, status: options.notice ?? null });
   const sel = view(k);
   const repo = createGit(k, git, project, approval.root);
   const rules = createRules(k, approval, autoApprove);
-  const loop = createToolLoop(k, sel, rules, repo, { runner, searcher, send: () => void sender.api.send() });
+  const loop = createToolLoop(k, sel, rules, repo, { runner, searcher, skills, send: () => void sender.api.send() });
   const policy = createPolicy(k, sel, policies, compactor);
   const headless = createHeadless(k, loop, rules, text => input.api.submit(text));
   const sender = createSend(k, sel, { loop, policy, git: repo, project, policies, mayRequest: headless.mayRequest });
   const compacting = createCompaction(k, sel, { editor, instruction, compactor });
   const edits = createEdits(k, sel, loop, { editor, clipboard, project });
   const settings = createSettings(k, rules, loop, autoApprove);
+  // /skill <name>: load a skill's body into the context as a Note; alone it lists the available skills.
+  function loadSkill(arg: string) {
+    const names = (skills ?? []).map(s => s.name);
+    if (!arg) return k.setStatus({ text: names.length ? `skills: ${names.join(', ')}` : 'no skills found', tone: 'info' });
+    const skill = skillOf(skills ?? [], arg);
+    if (!skill) return k.setStatus({ text: `unknown skill ${arg}: ${names.join(' ')}`, tone: 'error' });
+    const blocks = k.context().blocks;
+    const after = blocks.length ? blocks[blocks.length - 1]!.id : 0;
+    k.append({ type: 'SkillLoaded', id: k.nextId(), after, file: skill.file, content: skill.body });
+    k.setStatus({ text: `loaded ${skill.name}`, tone: 'ok' });
+  }
   const input = createCommands(k, sel, {
     '/sessions': openSessions, '/rename': settings.renameSession, '/tools': settings.toggleTool, '/filter': sel.filterBy, '/policy': policy.switchPolicy,
     '/auto': settings.switchAutoApprove, '/thinking': settings.setThinking, '/git:branch': repo.switchBranch, '/git:worktree': repo.switchWorktree,
+    '/skill': loadSkill,
   }, { inRepo: !!git, send: () => void sender.api.send() });
 
   rules.dropDenied();
@@ -72,6 +85,8 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     profile: () => k.context().profile,
     toolsOn: k.toolsOn,
     dismiss: () => k.setStatus(null),
+    // The skills available for /skill and the `skill` tool.
+    skillNames: () => (skills ?? []).map(s => s.name),
     // Each slice's own: what the view shows and does.
     ...policy.api,
     ...loop.api,
