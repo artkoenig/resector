@@ -15,7 +15,7 @@ import { createSettings } from './settings';
 import { createToolLoop } from './tool-loop';
 import type { Kernel } from './kernel';
 import type { AutoApprove, GateOptions, Policies, View } from './types';
-import { skillDeps, skillOf } from '../core/skills/skills';
+import { skillContent, skillDeps, skillOf } from '../core/skills/skills';
 
 export * from './types';
 export type * from './ports';
@@ -54,13 +54,13 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     let after = blocks.length ? blocks[blocks.length - 1]!.id : 0;
     const loadedNames: string[] = [];
     if (!loaded.has(skill.file)) {
-      k.append({ type: 'SkillLoaded', id: k.nextId(), after, file: skill.file, content: skill.body });
+      k.append({ type: 'SkillLoaded', id: k.nextId(), after, file: skill.file, content: skillContent(skill) });
       after = k.nextId() - 1;
       loadedNames.push(skill.name);
     }
     for (const dep of skillDeps(skill, skills ?? [])) {
       if (loaded.has(dep.file)) continue;
-      k.append({ type: 'SkillLoaded', id: k.nextId(), after, file: dep.file, content: dep.body });
+      k.append({ type: 'SkillLoaded', id: k.nextId(), after, file: dep.file, content: skillContent(dep) });
       after = k.nextId() - 1;
       loadedNames.push(dep.name);
     }

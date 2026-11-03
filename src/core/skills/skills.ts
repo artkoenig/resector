@@ -1,9 +1,10 @@
 // A Skill: a SKILL.md folder the model loads on demand. name and description are the metadata the model sees
 // in the Skills note; body is the full SKILL.md, loaded into the Context as a Note when the model calls `skill`.
 // requires: names of other skills this one depends on; they auto-load when this skill is loaded.
+// files: additional .md files in the skill folder, read alongside the body when the skill is loaded.
 import { basename, dirname } from 'node:path';
 
-export type Skill = { name: string; description: string; file: string; body: string; requires: string[] };
+export type Skill = { name: string; description: string; file: string; body: string; requires: string[]; files: { name: string; content: string }[] };
 
 // The `skill` tool: load a skill's body into the Context by its name. Its dependencies (requires) load too.
 export const SKILL_DEFINITION = {
@@ -22,7 +23,7 @@ export const skillName = (file: string): string => basename(dirname(file));
 // from the folder and the description is empty.
 export function parseSkill(text: string, file: string): Skill {
   const { meta, body } = splitFrontmatter(text);
-  return { name: meta.name ?? skillName(file), description: meta.description ?? '', file, body: body.trim(), requires: meta.requires ?? [] };
+  return { name: meta.name ?? skillName(file), description: meta.description ?? '', file, body: body.trim(), requires: meta.requires ?? [], files: [] };
 }
 
 // `---\n…\n---\n` at the start of the file: the frontmatter, the rest the body.
@@ -46,6 +47,10 @@ function splitFrontmatter(text: string): { meta: { name?: string; description?: 
   }
   return { meta, body: text.slice(m[0].length) };
 }
+
+// The full content of a skill Note: its body, then each supplementary file under a heading.
+export const skillContent = (skill: Skill): string =>
+  skill.files.length === 0 ? skill.body : [skill.body, ...skill.files.map(f => `\n---\n\n## ${f.name}\n\n${f.content}`)].join('\n');
 
 // The Skills note: one line per skill, the metadata the model sees without loading any body.
 export const skillsNote = (skills: Skill[]): string =>

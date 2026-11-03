@@ -12,7 +12,7 @@ import type { GitSlice } from './git';
 import type { Kernel } from './kernel';
 import type { Rules } from './rules';
 import type { Asked, Status, View } from './types';
-import { skillDeps, skillOf, type Skill } from '../core/skills/skills';
+import { skillContent, skillDeps, skillOf, type Skill } from '../core/skills/skills';
 
 export const APPROVE = 'y run once · a allow for session · n reject · e edit';
 export const QUESTION_HINT = 'the model asks – answer in the dock';
@@ -135,12 +135,12 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
       let after = call.id;
       if (skill) {
         if (!loaded.has(skill.file)) {
-          append({ type: 'SkillLoaded', id: nextId(), after, file: skill.file, content: skill.body });
+          append({ type: 'SkillLoaded', id: nextId(), after, file: skill.file, content: skillContent(skill) });
           after = nextId() - 1;
         }
         for (const dep of skillDeps(skill, tools.skills ?? [])) {
           if (loaded.has(dep.file)) continue;
-          append({ type: 'SkillLoaded', id: nextId(), after, file: dep.file, content: dep.body });
+          append({ type: 'SkillLoaded', id: nextId(), after, file: dep.file, content: skillContent(dep) });
           after = nextId() - 1;
         }
       }

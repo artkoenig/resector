@@ -1,6 +1,6 @@
 // Tests for the Skill: parsing a SKILL.md, its name, the Skills note, and looking one up.
 import { expect, test } from 'bun:test';
-import { parseSkill, skillName, skillOf, skillsNote, skillDeps, SKILL_DEFINITION, type Skill } from './skills';
+import { parseSkill, skillName, skillOf, skillsNote, skillDeps, skillContent, SKILL_DEFINITION, type Skill } from './skills';
 
 test('a SKILL.md with frontmatter yields its name, description and body', () => {
   const s = parseSkill('---\nname: refactor\ndescription: Refactor safely\n---\n\n# Refactor\nDo it step by step.\n', '~/proj/.claude/skills/refactor/SKILL.md');
@@ -23,8 +23,8 @@ test('skillName is the folder a SKILL.md sits in', () => {
 
 test('the Skills note lists each skill; empty for none', () => {
   const skills: Skill[] = [
-    { name: 'a', description: 'does a', file: '~/s/a/SKILL.md', body: 'A', requires: [] },
-    { name: 'b', description: 'does b', file: '~/s/b/SKILL.md', body: 'B', requires: [] },
+    { name: 'a', description: 'does a', file: '~/s/a/SKILL.md', body: 'A', requires: [], files: [] },
+    { name: 'b', description: 'does b', file: '~/s/b/SKILL.md', body: 'B', requires: [], files: [] },
   ];
   const note = skillsNote(skills);
   expect(note).toContain('Skills');
@@ -34,7 +34,7 @@ test('the Skills note lists each skill; empty for none', () => {
 });
 
 test('skillOf finds by name, else null', () => {
-  const a = { name: 'a', description: '', file: '~/s/a/SKILL.md', body: 'A', requires: [] };
+  const a = { name: 'a', description: '', file: '~/s/a/SKILL.md', body: 'A', requires: [], files: [] };
   expect(skillOf([a], 'a')).toBe(a);
   expect(skillOf([a], 'nope')).toBeNull();
 });
@@ -55,9 +55,19 @@ test('parseSkill reads requires as a YAML flow sequence', () => {
 });
 
 test('skillDeps resolves requires against available skills, skipping missing ones', () => {
-  const wayfinder: Skill = { name: 'wayfinder', description: 'Find the way', file: '~/s/wayfinder/SKILL.md', body: '', requires: ['grilling', 'domain-modeling', 'nonexistent'] };
-  const grilling: Skill = { name: 'grilling', description: 'Grill', file: '~/s/grilling/SKILL.md', body: '', requires: [] };
-  const domainModeling: Skill = { name: 'domain-modeling', description: 'Model', file: '~/s/domain-modeling/SKILL.md', body: '', requires: [] };
+  const wayfinder: Skill = { name: 'wayfinder', description: 'Find the way', file: '~/s/wayfinder/SKILL.md', body: '', requires: ['grilling', 'domain-modeling', 'nonexistent'], files: [] };
+  const grilling: Skill = { name: 'grilling', description: 'Grill', file: '~/s/grilling/SKILL.md', body: '', requires: [], files: [] };
+  const domainModeling: Skill = { name: 'domain-modeling', description: 'Model', file: '~/s/domain-modeling/SKILL.md', body: '', requires: [], files: [] };
   const deps = skillDeps(wayfinder, [grilling, domainModeling]);
   expect(deps.map(d => d.name)).toEqual(['grilling', 'domain-modeling']);
+});
+
+test('skillContent returns just the body when there are no supplementary files', () => {
+  const s: Skill = { name: 'a', description: '', file: '~/s/a/SKILL.md', body: 'main body', requires: [], files: [] };
+  expect(skillContent(s)).toBe('main body');
+});
+
+test('skillContent appends supplementary files under headings', () => {
+  const s: Skill = { name: 'a', description: '', file: '~/s/a/SKILL.md', body: 'main body', requires: [], files: [{ name: 'EXTRA.md', content: 'extra content' }] };
+  expect(skillContent(s)).toBe('main body\n\n---\n\n## EXTRA.md\n\nextra content');
 });

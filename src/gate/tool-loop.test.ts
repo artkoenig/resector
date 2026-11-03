@@ -266,7 +266,7 @@ test('a session rule beats global and project rules', async () => {
 // The `skill` tool: no approval, the body becomes a Note, the call resolves, the loop continues.
 test('a skill call loads its body as a Note and resolves without approval; the loop continues', async () => {
   const g = gateWith({ tools: toolsWith(['bash', 'skill']),
-    skills: [{ name: 'tdd', description: 'test driven development', file: '/skills/tdd/SKILL.md', body: 'Write tests first.', requires: [] }],
+    skills: [{ name: 'tdd', description: 'test driven development', file: '/skills/tdd/SKILL.md', body: 'Write tests first.', requires: [], files: [] }],
   });
   g.reply(
     { content: 'I will use TDD.', calls: [{ name: 'skill', arguments: JSON.stringify({ name: 'tdd' }) }] },
@@ -289,9 +289,9 @@ test('a skill call loads its body as a Note and resolves without approval; the l
 test('a skill with requires auto-loads its dependencies as separate Notes', async () => {
   const g = gateWith({ tools: toolsWith(['bash', 'skill']),
     skills: [
-      { name: 'wayfinder', description: 'Find the way', file: '/skills/wayfinder/SKILL.md', body: 'Wayfinder body.', requires: ['grilling', 'domain-modeling'] },
-      { name: 'grilling', description: 'Grill', file: '/skills/grilling/SKILL.md', body: 'Grilling body.', requires: [] },
-      { name: 'domain-modeling', description: 'Model', file: '/skills/domain-modeling/SKILL.md', body: 'Domain modeling body.', requires: [] },
+      { name: 'wayfinder', description: 'Find the way', file: '/skills/wayfinder/SKILL.md', body: 'Wayfinder body.', requires: ['grilling', 'domain-modeling'], files: [] },
+      { name: 'grilling', description: 'Grill', file: '/skills/grilling/SKILL.md', body: 'Grilling body.', requires: [], files: [] },
+      { name: 'domain-modeling', description: 'Model', file: '/skills/domain-modeling/SKILL.md', body: 'Domain modeling body.', requires: [], files: [] },
     ],
   });
   g.reply(
