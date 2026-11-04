@@ -50,7 +50,7 @@ export type GateOptions = {
   autoApprove?: AutoApprove;
   // Absent outside a git repository: the /git: commands are then not offered.
   git?: Git | null;
-  // The skills the model can load with `skill` (metadata here; the tool-loop reads their bodies).
+  // The skills the model can load with `skill` and the user with /skill.
   skills?: Skill[];
 };
 // Context Policies (ADR 0001): the ones loaded at start, and the active one, which belongs to the app, not the session.

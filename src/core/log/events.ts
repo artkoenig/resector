@@ -48,8 +48,9 @@ export type SessionEvent =
   | ({ type: 'Compact'; sources: number[]; instruction: string; noteId: number; content: string } & By)
   // A Context Policy's Note `id` with `content` right after block `after`.
   | ({ type: 'NoteAdded'; id: number; after: number; content: string } & By)
-  // A skill's body as a Note `id` with `content`, read from `file`, right after block `after` (its `skill` call).
-  | { type: 'SkillLoaded'; id: number; after: number; file: string; content: string }
+  // Skill `name` as a Note `id` with `content`, read from `file`: after the calls and results of `call`'s answer, the
+  // skill Notes already there included; without a call (/skill) at the end.
+  | { type: 'SkillLoaded'; id: number; call?: number; name: string; file: string; content: string }
   // Display label only, never sent; empty = reset to the default title.
   | { type: 'Rename'; id: number; title: string }
   // "Allow for session": an allow rule for the rest of the session, also after resume.

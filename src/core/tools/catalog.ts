@@ -1,6 +1,5 @@
-// The tool catalog: bash, search and question, their definitions, and the Tools Block content offering them.
+// The tool catalog: bash, search, question and skill, their definitions, and the Tools Block content offering them.
 import { QUESTION_DEFINITION } from './question';
-import { SKILL_DEFINITION } from '../skills/skills';
 
 type ToolDefinition = { name: string; description: string; parameters: object };
 // Every tool the harness runs; the Tools Block holds those switched on (/tools).
@@ -16,7 +15,14 @@ const CATALOG: ToolDefinition[] = [
     parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
   },
   QUESTION_DEFINITION,
-  SKILL_DEFINITION,
+  {
+    name: 'skill',
+    description:
+      'Load a skill into the context by its name. The available skills and what they do are listed in the Skills note; ' +
+      "call this with a skill's name to read its full instructions before doing the task it covers. " +
+      'Its dependencies load with it.',
+    parameters: { type: 'object', properties: { name: { type: 'string', description: 'the name of the skill to load' } }, required: ['name'] },
+  },
 ];
 export const TOOL_NAMES = CATALOG.map(t => t.name);
 

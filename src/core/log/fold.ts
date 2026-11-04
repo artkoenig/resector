@@ -18,6 +18,8 @@ export type Block = {
   // Note from a file only: the file; unread: an @path reference not read yet.
   file?: string;
   unread?: true;
+  // Note from a loaded Skill only: its name.
+  skill?: string;
   // Tool Call only: no Tool Result yet, so it awaits approval.
   pending?: boolean;
   // Current Revision.
@@ -102,8 +104,12 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
     insert(state, state.order.indexOf(e.after) + 1, e.id);
   },
   SkillLoaded: (state, e) => {
-    state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'skill', file: e.file, content: e.content, cutOff: false, ...NEW_ENTRY });
-    insert(state, state.order.indexOf(e.after) + 1, e.id);
+    state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'skill', skill: e.name, file: e.file, content: e.content, cutOff: false, ...NEW_ENTRY });
+    if (e.call === undefined) return void state.order.push(e.id);
+    // Notes of one call keep their order, and none splits the answer's calls and results.
+    let at = afterCalls(state.order.map(id => entry(state, id)), e.call);
+    while (at < state.order.length && entry(state, state.order[at]!).skill !== undefined) at++;
+    insert(state, at, e.id);
   },
 };
 

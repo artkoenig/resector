@@ -19,7 +19,8 @@ import { environmentText } from '../core/notes/environment';
 import { BUILT_IN, DEFAULT_POLICY } from '../core/policy/built-in';
 import type { Policy } from '../core/policy/policy';
 import type { Settings } from '../core/config/headless';
-import { checkoutOf, inWorktree, newSession, summarize, type SessionRef } from '../core/session/session';
+import { checkoutOf, inWorktree, newSession, skillsUpdate, summarize, type SessionRef } from '../core/session/session';
+import type { Skill } from '../core/skills/skills';
 import type { AutoApprove, GateOptions, Git, Policies, Status } from '../gate';
 import { errorText } from '../gate/text';
 
@@ -85,7 +86,7 @@ export async function openWorkspace(options: WorkspaceOptions) {
     return other && other !== name ? { profile: other, backend: await connect(config.profile(other), `${session}:compaction`) } : null;
   };
 
-  function create(loaded: Loaded, start: StartWith | undefined) {
+  function create(loaded: Loaded, start: StartWith | undefined, skills: Skill[]) {
     const opened = store.create();
     const profile = loaded.profile(start?.profile);
     // The project instructions are read once, now.
@@ -95,7 +96,7 @@ export async function openWorkspace(options: WorkspaceOptions) {
       instructions: projectInstructions(topLevel(here), paths.projectHome.config),
       checkout: here,
       tools: start?.tools,
-      skills: discoverSkills(here, paths.home),
+      skills,
     });
     if (start?.thinking !== undefined) events.push({ type: 'ThinkingSet', thinking: start.thinking });
     if (start?.worktree) events.push({ type: 'WorktreeSet', on: true });
@@ -116,7 +117,7 @@ export async function openWorkspace(options: WorkspaceOptions) {
 
   // Resume = replay; a Model Profile missing from the config falls back to the default one.
   // started: resumed at start (-c), so the app has no policy yet; it starts with the configured one, as a new session.
-  function resume(loaded: Loaded, which: SessionRef, started: boolean) {
+  function resume(loaded: Loaded, which: SessionRef, started: boolean, skills: Skill[]) {
     const opened = store.open(which);
     const events: SessionEvent[] = [...opened.events];
     const texts = [`resumed "${summarize(events).title}"`];
@@ -129,13 +130,21 @@ export async function openWorkspace(options: WorkspaceOptions) {
       events.push(fallback);
       texts.push(`profile "${profile}" not in config → ${fallback.profile}`);
     }
+    // What the model can load has changed since its Skills note: it gets a new one.
+    const update = skillsUpdate(events, skills);
+    if (update) {
+      opened.log.append(update);
+      events.push(update);
+    }
     return { opened, events, notice: { text: texts.join(' · '), tone: texts.length > 1 ? ('warn' as const) : ('ok' as const) } };
   }
 
   // A new one is dropped again if its backend fails.
   async function open(loaded: Loaded, { which, started = false, start }: OpenWith = {}): Promise<Opened> {
     split ??= await createSplit();
-    const { opened, events, notice } = which ? resume(loaded, which, started) : create(loaded, start);
+    // From the checkout's top level, also when started in a subdirectory.
+    const skills = discoverSkills(topLevel(here), paths.home);
+    const { opened, events, notice } = which ? resume(loaded, which, started, skills) : create(loaded, start, skills);
     const profile = fold(events).profile;
     const backend = await connect(loaded.profile(profile), opened.id).catch(e => {
       opened.release();
@@ -147,7 +156,7 @@ export async function openWorkspace(options: WorkspaceOptions) {
     return {
       id: opened.id,
       release: opened.release,
-      options: { backend, ...runningIn(loaded, dir, checkout, opened.id), log: opened.log, events, notice: withFailed(withWarning(notice, warning)), instruction, compactor: compactor(loaded, profile, opened.id), policies, autoApprove, skills: discoverSkills(here, paths.home) },
+      options: { backend, ...runningIn(loaded, dir, checkout, opened.id), log: opened.log, events, notice: withFailed(withWarning(notice, warning)), instruction, compactor: compactor(loaded, profile, opened.id), policies, autoApprove, skills },
     };
   }
   // The checkout the session started in, from any worktree of the Project; the current one if that is gone, or for

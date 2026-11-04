@@ -12,10 +12,10 @@ import { createPolicy } from './policy';
 import { createRules } from './rules';
 import { createSend } from './send';
 import { createSettings } from './settings';
+import { createSkills } from './skills';
 import { createToolLoop } from './tool-loop';
 import type { Kernel } from './kernel';
 import type { AutoApprove, GateOptions, Policies, View } from './types';
-import { skillContent, skillDeps, skillOf } from '../core/skills/skills';
 
 export * from './types';
 export type * from './ports';
@@ -31,11 +31,12 @@ function ownAutoApprove(): AutoApprove {
   return { on, set };
 }
 
-export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, skills, instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, policies = NO_POLICIES, autoApprove = ownAutoApprove(), git = null, ...options }: GateOptions, view: (k: Kernel) => View) {
+export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, skills: available = [], instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, policies = NO_POLICIES, autoApprove = ownAutoApprove(), git = null, ...options }: GateOptions, view: (k: Kernel) => View) {
   const k = createKernel({ log, project, backend: options.backend, events: options.events, status: options.notice ?? null });
   const sel = view(k);
   const repo = createGit(k, git, project, approval.root);
   const rules = createRules(k, approval, autoApprove);
+  const skills = createSkills(k, available);
   const loop = createToolLoop(k, sel, rules, repo, { runner, searcher, skills, send: () => void sender.api.send() });
   const policy = createPolicy(k, sel, policies, compactor);
   const headless = createHeadless(k, loop, rules, text => input.api.submit(text));
@@ -43,33 +44,10 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   const compacting = createCompaction(k, sel, { editor, instruction, compactor });
   const edits = createEdits(k, sel, loop, { editor, clipboard, project });
   const settings = createSettings(k, rules, loop, autoApprove);
-  // /skill <name>: load a skill's body into the context as a Note; alone it lists the available skills.
-  function loadSkill(arg: string) {
-    const names = (skills ?? []).map(s => s.name);
-    if (!arg) return k.setStatus({ text: names.length ? `skills: ${names.join(', ')}` : 'no skills found', tone: 'info' });
-    const skill = skillOf(skills ?? [], arg);
-    if (!skill) return k.setStatus({ text: `unknown skill ${arg}: ${names.join(' ')}`, tone: 'error' });
-    const blocks = k.context().blocks;
-    const loaded = new Set(blocks.filter(b => b.origin === 'skill').map(b => b.file));
-    let after = blocks.length ? blocks[blocks.length - 1]!.id : 0;
-    const loadedNames: string[] = [];
-    if (!loaded.has(skill.file)) {
-      k.append({ type: 'SkillLoaded', id: k.nextId(), after, file: skill.file, content: skillContent(skill) });
-      after = k.nextId() - 1;
-      loadedNames.push(skill.name);
-    }
-    for (const dep of skillDeps(skill, skills ?? [])) {
-      if (loaded.has(dep.file)) continue;
-      k.append({ type: 'SkillLoaded', id: k.nextId(), after, file: dep.file, content: skillContent(dep) });
-      after = k.nextId() - 1;
-      loadedNames.push(dep.name);
-    }
-    k.setStatus({ text: loadedNames.length ? `loaded ${loadedNames.join(', ')}` : `already loaded: ${skill.name}`, tone: 'ok' });
-  }
   const input = createCommands(k, sel, {
     '/sessions': openSessions, '/rename': settings.renameSession, '/tools': settings.toggleTool, '/filter': sel.filterBy, '/policy': policy.switchPolicy,
     '/auto': settings.switchAutoApprove, '/thinking': settings.setThinking, '/git:branch': repo.switchBranch, '/git:worktree': repo.switchWorktree,
-    '/skill': loadSkill,
+    '/skill': skills.loadSkill,
   }, { inRepo: !!git, send: () => void sender.api.send() });
 
   rules.dropDenied();
@@ -97,14 +75,13 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     profile: () => k.context().profile,
     toolsOn: k.toolsOn,
     dismiss: () => k.setStatus(null),
-    // The skills available for /skill and the `skill` tool.
-    skillNames: () => (skills ?? []).map(s => s.name),
     // Each slice's own: what the view shows and does.
     ...policy.api,
     ...loop.api,
     ...rules.api,
     ...repo.api,
     ...settings.api,
+    ...skills.api,
     ...input.api,
     ...sender.api,
     ...compacting.api,

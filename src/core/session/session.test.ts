@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { TOOLS } from '../tools/catalog';
-import { checkoutOf, inWorktree, newSession, openingBlocks, summarize } from './session';
+import { skillsNote, type Skill } from '../skills/skills';
+import { checkoutOf, inWorktree, newSession, openingBlocks, skillsUpdate, summarize } from './session';
 
 const start = newSession('qwen', 'You are an agent.');
 const user = (id: number, content: string): SessionEvent => ({ type: 'BlockAdded', id, kind: 'User', origin: 'user', content });
@@ -77,4 +78,13 @@ test('a session records the checkout it started in; older logs have none', () =>
   expect(checkoutOf(newSession('p', 'sys'))).toBeUndefined();
   expect(checkoutOf([user(3, 'hi'), ...events])).toBe('/repo/sub');
   expect(checkoutOf([])).toBeUndefined();
+});
+
+test('a resumed session gets a new Skills note only when the skills changed or it has none', () => {
+  const skill = (description: string): Skill => ({ name: 'a', description, file: '~/s/a/SKILL.md', body: '', requires: [], files: [] });
+  const events = newSession('p', 'system', { skills: [skill('old')] });
+  expect(skillsUpdate(events, [skill('old')])).toBeNull();
+  expect(skillsUpdate(events, [])).toBeNull();
+  expect(skillsUpdate(events, [skill('new')])).toEqual({ type: 'BlockAdded', id: 4, kind: 'Note', origin: 'skill', content: skillsNote([skill('new')]) });
+  expect(skillsUpdate(newSession('p', 'system'), [skill('old')])).toMatchObject({ origin: 'skill', content: skillsNote([skill('old')]) });
 });

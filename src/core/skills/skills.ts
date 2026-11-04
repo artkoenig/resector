@@ -1,20 +1,12 @@
 // A Skill: a SKILL.md folder the model loads on demand. name and description are the metadata the model sees
-// in the Skills note; body is the full SKILL.md, loaded into the Context as a Note when the model calls `skill`.
+// in the Skills note; body is the SKILL.md without its frontmatter, loaded into the Context as a Note by `skill` or /skill.
 // requires: names of other skills this one depends on; they auto-load when this skill is loaded.
 // files: additional .md files in the skill folder, read alongside the body when the skill is loaded.
 import { basename, dirname } from 'node:path';
 
-export type Skill = { name: string; description: string; file: string; body: string; requires: string[]; files: { name: string; content: string }[] };
-
-// The `skill` tool: load a skill's body into the Context by its name. Its dependencies (requires) load too.
-export const SKILL_DEFINITION = {
-  name: 'skill',
-  description:
-    'Load a skill into the context by its name. The available skills and what they do are listed in the Skills note; ' +
-    "call this with a skill's name to read its full instructions before doing the task it covers. " +
-    'Its dependencies are loaded automatically.',
-  parameters: { type: 'object', properties: { name: { type: 'string', description: "the name of the skill to load" } }, required: ['name'] },
-};
+export type SkillFile = { name: string; content: string };
+export type Skill = { name: string; description: string; file: string; body: string; requires: string[]; files: SkillFile[] };
+type Frontmatter = { name?: string; description?: string; requires?: string[] };
 
 // The skill's name: the folder its SKILL.md sits in.
 export const skillName = (file: string): string => basename(dirname(file));
@@ -28,15 +20,16 @@ export function parseSkill(text: string, file: string): Skill {
 
 // `---\n…\n---\n` at the start of the file: the frontmatter, the rest the body.
 // `requires` is a comma-separated list or a YAML flow sequence: `requires: grilling, domain-modeling`
-// or `requires: [grilling, domain-modeling]`.
-function splitFrontmatter(text: string): { meta: { name?: string; description?: string; requires?: string[] }; body: string } {
+// or `requires: [grilling, domain-modeling]`. A value may be a YAML block scalar (`>` or `|`).
+function splitFrontmatter(text: string): { meta: Frontmatter; body: string } {
   const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   if (!m) return { meta: {}, body: text };
-  const meta: { name?: string; description?: string; requires?: string[] } = {};
-  for (const line of (m[1] ?? '').split(/\r?\n/)) {
+  const meta: Frontmatter = {};
+  const lines = (m[1] ?? '').split(/\r?\n/);
+  lines.forEach((line, i) => {
     const kv = line.match(/^(name|description|requires):\s*(.*)$/);
-    if (!kv) continue;
-    const raw = (kv[2] ?? '').trim();
+    if (!kv) return;
+    const raw = blockScalar(lines, i, (kv[2] ?? '').trim());
     if (kv[1] === 'requires') {
       // Strip brackets if present, then split on commas.
       const inner = raw.replace(/^\[|\]$/g, '');
@@ -44,8 +37,17 @@ function splitFrontmatter(text: string): { meta: { name?: string; description?: 
     } else {
       meta[kv[1] as 'name' | 'description'] = raw.replace(/^['"]|['"]$/g, '');
     }
-  }
+  });
   return { meta, body: text.slice(m[0].length) };
+}
+
+// The value of the line at `at`: `raw`, or for a block scalar the indented lines after it (`>` folds them).
+function blockScalar(lines: string[], at: number, raw: string): string {
+  const scalar = raw.match(/^([>|])[+-]?$/);
+  if (!scalar) return raw;
+  const end = lines.findIndex((l, i) => i > at && l.trim() !== '' && !/^\s/.test(l));
+  const block = lines.slice(at + 1, end === -1 ? lines.length : end).map(l => l.trim());
+  return block.join(scalar[1] === '>' ? ' ' : '\n').trim();
 }
 
 // The full content of a skill Note: its body, then each supplementary file under a heading.
@@ -59,6 +61,18 @@ export const skillsNote = (skills: Skill[]): string =>
 // The skill with the given name; null when none (a typo or a skill that is not available).
 export const skillOf = (skills: Skill[], name: string): Skill | null => skills.find(s => s.name === name) ?? null;
 
-// The skills this one requires, resolved against the available set. Missing ones are silently skipped.
-export const skillDeps = (skill: Skill, available: Skill[]): Skill[] =>
-  skill.requires.map(n => skillOf(available, n)).filter((s): s is Skill => s !== null);
+// What loading a skill adds: the skill, then what it requires, directly or not, each once and without those already
+// loaded (names). Missing ones are silently skipped.
+export function skillsToLoad(skill: Skill, available: Skill[], loaded: Set<string>): Skill[] {
+  const seen = new Map<string, Skill>();
+  const visit = (s: Skill) => {
+    if (seen.has(s.name)) return;
+    seen.set(s.name, s);
+    for (const name of s.requires) {
+      const dep = skillOf(available, name);
+      if (dep) visit(dep);
+    }
+  };
+  visit(skill);
+  return [...seen.values()].filter(s => !loaded.has(s.name));
+}

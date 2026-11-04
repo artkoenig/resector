@@ -37,6 +37,14 @@ export function newSession(profile: string, systemPrompt: string, { environment,
   return events;
 }
 
+// A resumed session's new Skills note, when the skills on disk differ from what its last one lists (or it has none).
+export function skillsUpdate(events: SessionEvent[], skills: Skill[]): SessionEvent | null {
+  const listed = events.findLast((e): e is BlockAdded => e.type === 'BlockAdded' && e.origin === 'skill');
+  const content = skillsNote(skills);
+  if (!content || listed?.content === content) return null;
+  return { type: 'BlockAdded', id: fold(events).nextId, kind: 'Note', origin: 'skill', content };
+}
+
 // The blocks a session starts with (System prompt, Tools Block, environment Note, project instructions): those
 // added right after SessionCreated, before the first message.
 export function openingBlocks(events: SessionEvent[]): Set<number> {

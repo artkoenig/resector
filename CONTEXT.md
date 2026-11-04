@@ -41,10 +41,10 @@ Note describing where the Session runs (working directory, OS and shell, date, b
 Notes holding `AGENTS.md` and `CLAUDE.md` at the root of the checkout the Session runs in, then the user's own from the Project Home, one per file, read once when the Session starts.
 
 **Skill**:
-A `SKILL.md` folder in the project's `.claude/skills/` or the user's `~/.claude/skills/` that the model loads on demand. Its metadata (name, description) is listed in the Skills note; its body is added to the Context as a Note (origin `skill`) when the model calls the `skill` tool.
+A `SKILL.md` folder in the project's `.claude/skills/` or the user's `~/.claude/skills/` that the model loads on demand. Its metadata (name, description) is listed in the Skills note; its body, followed by the other `.md` files of its folder, is added to the Context as a Note (origin `skill`) when the model calls the `skill` tool or the user types `/skill`. The Skills it `requires` load with it, each as its own Note.
 
 **Skills note**:
-Note at the start of a Session listing the available Skills and what each does, so the model can decide to load one.
+Note at the start of a Session listing the available Skills and what each does, so the model can decide to load one. A resumed Session gets a new one when the Skills have changed.
 
 **Compaction**:
 Rewrite of selected Context Blocks by the LLM, following an instruction, into one Note at the position of the first source. The model sees only the selected blocks and the instruction. Started by the user, who reviews the proposal and accepts, discards or refines it (refine starts again from the sources), or by a Context Policy, whose result is accepted without review. On accept the sources count as removed; undo brings them back.

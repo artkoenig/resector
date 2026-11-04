@@ -2,7 +2,7 @@
 import { expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { frameMatching } from '../../test/frames';
-import { toolsWith } from '../../test/requests';
+import { toolsWith } from '../core/tools/catalog';
 import { TOOLS } from '../core/tools/catalog';
 import type { Tool } from '../core/log/events';
 import { bash, escape, fake, fixture, line, press, project, type Sent, start, ui, useHarness, write } from './app.harness';
@@ -248,7 +248,7 @@ test('the answer is a normal Context Block: e makes a new Revision; d removes th
 test('a deny rule for question takes it out of the Tools Block; a call anyway is "denied by rule", no dock (#36)', async () => {
   const { events } = await start({ tools: TOOLS, global: { question: 'allow' }, project: { question: 'deny' } });
   expect(events().at(-1)).toEqual({ type: 'Edit', id: 2, revision: 2, content: toolsWith(['bash', 'skill']), harness: true });
-  await frameMatching(ui, f => /Tools\s+bash, skill/.test(f) && f.includes('142 / 4k'));
+  await frameMatching(ui, f => /Tools\s+bash, skill/.test(f) && f.includes('152 / 4k'));
   fake.reply({ chunks: [], calls: [questionCall(RUNTIME)] });
   await write('go');
   const frame = await frameMatching(ui, f => f.includes('⚠ denied by rule: question'));

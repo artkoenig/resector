@@ -4,7 +4,6 @@ import { fold } from '../src/core/log/fold';
 import { renderPrefixes, type Message, type Request } from '../src/core/render/native';
 import { newSession } from '../src/core/session/session';
 import { toolsWith } from '../src/core/tools/catalog';
-export { toolsWith };
 
 // A Tools Block of bash only: fixtures whose token counts do not follow the default tools.
 export const BASH_TOOLS = toolsWith(['bash']);

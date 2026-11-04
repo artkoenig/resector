@@ -278,7 +278,7 @@ test('a skill call loads its body as a Note and resolves without approval; the l
     { type: 'BlockAdded', id: 4, kind: 'Assistant', origin: 'model', content: 'I will use TDD.' },
     { type: 'BlockAdded', id: 5, kind: 'Tool Call', origin: 'model', tool: 'skill', content: 'tdd' },
     { type: 'ResponseReceived', usage: null, cached: null },
-    { type: 'SkillLoaded', id: 6, after: 5, file: '/skills/tdd/SKILL.md', content: 'Write tests first.' },
+    { type: 'SkillLoaded', id: 6, call: 5, name: 'tdd', file: '/skills/tdd/SKILL.md', content: 'Write tests first.' },
     { type: 'BlockAdded', id: 7, kind: 'Tool Result', origin: 'tool', content: 'loaded tdd\n[exit 0]', call: 5 },
     { type: 'RequestSent', hash: expect.any(String), tokens: expect.any(Number) },
     { type: 'BlockAdded', id: 8, kind: 'Assistant', origin: 'model', content: 'done' },

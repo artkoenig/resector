@@ -11,8 +11,8 @@ import { errorText, titleOf } from './text';
 import type { GitSlice } from './git';
 import type { Kernel } from './kernel';
 import type { Rules } from './rules';
+import type { SkillsSlice } from './skills';
 import type { Asked, Status, View } from './types';
-import { skillContent, skillDeps, skillOf, type Skill } from '../core/skills/skills';
 
 export const APPROVE = 'y run once · a allow for session · n reject · e edit';
 export const QUESTION_HINT = 'the model asks – answer in the dock';
@@ -32,7 +32,7 @@ export type Driver = { ask: (call: Block) => void; stopped: () => boolean };
 // How a call the rules ask for is decided: the terminal's choice, or no user to ask.
 export type Choice = Awaited<ReturnType<Terminal['approve']>> | 'unattended';
 
-export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice, tools: { runner: Runner; searcher: Runner; skills?: Skill[]; send: () => void }) {
+export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice, tools: { runner: Runner; searcher: Runner; skills: SkillsSlice; send: () => void }) {
   const { context, nextId, append, apply, setStatus, running, setRunning } = k;
   const { follow } = sel;
 
@@ -129,23 +129,9 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
   // Runs the call with its tool's runner; its output streams into a live Tool Result row, then the next call is decided.
   async function run(call: Block, notes: string[]) {
     if (call.tool === 'skill') {
-      const skill = skillOf(tools.skills ?? [], call.content);
-      // The body as a Note, then its dependencies (already-loaded ones skipped), then a short Tool Result.
-      const loaded = new Set(context().blocks.filter(b => b.origin === 'skill').map(b => b.file));
-      let after = call.id;
-      if (skill) {
-        if (!loaded.has(skill.file)) {
-          append({ type: 'SkillLoaded', id: nextId(), after, file: skill.file, content: skillContent(skill) });
-          after = nextId() - 1;
-        }
-        for (const dep of skillDeps(skill, tools.skills ?? [])) {
-          if (loaded.has(dep.file)) continue;
-          append({ type: 'SkillLoaded', id: nextId(), after, file: dep.file, content: skillContent(dep) });
-          after = nextId() - 1;
-        }
-      }
-      const names = skill ? [skill.name, ...skillDeps(skill, tools.skills ?? []).map(d => d.name)].join(', ') : call.content;
-      append(ops.toolResult(call, nextId(), skill ? { output: `loaded ${names}`, exit: 0, stopped: null } : { output: `unknown skill: ${call.content}`, exit: 1, stopped: null }, 0));
+      // First: its Notes take ids before the Tool Result.
+      const result = tools.skills.run(call);
+      append(ops.toolResult(call, nextId(), result, 0));
       goOn(notes);
       return;
     }
