@@ -18,16 +18,9 @@ export type Split = (command: string) => Command[] | null;
 export type Check = { text: string; action: Action; why: string; unallowable: boolean };
 export type Verdict = { action: Action; checks: Check[] };
 
-// Read-only commands run without asking.
-const READ_ONLY = ['ls', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'sed -n', 'git status', 'git diff', 'git log', 'git show'];
-export const BUILTIN_ALLOW: Rule[] = READ_ONLY.map(command => ({ pattern: `${command} *`, action: 'allow', source: 'built-in' }));
-// Options that make a read-only command of the built-in list write files or run commands, by its name.
-const WRITING: Record<string, RegExp> = {
-  find: /^-(delete|exec|execdir|ok|okdir|fprint|fprint0|fprintf|fls)$/,
-  sed: /^(-[^-]*i|--in-place)/,
-  git: /^--output(=|$)/,
-  rg: /^--pre(=|$)/,
-};
+// Inside the project every command runs without asking: arguments outside it, or not literal, still ask (`check`).
+// A user rule `"*": "ask"` brings back asking for everything.
+export const BUILTIN_ALLOW: Rule[] = [{ pattern: '*', action: 'allow', source: 'built-in' }];
 
 // `<command> *` matches the command alone or with arguments; any other `*` matches anything.
 export function matches(pattern: string, text: string): boolean {
@@ -56,25 +49,15 @@ const isInside = (path: string, root: string) => path === root || path.startsWit
 // What a call is decided by: the rules in order, the splitter, and the project root arguments must stay in.
 export type ApprovalInput = { rules: Rule[]; split: Split; root: string };
 
-// Why a read-only command of the built-in list may change something: a file it writes by redirect or an option.
-function writing({ text, args, writes }: Command): string | null {
-  const written = writes.find(w => !DEVICES.has(w!));
-  if (written) return `writes ${written}`;
-  const option = args.find(a => WRITING[text.trim().split(/\s/)[0]!]?.test(a!));
-  return option ? `may write: ${option}` : null;
-}
-
 // One sub-command: the last matching rule, default ask; arguments outside the project ask whatever the rule
-// (unless denied); a read-only command of the built-in list writing files asks.
+// (unless denied).
 function check(command: Command, { rules, root }: ApprovalInput): Check {
   const { text, args, writes } = command;
   const rule = rules.findLast(r => matches(r.pattern, text));
   const decided = { text, action: rule?.action ?? 'ask', why: rule ? `${rule.source} rule "${rule.pattern}"` : 'no rule → default ask', unallowable: false };
   if (decided.action === 'deny') return decided;
   const problem = [...args, ...writes].map(arg => argumentProblem(arg, root)).find(p => p !== null);
-  if (problem) return { text, action: 'ask', why: problem, unallowable: true };
-  const write = rule?.source === 'built-in' ? writing(command) : null;
-  return write ? { text, action: 'ask', why: write, unallowable: false } : decided;
+  return problem ? { text, action: 'ask', why: problem, unallowable: true } : decided;
 }
 
 // Every sub-command must be allowed: one deny denies the call, one ask asks.

@@ -23,7 +23,14 @@ export const bash = (command: string): RawCall => ({ name: 'bash', arguments: JS
 // aborted; aborted, it keeps what streamed. error: the request fails.
 export type Reply = Partial<ChatResult> & { hang?: boolean; delay?: number; error?: string };
 
+// The tests decide approval as a strict config does: a global "*" ask over the built-in "*" allow, read-only commands
+// allowed; the test's own global rules come after.
+const READ_ONLY = ['ls', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'sed -n', 'git status', 'git diff', 'git log', 'git show'];
+const ASK_ALL = (global: Permissions = {}): Permissions =>
+  ({ '*': 'ask', ...Object.fromEntries(READ_ONLY.map(c => [`${c} *`, 'allow' as const])), ...global });
+
 // A backend answering the replies in order; each block counts `perBlock` tokens. sent: each chat request with its options.
+
 export function scriptedBackend({ window = 4096, exact = true, perBlock = 10, thinkingModes }: { window?: number; exact?: boolean; perBlock?: number; thinkingModes?: Thinking[] | null } = {}) {
   const replies: Reply[] = [];
   const sent: { request: Request; maxTokens?: number }[] = [];
@@ -115,7 +122,7 @@ export function gateWith(setup: GateSetup = {}) {
   let selection: View;
   const gate = createRoot(() => createGate({
     backend, runner, searcher, events, log: { append: e => void logged.push(e) }, editor, clipboard: async () => {},
-    approval: { split, root: '/project', permissions: () => permissionRules(global, project) },
+    approval: { split, root: '/project', permissions: () => permissionRules(ASK_ALL(global), project) },
     project: { read: path => files[path] ?? null, list: () => Object.keys(files), environment: () => '', open: async () => {} },
     instruction: () => 'keep the gist',
     compactor: async () => compactor ?? null,

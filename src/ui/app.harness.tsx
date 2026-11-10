@@ -29,7 +29,14 @@ export const project = realpathSync(mkdtempSync(join(tmpdir(), 'resector-project
 
 let split: Split;
 
+// The tests decide approval as a strict config does: a global "*" ask over the built-in "*" allow, read-only commands
+// allowed; the test's own global rules come after.
+const READ_ONLY = ['ls', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'sed -n', 'git status', 'git diff', 'git log', 'git show'];
+const ASK_ALL = (global: Permissions = {}): Permissions =>
+  ({ '*': 'ask', ...Object.fromEntries(READ_ONLY.map(c => [`${c} *`, 'allow' as const])), ...global });
+
 // Called once per test file: the bash split parser before, the UI and the fake server torn down after each test.
+
 export function useHarness() {
   beforeAll(async () => {
     split = await createSplit();
@@ -71,7 +78,7 @@ export async function start({ tools = BASH_TOOLS, template, window = 4096, exact
   ];
   initial.forEach(log.append);
   const opened: string[] = [];
-  const approval = { split, root: project, permissions: () => permissionRules(global, own) };
+  const approval = { split, root: project, permissions: () => permissionRules(ASK_ALL(global), own) };
   const files = { read: projectFiles(project), list: () => listProjectFiles(project), environment: () => fixture.environment, open: async (path: string) => void openedFiles.push(path) };
   const [active, setActive] = createSignal<Policy | null>(null);
   ui = await testRender(

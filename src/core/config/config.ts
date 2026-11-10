@@ -53,7 +53,7 @@ const ConfigSchema = z.strictObject({
   profiles: z.record(z.string(), ProfileSchema).default({}),
   defaultProfile: z.string().optional().describe('Model Profile for new sessions'),
   defaultPolicy: z.string().optional().describe('Context Policy switched on for new sessions (default summary-reset, `off` for none); /policy switches it'),
-  permission: PermissionSchema.optional().describe('bash command pattern → decision; the last matching rule decides: built-in, global, project config, session; none → ask'),
+  permission: PermissionSchema.optional().describe('bash command pattern → decision; the last matching rule decides: built-in ("*" allow, arguments outside the project ask), global, project config, session; none → ask'),
   keybindings: z.record(z.string(), z.string()).optional().describe('Action → key'),
   headless: HeadlessSchema.optional().describe('Settings of `resector -p`'),
   bash: z.strictObject({ timeout: z.number().positive().optional().describe('Seconds (default 120)') }).optional(),

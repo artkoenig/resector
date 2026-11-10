@@ -166,7 +166,7 @@ $ bun test src/core/tokens/split.test.ts
 | `2` | usage error: bad flag, unknown profile, policy or tool, `-w` outside a git repository |
 | `130` | Ctrl-C (a second one exits at once) |
 
-**Asking.** A call the rules leave at `ask`, or a Question, is asked at the terminal itself (`/dev/tty`), so it shows even with stderr redirected: `y` / `a` / `n` for a call; for a Question a number, your own answer, empty for the recommended one, `-` to skip; Ctrl-D rejects the call or declines the Question. Without a terminal (CI, cron) a Question is declined and such a call is not run (`no user to approve`); the run goes on. So unattended, only the built-in read-only commands run: `allow` what the run needs, `deny` what it must never do.
+**Asking.** A call the rules leave at `ask`, or a Question, is asked at the terminal itself (`/dev/tty`), so it shows even with stderr redirected: `y` / `a` / `n` for a call; for a Question a number, your own answer, empty for the recommended one, `-` to skip; Ctrl-D rejects the call or declines the Question. Without a terminal (CI, cron) a Question is declined and such a call is not run (`no user to approve`); the run goes on. So unattended, only calls whose arguments stay inside the project run: `deny` what it must never do.
 
 ## Configuration
 
@@ -188,7 +188,7 @@ $ bun test src/core/tokens/split.test.ts
 }
 ```
 
-`permission`: the last matching rule decides, in this order: built-in, global config, project config, rules you add with `a` for the session; none matching asks. Project rules can loosen global ones (`allow` what the global config asks for) as well as tighten them.
+`permission`: the last matching rule decides, in this order: built-in, global config, project config, rules you add with `a` for the session; none matching asks. The built-in rule `"*": "allow"` runs every command without asking as long as its arguments stay inside the project; an argument outside it (`/etc/x`, `../x`, `~`) or not literal (`$VAR`, `$(…)`) asks whatever the rule. `"*": "ask"` asks for everything again. Project rules can loosen global ones (`allow` what the global config asks for) as well as tighten them.
 
 `compaction.md` / `system.md` in the Project Home, else next to the global config, replace the shipped instructions. Slash commands: `tab`, then `/`.
 

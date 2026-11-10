@@ -54,15 +54,19 @@ test('runs of whitespace in the command count as one space', () => {
   expect(matches('git status *', '  git status ')).toBe(true);
 });
 
-test('the built-in allow list: read-only commands', () => {
-  const allowed = ['ls', 'cat a', 'head a', 'tail a', 'wc a', 'grep x a', 'rg x', 'find .', 'sed -n 1p a', 'git status', 'git diff', 'git log', 'git show HEAD'];
-  for (const command of allowed) expect(verdict(command).action, command).toBe('allow');
-  for (const command of ['sed -i s/a/b/ a', 'git push', 'rm a']) expect(verdict(command).action, command).toBe('ask');
-  expect(BUILTIN_ALLOW.every(r => r.action === 'allow' && r.source === 'built-in')).toBe(true);
+test('built in, every command runs without asking, also one that writes inside the project', () => {
+  for (const command of ['ls', 'make', 'rm a', 'git push', 'sed -i s/a/b/ a', 'find . -delete']) expect(verdict(command).action, command).toBe('allow');
+  expect(verdict('make').checks[0]).toEqual({ text: 'make', action: 'allow', why: 'built-in rule "*"', unallowable: false });
+  expect(verdict('cat', BUILTIN_ALLOW, only({ text: 'cat a', args: ['a'], writes: ['b'] })).action).toBe('allow');
+});
+
+test('a rule of the user overrides the built-in one: "*" ask asks for everything', () => {
+  expect(verdict('ls', [...BUILTIN_ALLOW, rule('*', 'ask')]).checks[0]).toEqual({ text: 'ls', action: 'ask', why: 'global rule "*"', unallowable: false });
+  expect(verdict('git push', [...BUILTIN_ALLOW, rule('git push *', 'deny')]).action).toBe('deny');
 });
 
 test('no rule matching: ask', () => {
-  expect(verdict('make')).toEqual({ action: 'ask', checks: [{ text: 'make', action: 'ask', why: 'no rule → default ask', unallowable: false }] });
+  expect(verdict('make', [])).toEqual({ action: 'ask', checks: [{ text: 'make', action: 'ask', why: 'no rule → default ask', unallowable: false }] });
 });
 
 test('the last matching rule wins', () => {
@@ -73,12 +77,12 @@ test('the last matching rule wins', () => {
 });
 
 test('every sub-command must be allowed: one ask makes the call ask, one deny denies it', () => {
-  const rules = [...BUILTIN_ALLOW, rule('rm *', 'deny')];
+  const rules = [rule('ls *', 'allow'), rule('cat *', 'allow'), rule('rm *', 'deny')];
   expect(verdict('ls && cat a', rules).action).toBe('allow');
   expect(verdict('ls && make', rules)).toEqual({
     action: 'ask',
     checks: [
-      { text: 'ls', action: 'allow', why: 'built-in rule "ls *"', unallowable: false },
+      { text: 'ls', action: 'allow', why: 'global rule "ls *"', unallowable: false },
       { text: 'make', action: 'ask', why: 'no rule → default ask', unallowable: false },
     ],
   });
@@ -134,24 +138,6 @@ test('a redirect target outside the project: ask', () => {
   expect(verdict('ls', BUILTIN_ALLOW, only({ text: 'ls', args: [], writes: [null] })).checks[0]!.why).toBe('argument not literal');
 });
 
-test('a built-in read-only command writing a file asks; a rule of the user allows it', () => {
-  const writes = only({ text: 'cat a', args: ['a'], writes: ['b'] });
-  expect(verdict('cat', BUILTIN_ALLOW, writes).checks[0]).toEqual({ text: 'cat a', action: 'ask', why: 'writes b', unallowable: false });
-  expect(verdict('ls', BUILTIN_ALLOW, only({ text: 'ls', args: [], writes: ['/dev/null'] })).action).toBe('allow');
-  expect(verdict('cat', [...BUILTIN_ALLOW, rule('cat *', 'allow', 'session')], writes).action).toBe('allow');
-  expect(verdict('make', [rule('make *', 'allow')], only({ text: 'make', args: [], writes: ['log'] })).action).toBe('allow');
-});
-
-test('options making a built-in read-only command write or run something ask', () => {
-  const asks = (command: string) => verdict(command).checks[0]!;
-  expect(asks('find . -delete')).toEqual({ text: 'find . -delete', action: 'ask', why: 'may write: -delete', unallowable: false });
-  for (const command of ['find . -exec rm {} +', 'find . -execdir x', 'find . -ok x', 'find . -okdir x', 'find . -fprint f', 'find . -fprint0 f', 'find . -fprintf f %p', 'find . -fls f']) expect(asks(command).action, command).toBe('ask');
-  for (const command of ['sed -n -i s/a/b/ f', 'sed -n -Ei p f', 'sed -n --in-place s/a/b/ f', 'git diff --output=x', 'git log --output x', 'rg --pre=cat x', 'rg --pre cat x']) expect(asks(command).action, command).toBe('ask');
-  for (const command of ['find . -name x', 'find . -executable', 'sed -n -E p f', 'git diff --output-indicator-new=x', 'rg --pretty x', 'grep -delete x', 'find . -name x-delete', 'sed -n s/a-i/b/ f', 'git log --x--output', 'rg a--pre']) expect(asks(command).action, command).toBe('allow');
-  expect(verdict('find . -delete', [...BUILTIN_ALLOW, rule('find *', 'allow')]).action).toBe('allow');
-  expect(verdict('find', BUILTIN_ALLOW, only({ text: ' find . -delete', args: ['.', '-delete'], writes: [] })).action).toBe('ask');
-});
-
 test('allow for session: the command prefix by the arity table, then " *"', () => {
   expect(prefixRule('git checkout -b feature')).toBe('git checkout *');
   expect(prefixRule('bun test src/a.test.ts')).toBe('bun test *');
@@ -169,7 +155,7 @@ test('allow for session: the command prefix by the arity table, then " *"', () =
 });
 
 test('the session rules for a call: one per sub-command asked for, without duplicates', () => {
-  expect(sessionRules(verdict('rm a && ls && rm b && bun test'))).toEqual({ patterns: ['rm *', 'bun test *'] });
+  expect(sessionRules(verdict('rm a && ls && rm b && bun test', [rule('ls *', 'allow')]))).toEqual({ patterns: ['rm *', 'bun test *'] });
 });
 
 test('no session rule where an argument or the parse is why it asks', () => {

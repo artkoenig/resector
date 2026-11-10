@@ -96,8 +96,8 @@ test('/auto shows auto-approve in the header until switched off', async () => {
 test('the preview of a pending call shows each sub-command with the rule deciding it', async () => {
   await asked(['ls && touch x.txt', 'cat /etc/hostname']);
   const frame = ui.captureCharFrame();
-  expect(frame).toMatch(/┃ allow\s+ls\s+built-in rule "ls \*"/);
-  expect(frame).toMatch(/┃ ask\s+touch x\.txt\s+no rule → default ask/);
+  expect(frame).toMatch(/┃ allow\s+ls\s+global rule "ls \*"/);
+  expect(frame).toMatch(/┃ ask\s+touch x\.txt\s+global rule "\*"/);
   expect(frame).toContain('┃ a allows "touch *" for this session');
 });
 
