@@ -40,6 +40,19 @@ export function around<T>(items: readonly T[], at: number, capacity: number): T[
 // Screen lines a text takes, wrapped at `width`.
 export const linesOf = (text: string, width: number) => Math.max(1, Math.ceil(text.length / width));
 
+// Lines of at most `size` cells, broken at spaces; a word longer than a line is cut. `rest`: the size of every line
+// after the first (a hanging indent), default `size`.
+export function wrapped(text: string, size: number, rest = size): string[] {
+  const lines: string[] = [];
+  let line = '';
+  const room = () => (lines.length ? rest : size);
+  for (const word of text.split(' ').flatMap(w => w.match(new RegExp(`.{1,${Math.max(1, Math.min(size, rest))}}`, 'g')) ?? [])) {
+    if (line && line.length + 1 + word.length > room()) lines.push(line), (line = '');
+    line = line ? `${line} ${word}` : word;
+  }
+  return line ? [...lines, line] : lines;
+}
+
 // Age of a session for /sessions.
 export function ago(then: Date, now = Date.now()): string {
   const minutes = (now - then.getTime()) / 60_000;

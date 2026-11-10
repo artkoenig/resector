@@ -18,7 +18,7 @@ async function questioned(...questions: object[]) {
   const started = await start({ tools: TOOLS });
   fake.reply({ chunks: [], calls: [questionCall(...questions)] });
   await write('go');
-  await frameMatching(ui, f => f.includes('own answer'));
+  await frameMatching(ui, f => f.includes('own answer') || f.includes('more'));
   return started;
 }
 
@@ -273,4 +273,32 @@ test('ask never pauses a Question; a Question still open at a resume is denied o
   const frame = await frameMatching(ui, f => f.includes('⚠ denied by rule: question'));
   expect(frame).not.toContain('own answer');
   expect(events().at(-1)).toEqual({ type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'denied by rule', call: 4 });
+});
+
+const LONG = {
+  question: 'Which persistence layer should the sync service use, given that it must survive restarts and run on the edge devices too?',
+  header: 'Storage',
+  options: [
+    { label: 'SQLite', description: 'embedded, single file, runs everywhere the service runs, no extra process to operate' },
+    { label: 'Postgres', description: 'a server to operate, but concurrent writers and replication come for free' },
+    { label: 'Files', description: 'plain JSON files per record, simplest to inspect and back up by hand' },
+    { label: 'Redis', description: 'in memory with snapshots; fast, but persistence depends on its configuration' },
+    { label: 'None', description: 'keep everything in memory and rebuild from the upstream on every start' },
+  ],
+  recommended: 'SQLite',
+};
+
+test('a long Question with many long options fits the dock: the question wraps, ↓ reaches every row', async () => {
+  await questioned(LONG);
+  const frame = ui.captureCharFrame();
+  expect(frame).toContain('must survive restarts and run on the edge devices too?');
+  expect(line(frame, /› SQLite/)).toMatch(/recommended embedded/);
+  expect(frame).toContain('↓ 4 more');
+  // The footer keeps its own line.
+  expect(frame.trimEnd().split('\n').at(-1)).toMatch(/q quit/);
+  for (let i = 0; i < 5; i++) await press('down');
+  const last = await frameMatching(ui, f => /› own answer/.test(f));
+  expect(last).toContain('↑ 3 more');
+  expect(last).toContain('must survive restarts');
+  expect(last.trimEnd().split('\n').at(-1)).toMatch(/q quit/);
 });

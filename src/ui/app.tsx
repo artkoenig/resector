@@ -3,7 +3,6 @@ import { type ScrollBoxRenderable, type TextareaRenderable } from '@opentui/core
 import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/solid';
 import { createEffect, createMemo, createSignal, on, onCleanup, Show } from 'solid-js';
 import type { Verdict } from '../core/approval/approval';
-import type { DockState } from './dock';
 import { Dock, createDockControl } from './dock-view';
 import type { Compaction } from '../gate';
 import { createScreen, type ScreenOptions } from './screen';
@@ -113,8 +112,12 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   const errorLines = () => (error() === null ? 0 : errorBandLines(error()!, width()) + 1);
   // Block rows that fit: the screen less header band, filter line, column header, Template, preview band, error band, suggestions,
   // prompt band and footer. Preview and error band have a blank line above, the prompt band too. Lines never shrink, so rows cannot overlap.
-  const capacity = () =>
-    Math.max(1, size().height - 2 - 2 - (gate.hiding() ? 1 : 0) - (previewHeight() + 1) - errorLines() - 1 - suggestions().length - (docked.open() ? docked.lines() : promptLines(inputLines())) - footerLines(footerStatus()?.text ?? '', keys(), width()));
+  const room = () =>
+    size().height - 2 - 2 - (gate.hiding() ? 1 : 0) - (previewHeight() + 1) - errorLines() - 1 - suggestions().length - footerLines(footerStatus()?.text ?? '', keys(), width());
+  // The dock in the band's width, leaving at least one block row; its meta line included.
+  const dockLayout = createMemo(() => (docked.open() && docked.state() ? docked.layout(width() - 2, Math.max(2, room() - 1)) : null));
+  const dockLines = () => (dockLayout()?.lines.length ?? 0) + 1;
+  const capacity = () => Math.max(1, room() - (docked.open() ? dockLines() : promptLines(inputLines())));
   // The rows shown: a window around the selection.
   const visibleRows = () => around(rows(), rows().findIndex(r => isSelected(gate, r)), capacity());
   // The own answer in the dock: one line.
@@ -241,9 +244,9 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
           </PromptBand>
         }
       >
-        {(d: () => DockState) => (
-          <Band color={ACCENT} lines={docked.lines()}>
-            <Dock state={d()} width={width()} own={docked.typingOwn() ? draftInput() : undefined} />
+        {() => (
+          <Band color={ACCENT} lines={dockLines()}>
+            <Dock layout={dockLayout()!} own={docked.typingOwn() ? draftInput() : undefined} />
           </Band>
         )}
       </Show>
