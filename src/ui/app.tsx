@@ -3,7 +3,7 @@ import { type ScrollBoxRenderable, type TextareaRenderable } from '@opentui/core
 import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/solid';
 import { createEffect, createMemo, createSignal, on, onCleanup, Show } from 'solid-js';
 import type { Verdict } from '../core/approval/approval';
-import { Dock, createDockControl } from './dock-view';
+import { Dock, type DockLayout, createDockControl } from './dock-view';
 import type { Compaction } from '../gate';
 import { createScreen, type ScreenOptions } from './screen';
 import { around } from './format';
@@ -74,7 +74,7 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   // A memo: `on(phase)` must fire on a phase change only, not on every update of the Compaction.
   const phase = createMemo(() => gate.compacting()?.phase);
   // The dock takes the keys; a Compaction under way keeps them.
-  const docked = createDockControl(gate, { draft, editDraft, leaveInput, compacting: () => !!phase(), scrollPreview, onQuit: props.onQuit });
+  const docked = createDockControl(gate, { draft, editDraft, leaveInput, compacting: () => !!phase(), onQuit: props.onQuit });
   // The instruction line starts empty, on `i` or when blocked with the draft of the last run.
   createEffect(on(phase, p => p === 'instruction' && editDraft(gate.compacting()!.draft)));
   createEffect(() => phase() === 'instruction' && gate.measure(draft()));
@@ -97,6 +97,7 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   });
 
   const idle = () => {
+    if (docked.open()) return { text: 'the model asks – choose above, or own answer to write it here', fg: MUTED };
     if (!phase()) return { text: 'Tab to write · Enter sends the Context', fg: MUTED };
     const review = gate.review();
     if (review) return { text: `◇ ${review.tokens}`, fg: review.over ? TONE.error : TEXT };
@@ -110,17 +111,22 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   const keyMode = (): KeyMode => (docked.open() ? dockMode(docked.state()!, docked.typingOwn()) : (phase() ?? mode()));
   const keys = () => keysOf(gate, suggestion() ? (suggestion()!.run === null ? 'complete' : 'suggest') : keyMode(), error() !== null);
   const errorLines = () => (error() === null ? 0 : errorBandLines(error()!, width()) + 1);
-  // Block rows that fit: the screen less header band, filter line, column header, Template, preview band, error band, suggestions,
-  // prompt band and footer. Preview and error band have a blank line above, the prompt band too. Lines never shrink, so rows cannot overlap.
-  const room = () =>
-    size().height - 2 - 2 - (gate.hiding() ? 1 : 0) - (previewHeight() + 1) - errorLines() - 1 - suggestions().length - footerLines(footerStatus()?.text ?? '', keys(), width());
-  // The dock in the band's width, leaving at least one block row; its meta line included.
-  const dockLayout = createMemo(() => (docked.open() && docked.state() ? docked.layout(width() - 2, Math.max(2, room() - 1)) : null));
-  const dockLines = () => (dockLayout()?.lines.length ?? 0) + 1;
-  const capacity = () => Math.max(1, room() - (docked.open() ? dockLines() : promptLines(inputLines())));
+  // Lines for block rows and the preview's band: the screen less header band, filter line, column header, Template, error band,
+  // suggestions, prompt band and footer. Preview and error band have a blank line above, the prompt band too. Lines never shrink,
+  // so rows cannot overlap.
+  // The band in the preview's place: the dock grows past the preview's height when it needs to, leaving one block row.
+  const beside = () =>
+    size().height - 2 - 2 - (gate.hiding() ? 1 : 0) - 1 - errorLines() - 1 - suggestions().length - footerLines(footerStatus()?.text ?? '', keys(), width()) - promptLines(inputLines());
+  const dockLayout = createMemo(() => (docked.open() && docked.state() ? docked.layout(width() - 2, Math.max(previewHeight(), beside() - 1)) : null));
+  const dockLines = () => {
+    const l = dockLayout();
+    return l ? l.lines.length + (l.above || l.below ? 1 : 0) : 0;
+  };
+  const bandHeight = () => Math.max(previewHeight(), dockLines());
+  const capacity = () => Math.max(1, beside() - bandHeight());
   // The rows shown: a window around the selection.
   const visibleRows = () => around(rows(), rows().findIndex(r => isSelected(gate, r)), capacity());
-  // The own answer in the dock: one line.
+  // The own answer in the prompt band: one line.
   const draftInput = () => (
     <input
       focused
@@ -136,6 +142,7 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   );
   // The draft or the Compaction instruction: several lines, pasted or broken with shift+Enter.
   const writing = () => mode() !== 'context' || phase() === 'instruction';
+  const answering = () => docked.open() && docked.typingOwn();
   const inputLines = () => (writing() ? inputLinesOf(draft()) : 1);
   const [area, setArea] = createSignal<TextareaRenderable>();
   // The textarea keeps its own text: a draft set from outside (on opening, completion) goes in with the cursor at its end.
@@ -185,8 +192,18 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
         <FilterLine gate={gate} />
       </Show>
       <BlockTable gate={gate} rows={rows()} visible={visibleRows()} width={width()} />
-      <box flexDirection="column" height={previewHeight() + 1} flexShrink={0}>
-        <Show when={selectedRow()}>
+      <box flexDirection="column" height={bandHeight() + 1} flexShrink={0}>
+        <Show when={dockLayout()}>
+          {(layout: () => DockLayout) => (
+            <>
+              <text flexShrink={0}> </text>
+              <Band color={ACCENT} lines={dockLines()}>
+                <Dock layout={layout()} />
+              </Band>
+            </>
+          )}
+        </Show>
+        <Show when={!dockLayout() && selectedRow()}>
           {(row: () => Row) => (
             <>
               <text flexShrink={0}> </text>
@@ -222,34 +239,31 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
       </Show>
       <text flexShrink={0}> </text>
       <Suggestions suggestions={suggestions()} chosen={suggest.chosen()} />
-      <Show
-        when={docked.open() && docked.state()}
-        fallback={
-          <PromptBand
-            inputLines={inputLines()}
-            meta={
-              <Show when={gate.compacting()} fallback={<PromptMeta mode={mode()} />}>
-                {(c: () => Compaction) => <CompactionMeta gate={gate} compaction={c()} />}
-              </Show>
-            }
-          >
-            <Show when={writing()} fallback={<text fg={idle().fg}>{idle().text}</text>}>
-              <box flexDirection="row" flexGrow={1}>
-                <Show when={phase() === 'instruction'}>
-                  <text fg={ACCENT} flexShrink={0}>{'instruction > '}</text>
-                </Show>
-                {draftArea(phase() === 'instruction' ? gate.defaultInstruction() : undefined)}
-              </box>
-            </Show>
-          </PromptBand>
+      <PromptBand
+        inputLines={inputLines()}
+        meta={
+          <Show when={docked.open()} fallback={<Show when={gate.compacting()} fallback={<PromptMeta mode={mode()} />}>{(c: () => Compaction) => <CompactionMeta gate={gate} compaction={c()} />}</Show>}>
+            <span style={{ fg: KIND_COLOR['Tool Result'] }}>Tool Result</span>
+            <span style={{ fg: MUTED }}>  the answer, written by you</span>
+          </Show>
         }
       >
-        {() => (
-          <Band color={ACCENT} lines={dockLines()}>
-            <Dock layout={dockLayout()!} own={docked.typingOwn() ? draftInput() : undefined} />
-          </Band>
-        )}
-      </Show>
+        <Show when={answering()} fallback={
+          <Show when={writing()} fallback={<text fg={idle().fg}>{idle().text}</text>}>
+            <box flexDirection="row" flexGrow={1}>
+              <Show when={phase() === 'instruction'}>
+                <text fg={ACCENT} flexShrink={0}>{'instruction > '}</text>
+              </Show>
+              {draftArea(phase() === 'instruction' ? gate.defaultInstruction() : undefined)}
+            </box>
+          </Show>
+        }>
+          <box flexDirection="row" flexGrow={1}>
+            <text fg={ACCENT} flexShrink={0}>{'answer > '}</text>
+            {draftInput()}
+          </box>
+        </Show>
+      </PromptBand>
       <Footer status={footerStatus()} hints={keys()} width={width()} />
     </box>
   );

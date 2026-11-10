@@ -1,11 +1,11 @@
 // Question dock (#33, #34): its state and keys while the model's Question is next, and its rendering.
-import { createEffect, createSignal, For, type JSX, on, Show } from 'solid-js';
+import { createEffect, createSignal, For, on, Show } from 'solid-js';
 import { isRecommended, shownAnswer } from '../core/tools/question';
 import * as dock from './dock';
 import type { DockState } from './dock';
 import type { Screen } from './screen';
 import { wrapped } from './format';
-import { ACCENT, KIND_COLOR, MUTED, SELECTED_BG, TEXT, TONE } from './theme';
+import { ACCENT, MUTED, SELECTED_BG, TEXT, TONE } from './theme';
 
 type Ui = {
   draft: () => string;
@@ -13,11 +13,10 @@ type Ui = {
   leaveInput: () => void;
   // A Compaction under way keeps the keys.
   compacting: () => boolean;
-  scrollPreview: (lines: number) => void;
   onQuit: () => void;
 };
 
-// Replaces the prompt band while the model's Question is next; the own answer is typed while `typingOwn`.
+// Takes the preview's place while the model's Question is next; the own answer is typed in the prompt band while `typingOwn`.
 export function createDockControl(gate: Screen, ui: Ui) {
   const [state, setDock] = createSignal<DockState | null>(null);
   const [typingOwn, setTypingOwn] = createSignal(false);
@@ -51,8 +50,6 @@ export function createDockControl(gate: Screen, ui: Ui) {
     left: () => setDock(dock.switchTab(state()!, -1)),
     return: () => (dock.confirming(state()!) ? step(state()!, true) : pickRow(state()!.row)),
     r: () => step(dock.recommend(state()!)),
-    'shift+up': () => ui.scrollPreview(-1),
-    'shift+down': () => ui.scrollPreview(1),
     escape: gate.decline,
     q: ui.onQuit,
   };
@@ -75,8 +72,8 @@ export function createDockControl(gate: Screen, ui: Ui) {
     typingOwn,
     open: () => !!state() && !ui.compacting(),
     keyOf: (key: string, name: string) => (typingOwn() ? ownKeys[key] : keys[name]),
-    // The dock laid out for the band that takes the prompt band's place: `width` inside the band, `max` lines with
-    // the meta line.
+    // The dock laid out for the band that takes the preview's place: `width` inside the band, `max` lines with the
+    // `more` line.
     layout: (width: number, max: number) => layoutDock(state()!, width, Math.max(1, max - 1)),
   };
 }
@@ -85,9 +82,8 @@ export function createDockControl(gate: Screen, ui: Ui) {
 type Seg = { text: string; fg: string };
 // A dock line; `row`: the dock row it belongs to (an option, the own answer), so the selection keeps it in view.
 type Line = { segs: Seg[]; row?: number; selected?: boolean };
-// The dock laid out: its lines (the own answer's line marked, it takes the input while typed), and the rows hidden
-// above and below when it does not fit.
-export type DockLayout = { lines: (Line & { own?: boolean })[]; above: number; below: number };
+// The dock laid out: its lines, and the rows hidden above and below when it does not fit.
+export type DockLayout = { lines: Line[]; above: number; below: number };
 
 // The dock's lines at `width` (the band's ┃ excluded): a tab bar with several questions or a `multiple` one, then
 // the question, wrapped, its options, the Recommended ones first and marked, descriptions wrapped under themselves,
@@ -173,39 +169,29 @@ function optionRows(s: DockState, width: number): Line[][] {
   });
 }
 
-function ownLine(s: DockState, width: number): Line & { own: true } {
+function ownLine(s: DockState, width: number): Line {
   const i = dock.choices(s).length;
   const own = s.own[s.tab]!;
-  return { own: true, row: i, selected: i === s.row, segs: [{ text: cut(`${marker(s, i)}${box(s, !!own)}own answer${own ? `: ${own}` : ''}`, width), fg: i === s.row ? ACCENT : MUTED }] };
+  return { row: i, selected: i === s.row, segs: [{ text: cut(`${marker(s, i)}${box(s, !!own)}own answer${own ? `: ${own}` : ''}`, width), fg: i === s.row ? ACCENT : MUTED }] };
 }
 
-// Renders the laid-out dock; `own`: the input while the own answer is typed, it takes the own answer's line.
-export function Dock(props: { layout: DockLayout; own?: JSX.Element }) {
+// Renders the laid-out dock.
+export function Dock(props: { layout: DockLayout }) {
   const more = () => [props.layout.above && `↑ ${props.layout.above} more`, props.layout.below && `↓ ${props.layout.below} more`].filter(Boolean).join(' · ');
   return (
     <>
       <For each={props.layout.lines}>
         {line => (
-          <Show
-            when={line.own && props.own}
-            fallback={
-              <text flexShrink={0} bg={line.selected ? SELECTED_BG : undefined}>
-                <For each={line.segs}>{seg => <span style={{ fg: seg.fg, bg: (seg as Seg & { selected?: boolean }).selected ? SELECTED_BG : undefined }}>{seg.text}</span>}</For>
-              </text>
-            }
-          >
-            <box flexDirection="row" flexShrink={0}>
-              <text fg={ACCENT} flexShrink={0}>{`  › answer > `}</text>
-              {props.own}
-            </box>
-          </Show>
+          <text flexShrink={0} bg={line.selected ? SELECTED_BG : undefined}>
+            <For each={line.segs}>{seg => <span style={{ fg: seg.fg, bg: (seg as Seg & { selected?: boolean }).selected ? SELECTED_BG : undefined }}>{seg.text}</span>}</For>
+          </text>
         )}
       </For>
-      <text flexShrink={0}>
-        <span style={{ fg: KIND_COLOR['Tool Result'] }}>Tool Result</span>
-        <span style={{ fg: MUTED }}>  the answer, written by you</span>
-        <span style={{ fg: ACCENT }}>{more() ? `  ${more()}` : ''}</span>
-      </text>
+      <Show when={more()}>
+        <text flexShrink={0} fg={ACCENT}>
+          {more()}
+        </text>
+      </Show>
     </>
   );
 }

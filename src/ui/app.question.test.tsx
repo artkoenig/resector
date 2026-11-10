@@ -42,7 +42,9 @@ test('a Question opens the dock: the Recommended Option on top, marked and prese
   expect(line(frame, /› Bun/)).toMatch(/› Bun .*recommended.*fast/);
   expect(line(frame, /┃ +Node/)).toMatch(/^┃ +Node .*common/);
   expect(line(frame, /own answer/)).toMatch(/^┃ +own answer/);
-  // The dock takes the prompt band's place: nothing can be written there.
+  // The dock takes the preview's place; the prompt band stays, only for the own answer.
+  expect(frame).not.toContain('#4 · ');
+  expect(frame).toContain('own answer to write it here');
   expect(frame).not.toContain('Tab to write');
   fake.reply({ chunks: ['great'] });
   ui.mockInput.pressEnter();
@@ -72,8 +74,8 @@ test('↑↓ move, Enter picks; own answer takes free text (#33)', async () => {
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('answer >'));
   await ui.mockInput.typeText('Deno 2');
-  // Typed in the own answer's row.
-  expect(line(await frameMatching(ui, f => f.includes('Deno 2')), /answer >/)).toMatch(/^┃ +› answer > Deno 2/);
+  // Typed in the prompt band.
+  expect(line(await frameMatching(ui, f => f.includes('Deno 2')), /answer >/)).toMatch(/^┃ answer > Deno 2/);
   fake.reply({ chunks: ['ok'] });
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('answer complete'));
@@ -293,12 +295,12 @@ test('a long Question with many long options fits the dock: the question wraps, 
   const frame = ui.captureCharFrame();
   expect(frame).toContain('must survive restarts and run on the edge devices too?');
   expect(line(frame, /› SQLite/)).toMatch(/recommended embedded/);
-  expect(frame).toContain('↓ 4 more');
+  expect(frame).toContain('↓ 3 more');
   // The footer keeps its own line.
   expect(frame.trimEnd().split('\n').at(-1)).toMatch(/q quit/);
   for (let i = 0; i < 5; i++) await press('down');
   const last = await frameMatching(ui, f => /› own answer/.test(f));
-  expect(last).toContain('↑ 3 more');
+  expect(last).toContain('↑ 2 more');
   expect(last).toContain('must survive restarts');
   expect(last.trimEnd().split('\n').at(-1)).toMatch(/q quit/);
 });
