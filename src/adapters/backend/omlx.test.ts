@@ -177,6 +177,13 @@ test('without the cache probe, messages equal to the last request and its answer
   expect((await backend.count(prefixes([SYSTEM, { role: 'user', content: 'hi you' }]))).cached).toEqual({ tokens: 12, exact: false });
 });
 
+test('a refused cache probe is not asked again on this connection', async () => {
+  const backend = await open({}, { probe: false });
+  await backend.count(prefixes([SYSTEM, USER]));
+  await backend.count(prefixes([SYSTEM, USER]));
+  expect(fake.probeRequests()).toBe(1);
+});
+
 test('counting converts tools, tool calls and tool results to the Anthropic format', async () => {
   const requests = toolLoop();
   const split = await (await open()).count(requests);

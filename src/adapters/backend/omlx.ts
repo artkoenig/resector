@@ -155,7 +155,7 @@ export async function connectOmlx(endpoint: string, { window, model, sampling, t
     if (!probing) return null;
     return post<{ ssd_hit_tokens: number; block_size: number }>('/admin/api/cache/probe', { model_id: model, messages }).catch(e => {
       // Missing or locked (admin API key): not available for this connection; anything else: this count only.
-      probing = !/: 40[134] /.test(String(e));
+      probing = !/ 40[134]: /.test(String(e));
       return null;
     });
   };
