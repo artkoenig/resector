@@ -242,3 +242,19 @@ test('NoteAdded puts a Context Policy\'s Note right after its anchor; undo drops
   expect(fold(events).nextId).toBe(6);
   expect(ids([...events, { type: 'Undo', eventId: events.length - 1 }])).toEqual([1, 2, 3, 4]);
 });
+
+const skillLoaded = (id: number, name: string, call?: number): SessionEvent => ({ type: 'SkillLoaded', id, name, file: `~/s/${name}/SKILL.md`, content: `body ${name}`, ...(call === undefined ? {} : { call }) });
+
+test('a loaded skill is a Note with its name, file and body; without a call it goes last', () => {
+  const events = session(1, skillLoaded(3, 'a'));
+  expect(ids(events)).toEqual([1, 2, 3]);
+  expect(block(events, 3)).toMatchObject({ kind: 'Note', origin: 'skill', skill: 'a', file: '~/s/a/SKILL.md', content: 'body a', cutOff: false, revision: 1 });
+});
+
+test('skills loaded by a call follow its answer’s calls and results, in load order; blocks added since stay after', () => {
+  const user: SessionEvent = { type: 'BlockAdded', id: 6, kind: 'User', origin: 'user', content: 'later' };
+  const events = session(1, call(3, 'a'), call(4, 'b'), result(5, 3), user, skillLoaded(7, 'x', 3), skillLoaded(8, 'y', 3));
+  expect(ids(events)).toEqual([1, 2, 3, 4, 5, 7, 8, 6]);
+  // At the end of the Context: the notes still keep their order.
+  expect(ids(session(1, call(3, 'a'), result(4, 3), skillLoaded(5, 'x', 3), skillLoaded(6, 'y', 3)))).toEqual([1, 2, 3, 4, 5, 6]);
+});
