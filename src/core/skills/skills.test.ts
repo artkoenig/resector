@@ -27,9 +27,7 @@ test('the Skills note lists each skill; empty for none', () => {
     { name: 'b', description: 'does b', file: '~/s/b/SKILL.md', body: 'B', requires: [], files: [] },
   ];
   const note = skillsNote(skills);
-  expect(note).toContain('Skills');
-  expect(note).toContain('- a: does a');
-  expect(note).toContain('- b: does b');
+  expect(note).toBe('Skills – call `skill` with a name to load its instructions.\n- a: does a\n- b: does b');
   expect(skillsNote([])).toBe('');
 });
 
@@ -85,4 +83,41 @@ test('skillContent returns just the body when there are no supplementary files',
 test('skillContent appends supplementary files under headings', () => {
   const s: Skill = { name: 'a', description: '', file: '~/s/a/SKILL.md', body: 'main body', requires: [], files: [{ name: 'EXTRA.md', content: 'extra content' }] };
   expect(skillContent(s)).toBe('main body\n\n---\n\n## EXTRA.md\n\nextra content');
+});
+
+test('without requires a skill requires nothing and has no files yet', () => {
+  expect(parseSkill('---\nname: a\n---\nBody', '~/s/a/SKILL.md')).toEqual({ name: 'a', description: '', file: '~/s/a/SKILL.md', body: 'Body', requires: [], files: [] });
+});
+
+test('frontmatter only at the very start; it may end the file without a newline', () => {
+  const late = parseSkill('# Title\n---\nname: x\n---\n', '~/s/tidy/SKILL.md');
+  expect(late.name).toBe('tidy');
+  expect(late.body).toBe('# Title\n---\nname: x\n---');
+  expect(parseSkill('---\nname: a\n---', '~/s/x/SKILL.md')).toMatchObject({ name: 'a', body: '' });
+});
+
+test('a key is read only at the line start, with or without a space after the colon, trimmed', () => {
+  const s = parseSkill('---\nname:refactor\nnickname: bob\ndescription:   Refactor safely  \n---\n', '~/s/x/SKILL.md');
+  expect(s.name).toBe('refactor');
+  expect(s.description).toBe('Refactor safely');
+});
+
+test('quotes around a value are dropped, quotes inside it stay', () => {
+  expect(parseSkill(`---\ndescription: "Don't panic"\n---\n`, '~/s/x/SKILL.md').description).toBe("Don't panic");
+});
+
+test('requires: quoted names, empty items left out', () => {
+  expect(parseSkill(`---\nrequires: ['a', "b",, ]\n---\n`, '~/s/x/SKILL.md').requires).toEqual(['a', 'b']);
+});
+
+test('a value starting or ending with > or | is no block scalar', () => {
+  const text = (d: string) => `---\ndescription: ${d}\n  indented\n---\n`;
+  expect(parseSkill(text('see >'), '~/s/x/SKILL.md').description).toBe('see >');
+  expect(parseSkill(text('|x'), '~/s/x/SKILL.md').description).toBe('|x');
+});
+
+test('a block scalar keeps its blank lines and ends at the next key, trailing blanks trimmed; spaces after > are fine', () => {
+  const s = parseSkill('---\ndescription: |  \n  one\n\n  two\n\nname: a\n---\n', '~/s/x/SKILL.md');
+  expect(s.description).toBe('one\n\ntwo');
+  expect(s.name).toBe('a');
 });

@@ -87,4 +87,8 @@ test('a resumed session gets a new Skills note only when the skills changed or i
   expect(skillsUpdate(events, [])).toBeNull();
   expect(skillsUpdate(events, [skill('new')])).toEqual({ type: 'BlockAdded', id: 4, kind: 'Note', origin: 'skill', content: skillsNote([skill('new')]) });
   expect(skillsUpdate(newSession('p', 'system'), [skill('old')])).toMatchObject({ origin: 'skill', content: skillsNote([skill('old')]) });
+  // The last Skills note counts, not the blocks added since.
+  const later: SessionEvent[] = [...events, { type: 'BlockAdded', id: 4, kind: 'User', origin: 'user', content: skillsNote([skill('new')]) }];
+  expect(skillsUpdate(later, [skill('old')])).toBeNull();
+  expect(events.at(-1)).toMatchObject({ kind: 'Note', origin: 'skill' });
 });

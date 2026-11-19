@@ -42,7 +42,10 @@ const QUESTION_TOOL = {
 
 const SKILL = {
   name: 'skill',
-  description: expect.stringContaining('Load a skill'),
+  description:
+    'Load a skill into the context by its name. The available skills and what they do are listed in the Skills note; ' +
+    "call this with a skill's name to read its full instructions before doing the task it covers. " +
+    'Its dependencies load with it.',
   parameters: { type: 'object', properties: { name: { type: 'string', description: "the name of the skill to load" } }, required: ['name'] },
 };
 

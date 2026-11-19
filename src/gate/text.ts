@@ -61,10 +61,9 @@ function originTitle(block: Titled, blocks: readonly Called[]): string | null {
   if (block.source !== undefined) return `⇄ ${firstLine(block.source)}`;
   if (block.origin === 'skill') return block.skill !== undefined ? `Skill: ${block.skill}` : 'Skills';
   if (block.file !== undefined) return `@${block.file}`;
-  if (block.origin === 'environment') return 'Environment';
-  if (block.origin === 'policy') return 'Context Policy';
-  return block.compacted ? `◇ ${count(block.compacted.sources.length, 'block')} compacted` : null;
+  return ORIGIN_TITLE[String(block.origin)] ?? (block.compacted ? `◇ ${count(block.compacted.sources.length, 'block')} compacted` : null);
 }
+const ORIGIN_TITLE: Partial<Record<string, string>> = { environment: 'Environment', policy: 'Context Policy' };
 
 // `1 block`, `2 blocks`.
 export const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;

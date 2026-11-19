@@ -50,6 +50,7 @@ export function startFakeOmlx({ models = [{ id: 'Qwen3-8B-4bit', maxModelLen: 57
   };
   const chatRequests: unknown[] = [];
   const countRequests: AnthropicCount[] = [];
+  let probeRequests = 0;
   const error = (status: number, message: string, headers?: Record<string, string>) => Response.json({ error: { message, type: 'server_error' } }, { status, headers });
   const overloaded = () => error(503, 'frontend request capacity is exhausted', { 'retry-after': '0' });
   const counts = { active: 0, most: 0 };
@@ -73,6 +74,7 @@ export function startFakeOmlx({ models = [{ id: 'Qwen3-8B-4bit', maxModelLen: 57
       if (req.headers.get('content-type') !== 'application/json') return error(422, 'body is not JSON');
       const body = (await req.json()) as Record<string, any>;
       if (url.pathname === '/admin/api/cache/probe') {
+        probeRequests++;
         if (!probe) return error(401, 'API key required');
         return Response.json({ model_id: body.model_id, block_size: blockSize, ssd_hit_tokens: hit(body.messages) });
       }
@@ -113,6 +115,7 @@ export function startFakeOmlx({ models = [{ id: 'Qwen3-8B-4bit', maxModelLen: 57
     countRequests,
     // The most count_tokens requests in flight at once.
     mostCounts: () => counts.most,
+    probeRequests: () => probeRequests,
     stop: () => server.stop(true),
   };
 }

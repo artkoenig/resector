@@ -25,15 +25,14 @@ function splitFrontmatter(text: string): { meta: Frontmatter; body: string } {
   const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   if (!m) return { meta: {}, body: text };
   const meta: Frontmatter = {};
-  const lines = (m[1] ?? '').split(/\r?\n/);
+  const lines = m[1]!.split(/\r?\n/);
   lines.forEach((line, i) => {
-    const kv = line.match(/^(name|description|requires):\s*(.*)$/);
+    const kv = line.match(/^(name|description|requires):\s*(.*)/);
     if (!kv) return;
-    const raw = blockScalar(lines, i, (kv[2] ?? '').trim());
+    const raw = blockScalar(lines, i, kv[2]!.trim());
     if (kv[1] === 'requires') {
-      // Strip brackets if present, then split on commas.
-      const inner = raw.replace(/^\[|\]$/g, '');
-      meta.requires = inner.split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+      // Names hold no brackets or quotes: drop them, then split on commas.
+      meta.requires = raw.replace(/[[\]'"]/g, '').split(',').map(s => s.trim()).filter(Boolean);
     } else {
       meta[kv[1] as 'name' | 'description'] = raw.replace(/^['"]|['"]$/g, '');
     }
@@ -45,14 +44,14 @@ function splitFrontmatter(text: string): { meta: Frontmatter; body: string } {
 function blockScalar(lines: string[], at: number, raw: string): string {
   const scalar = raw.match(/^([>|])[+-]?$/);
   if (!scalar) return raw;
-  const end = lines.findIndex((l, i) => i > at && l.trim() !== '' && !/^\s/.test(l));
+  const end = lines.findIndex((l, i) => i > at && l !== '' && !/^\s/.test(l));
   const block = lines.slice(at + 1, end === -1 ? lines.length : end).map(l => l.trim());
   return block.join(scalar[1] === '>' ? ' ' : '\n').trim();
 }
 
 // The full content of a skill Note: its body, then each supplementary file under a heading.
 export const skillContent = (skill: Skill): string =>
-  skill.files.length === 0 ? skill.body : [skill.body, ...skill.files.map(f => `\n---\n\n## ${f.name}\n\n${f.content}`)].join('\n');
+  [skill.body, ...skill.files.map(f => `\n---\n\n## ${f.name}\n\n${f.content}`)].join('\n');
 
 // The Skills note: one line per skill, the metadata the model sees without loading any body.
 export const skillsNote = (skills: Skill[]): string =>

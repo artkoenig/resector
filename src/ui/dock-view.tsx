@@ -13,6 +13,8 @@ type Ui = {
   leaveInput: () => void;
   // A Compaction under way keeps the keys.
   compacting: () => boolean;
+  scrollPreview: (lines: number) => void;
+  previewPage: () => number;
   onQuit: () => void;
 };
 
@@ -20,12 +22,16 @@ type Ui = {
 export function createDockControl(gate: Screen, ui: Ui) {
   const [state, setDock] = createSignal<DockState | null>(null);
   const [typingOwn, setTypingOwn] = createSignal(false);
+  // Reading older rows (the wheel over the block table): the preview shows again, the dock waits; the selection
+  // the Question had, to go back to.
+  const [peekFrom, setPeekFrom] = createSignal<number | null>(null);
   createEffect(
     on(
       () => gate.asked()?.call.id,
       id => {
         setDock(id === undefined ? null : dock.openDock(gate.asked()!.questions));
         setTypingOwn(false);
+        setPeekFrom(null);
         if (id !== undefined) ui.leaveInput();
       },
     ),
@@ -53,6 +59,20 @@ export function createDockControl(gate: Screen, ui: Ui) {
     escape: gate.decline,
     q: ui.onQuit,
   };
+  function back() {
+    gate.reselect(peekFrom()!);
+    setPeekFrom(null);
+  }
+  // While reading: ↑↓ select, the preview scrolls; any other key goes back to the Question, q still quits.
+  const peekKeys: Record<string, () => void> = {
+    up: () => gate.select(-1),
+    down: () => gate.select(1),
+    'shift+up': () => ui.scrollPreview(-1),
+    'shift+down': () => ui.scrollPreview(1),
+    pageup: () => ui.scrollPreview(-ui.previewPage()),
+    pagedown: () => ui.scrollPreview(ui.previewPage()),
+    q: ui.onQuit,
+  };
   function closeOwn() {
     setTypingOwn(false);
     ui.editDraft('');
@@ -71,7 +91,12 @@ export function createDockControl(gate: Screen, ui: Ui) {
     state,
     typingOwn,
     open: () => !!state() && !ui.compacting(),
-    keyOf: (key: string, name: string) => (typingOwn() ? ownKeys[key] : keys[name]),
+    peeking: () => peekFrom() !== null,
+    // The wheel moved the selection; the own answer being typed stays.
+    peek: () => {
+      if (!typingOwn() && peekFrom() === null && state()) setPeekFrom(gate.selected());
+    },
+    keyOf: (key: string, name: string) => (typingOwn() ? ownKeys[key] : peekFrom() !== null ? (peekKeys[name] ?? back) : keys[name]),
     // The dock laid out for the band that takes the preview's place: `width` inside the band, `max` lines with the
     // `more` line.
     layout: (width: number, max: number) => layoutDock(state()!, width, Math.max(1, max - 1)),
@@ -125,20 +150,24 @@ const cut = (text: string, width: number) => (text.length > width ? `${text.slic
 // The tabs, as many around the current one as fit.
 function tabBar(s: DockState, width: number): Line {
   const labels = [...s.questions.map((q, i) => ` ${dock.answered(s, i) ? '✓' : '·'} ${q.header} `), ' Confirm '];
-  let from = s.tab;
-  let to = s.tab + 1;
-  const size = () => 1 + labels.slice(from, to).join('').length + (from > 0 ? 1 : 0) + (to < labels.length ? 1 : 0);
-  for (let grew = true; grew; ) {
-    grew = false;
-    if (to < labels.length && (to++, size() <= width)) grew = true;
-    else if (to > s.tab + 1 && size() > width) to--;
-    if (from > 0 && (from--, size() <= width)) grew = true;
-    else if (from < s.tab && size() > width) from++;
-  }
+  const { from, to } = tabWindow(labels, s.tab, width);
   const segs: Seg[] = [{ text: from > 0 ? ' …' : ' ', fg: MUTED }];
   labels.slice(from, to).forEach((label, j) => segs.push({ text: label, fg: from + j === s.tab ? ACCENT : MUTED, selected: from + j === s.tab } as Seg));
   if (to < labels.length) segs.push({ text: '…', fg: MUTED });
   return { segs };
+}
+
+// The labels from..to around `tab` that fit `width`, grown one at a time to the right, then the left; `…` marks the rest.
+function tabWindow(labels: string[], tab: number, width: number) {
+  const size = (from: number, to: number) => 1 + labels.slice(from, to).join('').length + (from > 0 ? 1 : 0) + (to < labels.length ? 1 : 0);
+  let from = tab;
+  let to = tab + 1;
+  for (let grew = true; grew; ) {
+    grew = false;
+    if (to < labels.length && size(from, to + 1) <= width) (to++, (grew = true));
+    if (from > 0 && size(from - 1, to) <= width) (from--, (grew = true));
+  }
+  return { from, to };
 }
 
 function questionLines(s: DockState, width: number): Line[] {

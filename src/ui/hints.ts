@@ -10,7 +10,7 @@ import type { Mode } from './prompt';
 const LOOK_KEYS: Hint[] = [['q', 'quit']];
 
 // Key hints right of the status; they stay visible. An error band adds how to dismiss it.
-export type KeyMode = Mode | 'suggest' | 'complete' | 'question' | 'questions' | 'answer' | Compaction['phase'];
+export type KeyMode = Mode | 'suggest' | 'complete' | 'question' | 'questions' | 'answer' | 'peek' | Compaction['phase'];
 // The dock's keys: tabs only with several questions or a `multiple` one.
 export const dockMode = (s: DockState, typingOwn: boolean): KeyMode => (typingOwn ? 'answer' : dock.direct(s) ? 'question' : 'questions');
 export function keysOf(gate: Screen, mode: KeyMode, error: boolean): Hint[] {
@@ -28,6 +28,7 @@ const MODE_KEYS: Partial<Record<KeyMode, Hint[]>> = {
   question: [['↑↓', 'choose'], ['enter', 'pick'], ['esc', 'decline'], ['q', 'quit']],
   questions: [['↑↓', 'choose'], ['enter', 'pick'], ['←→', 'question'], ['r', 'recommended'], ['esc', 'decline'], ['q', 'quit']],
   answer: [['enter', 'answer'], ['esc', 'back']],
+  peek: [['↑↓', 'select'], ['esc', 'question'], ['q', 'quit']],
 };
 // Streaming, running or a policy running: the first Esc stops the loop after the step, the second aborts it.
 function busyKeys(gate: Screen): Hint[] | null {
