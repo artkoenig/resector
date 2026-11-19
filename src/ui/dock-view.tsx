@@ -150,20 +150,24 @@ const cut = (text: string, width: number) => (text.length > width ? `${text.slic
 // The tabs, as many around the current one as fit.
 function tabBar(s: DockState, width: number): Line {
   const labels = [...s.questions.map((q, i) => ` ${dock.answered(s, i) ? '✓' : '·'} ${q.header} `), ' Confirm '];
-  let from = s.tab;
-  let to = s.tab + 1;
-  const size = () => 1 + labels.slice(from, to).join('').length + (from > 0 ? 1 : 0) + (to < labels.length ? 1 : 0);
-  for (let grew = true; grew; ) {
-    grew = false;
-    if (to < labels.length && (to++, size() <= width)) grew = true;
-    else if (to > s.tab + 1 && size() > width) to--;
-    if (from > 0 && (from--, size() <= width)) grew = true;
-    else if (from < s.tab && size() > width) from++;
-  }
+  const { from, to } = tabWindow(labels, s.tab, width);
   const segs: Seg[] = [{ text: from > 0 ? ' …' : ' ', fg: MUTED }];
   labels.slice(from, to).forEach((label, j) => segs.push({ text: label, fg: from + j === s.tab ? ACCENT : MUTED, selected: from + j === s.tab } as Seg));
   if (to < labels.length) segs.push({ text: '…', fg: MUTED });
   return { segs };
+}
+
+// The labels from..to around `tab` that fit `width`, grown one at a time to the right, then the left; `…` marks the rest.
+function tabWindow(labels: string[], tab: number, width: number) {
+  const size = (from: number, to: number) => 1 + labels.slice(from, to).join('').length + (from > 0 ? 1 : 0) + (to < labels.length ? 1 : 0);
+  let from = tab;
+  let to = tab + 1;
+  for (let grew = true; grew; ) {
+    grew = false;
+    if (to < labels.length && size(from, to + 1) <= width) (to++, (grew = true));
+    if (from > 0 && size(from - 1, to) <= width) (from--, (grew = true));
+  }
+  return { from, to };
 }
 
 function questionLines(s: DockState, width: number): Line[] {
