@@ -5,7 +5,7 @@ import { frameMatching } from '../../test/frames';
 import { toolsWith } from '../core/tools/catalog';
 import { TOOLS } from '../core/tools/catalog';
 import type { Tool } from '../core/log/events';
-import { bash, escape, fake, fixture, line, press, project, type Sent, start, ui, useHarness, write } from './app.harness';
+import { bash, escape, fake, fixture, line, press, previewed, project, type Sent, start, ui, useHarness, write } from './app.harness';
 
 useHarness();
 
@@ -54,6 +54,21 @@ test('a Question opens the dock: the Recommended Option on top, marked and prese
     { type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'user', content: 'Which runtime should we use?: Bun', call: 4 },
   ]);
   expect(answerSent()).toEqual({ role: 'tool', tool_call_id: 'call_0', content: 'Which runtime should we use?: Bun' });
+});
+
+test('the wheel over the block table shows the preview of older rows while the Question waits; any other key goes back to it', async () => {
+  await questioned(RUNTIME);
+  const y = ui.captureCharFrame().split('\n').findIndex(l => /\d+\s+User\s/.test(l));
+  await ui.mockMouse.scroll(10, y, 'up');
+  await ui.mockMouse.scroll(10, y, 'up');
+  let frame = await frameMatching(ui, f => previewed(f) === 'go');
+  expect(frame).not.toContain('own answer');
+  expect(frame).toContain('any key goes back to the question');
+  ui.mockInput.pressEscape();
+  frame = await frameMatching(ui, f => f.includes('own answer'));
+  expect(line(frame, /› Bun/)).toMatch(/› Bun .*recommended/);
+  // Esc only went back: the Question still waits.
+  expect(fake.chatRequests).toHaveLength(1);
 });
 
 test('↑↓ move, Enter picks; own answer takes free text (#33)', async () => {

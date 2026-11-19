@@ -33,6 +33,7 @@ export function createScreen({ hidden = ['tool-calls'], ...options }: ScreenOpti
       return gate.send();
     },
     select: sel.select,
+    reselect: sel.reselect,
     clearMarks: () => sel.setMarked(new Set<number>()),
   };
 }

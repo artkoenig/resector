@@ -96,6 +96,11 @@ export function createSelection(k: Kernel, hiddenAtStart: readonly string[]) {
     selectAt(shown().indexOf(selected()) + delta);
     reading = selected() !== shown().at(-1);
   }
+  // Back to a row selected before, if still shown.
+  function reselect(id: number) {
+    if (shown().includes(id)) setSelected(id);
+    reading = selected() !== shown().at(-1);
+  }
   // Not while a Kind Filter hides neighbours the block would move past.
   const hiding = () => shown().length < rows().length;
 
@@ -114,7 +119,7 @@ export function createSelection(k: Kernel, hiddenAtStart: readonly string[]) {
 
   return {
     live, rows, shown, passes, hides, hiding,
-    selected, setSelected, selectedBlock, select, selectAt, keepSelection, follow,
+    selected, setSelected, selectedBlock, select, reselect, selectAt, keepSelection, follow,
     // The selection follows the loop again.
     release: () => void (reading = false),
     marked, setMarked, hidden, setHidden, filterBy,

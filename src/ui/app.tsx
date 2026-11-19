@@ -74,7 +74,7 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   // A memo: `on(phase)` must fire on a phase change only, not on every update of the Compaction.
   const phase = createMemo(() => gate.compacting()?.phase);
   // The dock takes the keys; a Compaction under way keeps them.
-  const docked = createDockControl(gate, { draft, editDraft, leaveInput, compacting: () => !!phase(), onQuit: props.onQuit });
+  const docked = createDockControl(gate, { draft, editDraft, leaveInput, compacting: () => !!phase(), scrollPreview, previewPage, onQuit: props.onQuit });
   // The instruction line starts empty, on `i` or when blocked with the draft of the last run.
   createEffect(on(phase, p => p === 'instruction' && editDraft(gate.compacting()!.draft)));
   createEffect(() => phase() === 'instruction' && gate.measure(draft()));
@@ -97,6 +97,7 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   });
 
   const idle = () => {
+    if (docked.open() && docked.peeking()) return { text: 'the model asks – any key goes back to the question', fg: MUTED };
     if (docked.open()) return { text: 'the model asks – choose above, or own answer to write it here', fg: MUTED };
     if (!phase()) return { text: 'Tab to write · Enter sends the Context', fg: MUTED };
     const review = gate.review();
@@ -108,16 +109,17 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   // An error has its own band; the footer then shows only the hints.
   const error = () => (status()?.tone === 'error' ? status()!.text : null);
   const footerStatus = () => (error() === null ? status() : null);
-  const keyMode = (): KeyMode => (docked.open() ? dockMode(docked.state()!, docked.typingOwn()) : (phase() ?? mode()));
+  const keyMode = (): KeyMode => (docked.open() ? (docked.peeking() ? 'peek' : dockMode(docked.state()!, docked.typingOwn())) : (phase() ?? mode()));
   const keys = () => keysOf(gate, suggestion() ? (suggestion()!.run === null ? 'complete' : 'suggest') : keyMode(), error() !== null);
   const errorLines = () => (error() === null ? 0 : errorBandLines(error()!, width()) + 1);
   // Lines for block rows and the preview's band: the screen less header band, filter line, column header, Template, error band,
   // suggestions, prompt band and footer. Preview and error band have a blank line above, the prompt band too. Lines never shrink,
   // so rows cannot overlap.
-  // The band in the preview's place: the dock grows past the preview's height when it needs to, leaving one block row.
+  // The band in the preview's place: the dock grows past the preview's height when it needs to, leaving one block row;
+  // the preview again while reading older rows.
   const beside = () =>
     size().height - 2 - 2 - (gate.hiding() ? 1 : 0) - 1 - errorLines() - 1 - suggestions().length - footerLines(footerStatus()?.text ?? '', keys(), width()) - promptLines(inputLines());
-  const dockLayout = createMemo(() => (docked.open() && docked.state() ? docked.layout(width() - 2, Math.max(previewHeight(), beside() - 1)) : null));
+  const dockLayout = createMemo(() => (docked.open() && !docked.peeking() && docked.state() ? docked.layout(width() - 2, Math.max(previewHeight(), beside() - 1)) : null));
   const dockLines = () => {
     const l = dockLayout();
     return l ? l.lines.length + (l.above || l.below ? 1 : 0) : 0;
@@ -191,7 +193,7 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
       <Show when={gate.hiding()}>
         <FilterLine gate={gate} />
       </Show>
-      <BlockTable gate={gate} rows={rows()} visible={visibleRows()} width={width()} />
+      <BlockTable gate={gate} rows={rows()} visible={visibleRows()} width={width()} onWheel={docked.peek} />
       <box flexDirection="column" height={bandHeight() + 1} flexShrink={0}>
         <Show when={dockLayout()}>
           {(layout: () => DockLayout) => (

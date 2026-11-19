@@ -51,13 +51,15 @@ export function createRows(gate: Screen, tick: () => number) {
 
 export const isSelected = (gate: Screen, row: Row) => !row.removed && row.id === gate.selected();
 
-export function BlockTable(props: { gate: Screen; rows: Row[]; visible: Row[]; width: number }) {
+export function BlockTable(props: { gate: Screen; rows: Row[]; visible: Row[]; width: number; onWheel?: () => void }) {
   const gate = props.gate;
   const titleWidth = () => Math.max(8, props.width - FIXED_COLUMNS);
   // The wheel over the block table moves the selection, like ↑↓ (also while busy).
   const wheel = (event: MouseEvent) => {
     const step = WHEEL[event.scroll?.direction ?? ''];
-    if (step) gate.select(step);
+    if (!step) return;
+    props.onWheel?.();
+    gate.select(step);
   };
   return (
     <>
