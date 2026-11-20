@@ -82,10 +82,10 @@ test('a Tool Call without Assistant text, or after a Tool Result, starts its own
   ]);
 });
 
-test('a search call is sent as search with its query', () => {
-  const search: SessionEvent = { type: 'BlockAdded', id: 2, kind: 'Tool Call', origin: 'model', content: 'bun', tool: 'search' };
-  expect(renderNative(fold([created, add(1, 'User', 'go'), search])).messages[1]).toEqual({
-    role: 'assistant', content: '', tool_calls: [{ id: 'call_0', type: 'function', function: { name: 'search', arguments: '{"query":"bun"}' } }],
+test('a websearch call is sent as websearch with its query', () => {
+  const websearch: SessionEvent = { type: 'BlockAdded', id: 2, kind: 'Tool Call', origin: 'model', content: 'bun', tool: 'websearch' };
+  expect(renderNative(fold([created, add(1, 'User', 'go'), websearch])).messages[1]).toEqual({
+    role: 'assistant', content: '', tool_calls: [{ id: 'call_0', type: 'function', function: { name: 'websearch', arguments: '{"query":"bun"}' } }],
   });
 });
 

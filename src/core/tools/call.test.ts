@@ -6,10 +6,10 @@ test('a call of a tool switched off is not run', () => {
   expect(parseCall({ name: 'bash', arguments: '{"command":"ls"}' }, [])).toEqual({ error: 'tool bash is off (/tools)' });
 });
 
-test('a bash call yields its command, a search call its query', () => {
+test('a bash call yields its command, a websearch call its query', () => {
   expect(parseCall({ name: 'bash', arguments: '{"command":"ls -la"}' }, ['bash'])).toEqual({ tool: 'bash', content: 'ls -la' });
-  expect(parseCall({ name: 'search', arguments: '{"query":"bun"}' }, ['bash', 'search'])).toEqual({ tool: 'search', content: 'bun' });
-  expect(parseCall({ name: 'search', arguments: '{"query":"bun"}' }, ['bash'])).toEqual({ error: 'tool search is off (/tools)' });
+  expect(parseCall({ name: 'websearch', arguments: '{"query":"bun"}' }, ['bash', 'websearch'])).toEqual({ tool: 'websearch', content: 'bun' });
+  expect(parseCall({ name: 'websearch', arguments: '{"query":"bun"}' }, ['bash'])).toEqual({ error: 'tool websearch is off (/tools)' });
   expect(parseCall({ name: 'skill', arguments: '{"name":"refactor"}' }, ['skill'])).toEqual({ tool: 'skill', content: 'refactor' });
   expect(parseCall({ name: 'skill', arguments: '{"name":"refactor"}' }, ['bash'])).toEqual({ error: 'tool skill is off (/tools)' });
 });
@@ -26,7 +26,7 @@ test('a question call yields its arguments as content; an invalid one is rejecte
 
 test('a call is sent back with the arguments it came with', () => {
   expect(callArguments('bash', 'ls -la')).toBe('{"command":"ls -la"}');
-  expect(callArguments('search', 'bun')).toBe('{"query":"bun"}');
+  expect(callArguments('websearch', 'bun')).toBe('{"query":"bun"}');
   expect(callArguments('skill', 'refactor')).toBe('{"name":"refactor"}');
   expect(callArguments('question', JSON.stringify(QUESTION))).toBe(JSON.stringify(QUESTION));
 });
@@ -38,7 +38,7 @@ test('other tools, broken JSON or a missing command are not runnable', () => {
   expect(parseCall({ name: 'bash', arguments: 'null' }, ['bash'])).toEqual({ error: 'no command string' });
   expect(parseCall({ name: 'bash', arguments: '{"command":1}' }, ['bash'])).toEqual({ error: 'no command string' });
   expect(parseCall({ name: 'toString', arguments: '{}' }, ['toString'])).toEqual({ error: 'unknown tool toString' });
-  expect(parseCall({ name: 'search', arguments: '{"command":"ls"}' }, ['search'])).toEqual({ error: 'no query string' });
+  expect(parseCall({ name: 'websearch', arguments: '{"command":"ls"}' }, ['websearch'])).toEqual({ error: 'no query string' });
   expect(parseCall({ name: 'skill', arguments: '{"cmd":"x"}' }, ['skill'])).toEqual({ error: 'no name string' });
 });
 
@@ -61,7 +61,7 @@ test('how the run ended is read back from the result; a result without that line
 
 // Property: a call sent back with its arguments parses to the same content, whatever it contains.
 test('a call parses back from the arguments it is sent with', () => {
-  forAll(tuple(pick('bash' as const, 'search' as const, 'skill' as const), string()), ([tool, content]) => {
+  forAll(tuple(pick('bash' as const, 'websearch' as const, 'skill' as const), string()), ([tool, content]) => {
     expect(parseCall({ name: tool, arguments: callArguments(tool, content) }, [tool])).toEqual({ tool, content });
   });
 });

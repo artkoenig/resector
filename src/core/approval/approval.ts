@@ -77,9 +77,9 @@ function questionVerdict(rules: Rule[]): Verdict {
   if (rule?.action !== 'deny') return ALLOWED;
   return { action: 'deny', checks: [{ text: 'question', action: 'deny', why: `${rule.source} rule "question"`, unallowable: false }] };
 }
-// search only reads the web: always allowed, no rule decides it.
+// websearch only reads the web: always allowed, no rule decides it.
 export function verdictOf(call: Pick<Block, 'tool' | 'content'>, input: ApprovalInput): Verdict {
-  if (call.tool === 'search' || call.tool === 'skill') return ALLOWED;
+  if (call.tool === 'websearch' || call.tool === 'skill') return ALLOWED;
   return call.tool === 'question' ? questionVerdict(input.rules) : evaluate(call.content, input);
 }
 // The tools rules switch off: kept out of the Tools Block, calls denied.

@@ -149,17 +149,17 @@ test('PairToNote turns the Tool Pair into a Note after the calls and results of 
   expect(fold(events).nextId).toBe(8);
 });
 
-test('a search call keeps its tool; its pair becomes a Note `[Tool search: <query>]`, titled by tool and query', () => {
-  const search: SessionEvent = { type: 'BlockAdded', id: 3, kind: 'Tool Call', origin: 'model', content: 'bun', tool: 'search' };
-  expect(block(session(1, search), 3)).toMatchObject({ kind: 'Tool Call', tool: 'search', content: 'bun', pending: true });
+test('a websearch call keeps its tool; its pair becomes a Note `[Tool websearch: <query>]`, titled by tool and query', () => {
+  const websearch: SessionEvent = { type: 'BlockAdded', id: 3, kind: 'Tool Call', origin: 'model', content: 'bun', tool: 'websearch' };
+  expect(block(session(1, websearch), 3)).toMatchObject({ kind: 'Tool Call', tool: 'websearch', content: 'bun', pending: true });
   expect(block(session(1, call(3, 'ls')), 3)).not.toHaveProperty('tool');
-  expect(block(session(1, search, result(4, 3), toNote(5, 3)), 5)).toMatchObject({ content: '[Tool search: bun]\nout 3', source: 'search bun' });
+  expect(block(session(1, websearch, result(4, 3), toNote(5, 3)), 5)).toMatchObject({ content: '[Tool websearch: bun]\nout 3', source: 'websearch bun' });
 });
 
 test('callText: the bash command as is, another tool by name and query', () => {
   expect(callText({ content: 'ls' })).toBe('ls');
   expect(callText({ tool: 'bash', content: 'ls' })).toBe('ls');
-  expect(callText({ tool: 'search', content: 'bun' })).toBe('search bun');
+  expect(callText({ tool: 'websearch', content: 'bun' })).toBe('websearch bun');
 });
 
 test('a Tool Result edited in place stays the result of its call', () => {

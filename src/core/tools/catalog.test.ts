@@ -3,7 +3,7 @@ import { toggleTool, TOOLS, toolNames } from './catalog';
 import { QUESTION_DEFINITION } from './question';
 
 const SEARCH = {
-  name: 'search',
+  name: 'websearch',
   description: expect.stringContaining('DuckDuckGo'),
   parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
 };
@@ -62,14 +62,14 @@ test('/tools switches a tool off and on again; an unknown one is refused', () =>
   const off = toggleTool(TOOLS, 'bash') as { content: string };
   expect(toolNames(off.content)).toBe('question, skill');
   expect(toggleTool(off.content, 'bash')).toEqual({ content: TOOLS });
-  expect(toggleTool(TOOLS, 'python')).toEqual({ error: 'unknown tool python – bash search question skill' });
-  expect(toggleTool(TOOLS, 'toString')).toEqual({ error: 'unknown tool toString – bash search question skill' });
+  expect(toggleTool(TOOLS, 'python')).toEqual({ error: 'unknown tool python – bash websearch question skill' });
+  expect(toggleTool(TOOLS, 'toString')).toEqual({ error: 'unknown tool toString – bash websearch question skill' });
 });
 
-test('/tools search switches search on after bash, with one query parameter; off again, bash stays', () => {
-  const on = toggleTool(TOOLS, 'search') as { content: string };
+test('/tools websearch switches websearch on after bash, with one query parameter; off again, bash stays', () => {
+  const on = toggleTool(TOOLS, 'websearch') as { content: string };
   expect(JSON.parse(on.content)).toEqual([BASH, SEARCH, QUESTION_TOOL, SKILL]);
-  expect(toolNames(on.content)).toBe('bash, search, question, skill');
-  expect(toggleTool('[]', 'search')).toEqual({ content: JSON.stringify([JSON.parse(on.content)[1]], null, 2) });
-  expect(toggleTool(on.content, 'search')).toEqual({ content: TOOLS });
+  expect(toolNames(on.content)).toBe('bash, websearch, question, skill');
+  expect(toggleTool('[]', 'websearch')).toEqual({ content: JSON.stringify([JSON.parse(on.content)[1]], null, 2) });
+  expect(toggleTool(on.content, 'websearch')).toEqual({ content: TOOLS });
 });

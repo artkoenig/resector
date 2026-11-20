@@ -9,7 +9,7 @@ them (ADR 0004).
 The model sees only each skill's metadata (name and description) in a **Skills note** in the Context at session
 start (origin `skill`). To use a skill it calls the `skill` tool with the skill's name; the tool reads the SKILL.md
 and adds its body to the Context as a Note (origin `skill`, `file` set to the SKILL.md path). The `skill` tool is
-always allowed, like `search` — loading a skill needs no approval.
+always allowed, like `websearch` — loading a skill needs no approval.
 
 A resumed Session reads them again, since the files may have changed: when they no longer match its last Skills note it
 gets a new one at the end of the Context, which keeps the cached prefix. The Tools Block is left alone, so a Session

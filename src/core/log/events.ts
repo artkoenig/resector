@@ -8,7 +8,7 @@ export type Origin = 'config' | 'user' | 'model' | 'tool' | 'compaction' | 'file
 export type Stopped = 'killed' | 'timeout';
 export type ToolProtocol = 'native';
 // The tools the harness runs.
-export type Tool = 'bash' | 'search' | 'question' | 'skill';
+export type Tool = 'bash' | 'websearch' | 'question' | 'skill';
 // Reasoning: 'off', 'on', or an effort level the model's chat template accepts (e.g. 'low', 'xhigh').
 export type Thinking = string;
 
@@ -25,7 +25,7 @@ export type SessionEvent =
   | { type: 'ProfileFallback'; profile: string }
   // Session title; empty = reset to the first User message.
   | { type: 'SessionRenamed'; title: string }
-  // Tool Call: content = the bash command, the search query or the question's arguments (JSON), `tool` = its tool (absent: bash);
+  // Tool Call: content = the bash command, the websearch query or the question's arguments (JSON), `tool` = its tool (absent: bash);
   // Tool Result: `call` = its Tool Call, content = the output (origin user: the answer to a Question).
   // file: the file a Note was read from. Older logs may carry `pin` (ADR 0002): ignored on replay.
   | { type: 'BlockAdded'; id: number; kind: Kind; origin: Origin; content: string; tool?: Tool; cutOff?: true; call?: number; stopped?: Stopped; file?: string }

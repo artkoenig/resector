@@ -133,7 +133,7 @@ Context Policy, Permission Rules and Session Log work as in the TUI. Every run i
 | `-m, --model <profile>` | `defaultProfile` |
 | `--policy <name\|off>` | `defaultPolicy` |
 | `--thinking <off\|on\|level>` | the profile's |
-| `--tools <bash,search\|none>` | a new session's tools |
+| `--tools <bash,websearch\|none>` | a new session's tools |
 | `--show <thinking,tools,notes,policy\|all>` | nothing: stderr gets the closing line only |
 | `--max-turns <n>` | 50 requests to the model |
 | `-w, --worktree` | off: run in its own git worktree |

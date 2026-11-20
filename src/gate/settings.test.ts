@@ -1,4 +1,4 @@
-// Session setting tests without a renderer: /thinking, /rename, /tools and the search tool.
+// Session setting tests without a renderer: /thinking, /rename, /tools and the websearch tool.
 import { expect, test } from 'bun:test';
 import { gateWith, ofType, results, settled } from './gate.harness';
 
@@ -55,17 +55,17 @@ test('/tools switches a tool off and on; off, it is not sent', async () => {
   g.gate.submit('/tools');
   expect(g.gate.status()?.text).toBe('tools: bash · /tools <tool> switches one');
   g.gate.submit('/tools python');
-  expect(g.gate.status()?.text).toBe('unknown tool python – bash search question skill');
+  expect(g.gate.status()?.text).toBe('unknown tool python – bash websearch question skill');
 });
 
-test('search, switched on with /tools, runs without asking; its call and result are sent as search', async () => {
+test('websearch, switched on with /tools, runs without asking; its call and result are sent as websearch', async () => {
   const g = gateWith();
-  g.gate.submit('/tools search');
-  g.reply({ calls: [{ name: 'search', arguments: '{"query":"bun runtime"}' }] }, { content: 'ok' });
+  g.gate.submit('/tools websearch');
+  g.reply({ calls: [{ name: 'websearch', arguments: '{"query":"bun runtime"}' }] }, { content: 'ok' });
   g.gate.submit('go');
   await settled(g.gate);
-  expect(g.gate.context().blocks.find(b => b.kind === 'Tool Call')).toMatchObject({ tool: 'search', content: 'bun runtime' });
+  expect(g.gate.context().blocks.find(b => b.kind === 'Tool Call')).toMatchObject({ tool: 'websearch', content: 'bun runtime' });
   expect(results(g.events)).toMatchObject([{ content: 'results for bun runtime\n[exit 0]' }]);
   const [call] = g.sent[1]!.request.messages.flatMap(m => ('tool_calls' in m && m.tool_calls) || []);
-  expect(call!.function).toEqual({ name: 'search', arguments: '{"query":"bun runtime"}' });
+  expect(call!.function).toEqual({ name: 'websearch', arguments: '{"query":"bun runtime"}' });
 });

@@ -1,4 +1,4 @@
-// The tool catalog: bash, search, question and skill, their definitions, and the Tools Block content offering them.
+// The tool catalog: bash, websearch, question and skill, their definitions, and the Tools Block content offering them.
 import { QUESTION_DEFINITION } from './question';
 
 type ToolDefinition = { name: string; description: string; parameters: object };
@@ -10,7 +10,7 @@ const CATALOG: ToolDefinition[] = [
     parameters: { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] },
   },
   {
-    name: 'search',
+    name: 'websearch',
     description: 'Search the web (DuckDuckGo). Returns title, URL and abstract of the top results as JSON.',
     parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
   },
@@ -28,8 +28,8 @@ export const TOOL_NAMES = CATALOG.map(t => t.name);
 
 // Tools Block content, protocol-neutral: name, description, JSON schema of the arguments.
 const toolsContent = (tools: ToolDefinition[]) => JSON.stringify(tools, null, 2);
-// A new session's Tools Block: bash and question; search is switched on with /tools (it needs ddgr).
-export const TOOLS = toolsContent(CATALOG.filter(t => t.name !== 'search'));
+// A new session's Tools Block: bash and question; websearch is switched on with /tools (it needs ddgr).
+export const TOOLS = toolsContent(CATALOG.filter(t => t.name !== 'websearch'));
 
 // The names of the tools in Tools Block content.
 export const toolsIn = (tools: string): string[] => (JSON.parse(tools) as { name: string }[]).map(t => t.name);
