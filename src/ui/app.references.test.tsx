@@ -165,3 +165,24 @@ test('an @image that is gone at send stops the send', async () => {
   await frameMatching(ui, f => f.includes('sending aborted'));
   expect(fake.chatRequests).toEqual([]);
 });
+
+test('an image dropped onto the input goes in as its @path reference; any other paste as it is', async () => {
+  writeFileSync(join(project, 'Screen Shot.png'), 'png');
+  await start();
+  ui.mockInput.pressTab();
+  await ui.flush();
+  await ui.mockInput.typeText('look');
+  await ui.mockInput.pasteBracketedText(`${project}/Screen\\ Shot.png`);
+  await frameMatching(ui, f => f.includes('┃ look @"Screen Shot.png" '));
+  await ui.mockInput.pasteBracketedText('/elsewhere/gone.png');
+  await frameMatching(ui, f => f.includes('@"Screen Shot.png" /elsewhere/gone.png'));
+  rmSync(join(project, 'Screen Shot.png'));
+});
+
+test('an image dropped onto the Context opens the input with its @path reference', async () => {
+  writeFileSync(join(project, 'shot.png'), 'png');
+  await start();
+  await ui.mockInput.pasteBracketedText(`file://${project}/shot.png`);
+  await frameMatching(ui, f => f.includes('┃ @shot.png '));
+  rmSync(join(project, 'shot.png'));
+});

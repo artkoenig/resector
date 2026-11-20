@@ -1,6 +1,6 @@
 // The one screen: header band · block table · preview · prompt band · footer.
-import { type ScrollBoxRenderable, type TextareaRenderable } from '@opentui/core';
-import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/solid';
+import { decodePasteBytes, type PasteEvent, type ScrollBoxRenderable, type TextareaRenderable } from '@opentui/core';
+import { useKeyboard, usePaste, useRenderer, useTerminalDimensions } from '@opentui/solid';
 import { createEffect, createMemo, createSignal, on, onCleanup, Show } from 'solid-js';
 import type { Verdict } from '../core/approval/approval';
 import { Dock, type DockLayout, createDockControl } from './dock-view';
@@ -155,10 +155,26 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
     a.setText(text);
     a.cursorOffset = text.length;
   });
+  // Image files dropped onto the input go in as their @path references, apart from the text before them.
+  const pasteInto = (event: PasteEvent) => {
+    const references = mode() === 'input' && !phase() ? gate.dropped(decodePasteBytes(event.bytes)) : null;
+    if (references === null) return;
+    event.preventDefault();
+    const a = area()!;
+    const before = a.plainText.slice(0, a.cursorOffset);
+    a.insertText(`${before && !/\s$/.test(before) ? ' ' : ''}${references} `);
+  };
+  // Dropped onto the Context, they open the input with their references.
+  usePaste(event => {
+    if (mode() !== 'context' || phase() || docked.open()) return;
+    const references = gate.dropped(decodePasteBytes(event.bytes));
+    if (references !== null) startInput(`${references} `)();
+  });
   const draftArea = (placeholder?: string) => (
     <textarea
       ref={setArea}
       focused
+      onPaste={pasteInto}
       onContentChange={() => editDraft(area()!.plainText)}
       keyBindings={[{ name: 'return', shift: true, action: 'newline' }]}
       wrapMode="none"
