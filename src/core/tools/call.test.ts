@@ -12,6 +12,7 @@ test('a bash call yields its command, a websearch call its query', () => {
   expect(parseCall({ name: 'websearch', arguments: '{"query":"bun"}' }, ['bash'])).toEqual({ error: 'tool websearch is off (/tools)' });
   expect(parseCall({ name: 'skill', arguments: '{"name":"refactor"}' }, ['skill'])).toEqual({ tool: 'skill', content: 'refactor' });
   expect(parseCall({ name: 'skill', arguments: '{"name":"refactor"}' }, ['bash'])).toEqual({ error: 'tool skill is off (/tools)' });
+  expect(parseCall({ name: 'image', arguments: '{"path":"shot.png"}' }, ['image'])).toEqual({ tool: 'image', content: 'shot.png' });
 });
 
 const QUESTION = { questions: [{ question: 'Which?', header: 'Pick', options: [{ label: 'A', description: 'a' }, { label: 'B', description: 'b' }], recommended: 'A' }] };

@@ -9,7 +9,7 @@ export type Origin = 'config' | 'user' | 'model' | 'tool' | 'compaction' | 'file
 export type Stopped = 'killed' | 'timeout';
 export type ToolProtocol = 'native';
 // The tools the harness runs.
-export type Tool = 'bash' | 'websearch' | 'question' | 'skill';
+export type Tool = 'bash' | 'websearch' | 'question' | 'skill' | 'image';
 // Reasoning: 'off', 'on', or an effort level the model's chat template accepts (e.g. 'low', 'xhigh').
 export type Thinking = string;
 
@@ -37,7 +37,7 @@ export type SessionEvent =
   // Process ended.
   | { type: 'BlockAdded'; id: number; kind: Kind; origin: Origin; content: string; tool?: Tool; cutOff?: true; call?: number; stopped?: Stopped; file?: string; background?: true; exited?: number }
   // `@<path>[:a-b]`: a reference row, read only on send (an image file: an Image block) …
-  | { type: 'FileReferenced'; id: number; file: string }
+  | { type: 'FileReferenced'; id: number; call?: number; file: string }
   // … into a snapshot, never refreshed afterwards; an image into a copy in the Project Home, `image` its name.
   | { type: 'FileRead'; id: number; content: string }
   | { type: 'ImageRead'; id: number; image: string }

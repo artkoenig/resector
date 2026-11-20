@@ -70,7 +70,7 @@ export function snapshot(file: string, read: ReadFile): { content: string } | { 
 }
 
 // Why an image reference cannot be read now, or null.
-function imageError(file: string, images: ImageFiles): string | null {
+export function imageError(file: string, images: ImageFiles): string | null {
   const { path, from } = parseReference(file);
   if (from !== null) return `no lines in image ${path}`;
   return images.exists(path) ? null : `file not found: ${path}`;
