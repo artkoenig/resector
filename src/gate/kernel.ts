@@ -6,7 +6,7 @@ import type { SessionEvent } from '../core/log/events';
 import { fold, type Block } from '../core/log/fold';
 import { peekReferences } from '../core/notes/files';
 import { review } from './review';
-import { renderPrefixes, type Request } from '../core/render/native';
+import { hasImages, renderPrefixes, type Request } from '../core/render/native';
 import { budget, lastDrift, type Budget } from '../core/tokens/budget';
 import { toolsIn } from '../core/tools/catalog';
 import type { Compaction, Project, Running, Status, Streaming } from './types';
@@ -40,7 +40,7 @@ export function createKernel(options: { log: SessionLog; backend: Backend; event
   // Unread @path references show the file as it would be read now; only sending reads them.
   const peeked = createMemo(() => {
     reread();
-    return peekReferences(fold(events()), project.read);
+    return peekReferences(fold(events()), project.read, project.images);
   });
   const context = () => peeked().context;
   const sent = () => context().blocks;
@@ -62,9 +62,10 @@ export function createKernel(options: { log: SessionLog; backend: Backend; event
   // Per sent block, in Context order: still in the server's prefix cache.
   const warm = createMemo(() => (known() ? warmRows(known()!.blocks, known()!.cached.tokens) : null));
   const nextId = () => context().nextId;
-  // The budget of a Context of `total` tokens: max_tokens, and whether it may be sent.
+  // The budget of a Context of `total` tokens: max_tokens, and whether it may be sent. Images are not counted: with one,
+// the count is inexact, by the drift the server reported last.
   const budgetOf = (total: number): Budget =>
-    budget({ total, window: backend().window, exact: backend().exact, drift: lastDrift(events()) });
+    budget({ total, window: backend().window, exact: backend().exact && !hasImages(request()), drift: lastDrift(events()) });
   // A block as it is now, after an operation.
   const blockOf = (id: number): Block => context().blocks.find(b => b.id === id)!;
   // The tokens of sent blocks; null while counting.

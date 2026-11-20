@@ -1,6 +1,6 @@
 // Session Log events. One JSON object per line in the session file.
 
-export type Kind = 'System' | 'Tools' | 'User' | 'Thinking' | 'Assistant' | 'Tool Call' | 'Tool Result' | 'Note';
+export type Kind = 'System' | 'Tools' | 'User' | 'Thinking' | 'Assistant' | 'Tool Call' | 'Tool Result' | 'Note' | 'Image';
 // file: an @path snapshot or the project instructions; environment: the environment Note;
 // policy: a Note a Context Policy added.
 export type Origin = 'config' | 'user' | 'model' | 'tool' | 'compaction' | 'file' | 'environment' | 'policy' | 'skill';
@@ -29,10 +29,11 @@ export type SessionEvent =
   // Tool Result: `call` = its Tool Call, content = the output (origin user: the answer to a Question).
   // file: the file a Note was read from. Older logs may carry `pin` (ADR 0002): ignored on replay.
   | { type: 'BlockAdded'; id: number; kind: Kind; origin: Origin; content: string; tool?: Tool; cutOff?: true; call?: number; stopped?: Stopped; file?: string }
-  // `@<path>[:a-b]`: a reference row, read only on send …
+  // `@<path>[:a-b]`: a reference row, read only on send (an image file: an Image block) …
   | { type: 'FileReferenced'; id: number; file: string }
-  // … into a snapshot, never refreshed afterwards.
+  // … into a snapshot, never refreshed afterwards; an image into a copy in the Project Home, `image` its name.
   | { type: 'FileRead'; id: number; content: string }
+  | { type: 'ImageRead'; id: number; image: string }
   | { type: 'RequestSent'; hash: string; tokens: number }
   // A new Revision of the block's content; the block's first content is Revision 1.
   // harness: the environment Note refreshed or a tool denied by rule taken out of the Tools Block, not undoable.

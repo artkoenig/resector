@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
 import { BASH_TOOLS } from '../../../test/requests';
-import { renderNative, renderPrefixes } from './native';
+import { hasImages, inlineImages, renderNative, renderPrefixes, withoutImages } from './native';
 
 const created: SessionEvent = { type: 'SessionCreated', profile: 'default', protocol: 'native' };
 const add = (id: number, kind: Extract<SessionEvent, { type: 'BlockAdded' }>['kind'], content: string, call?: number): SessionEvent =>
@@ -176,4 +176,23 @@ test('thinking set at the Gate goes into every prefix; without it the backend se
   expect(renderPrefixes(fold(events)).map(r => r.thinking)).toEqual([undefined, undefined]);
   const set = renderPrefixes(fold([...events, { type: 'ThinkingSet', thinking: 'medium' }]));
   expect(set.map(r => r.thinking)).toEqual(['medium', 'medium']);
+});
+
+test('a read Image is a user message of its reference and the image; counted without it, sent inlined', () => {
+  const request = renderNative(fold([
+    created,
+    { type: 'FileReferenced', id: 1, file: 'shot.png' },
+    { type: 'FileReferenced', id: 2, file: 'later.png' },
+    { type: 'ImageRead', id: 1, image: 'abc.png' },
+  ]));
+  expect(request.messages).toEqual([
+    { role: 'user', content: [{ type: 'text', text: '[shot.png]' }, { type: 'image_url', image_url: { url: 'abc.png' } }] },
+    { role: 'user', content: '[later.png]' },
+  ]);
+  expect(hasImages(request)).toBe(true);
+  expect(withoutImages(request).messages[0]).toEqual({ role: 'user', content: '[shot.png]' });
+  expect(hasImages(withoutImages(request))).toBe(false);
+  expect(inlineImages(request, image => `data:${image}`).messages[0]).toEqual({
+    role: 'user', content: [{ type: 'text', text: '[shot.png]' }, { type: 'image_url', image_url: { url: 'data:abc.png' } }],
+  });
 });

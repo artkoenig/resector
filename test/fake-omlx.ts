@@ -3,7 +3,7 @@
 // Like FastAPI, bodies without a JSON content type are rejected. Like Qwen3-2507 templates, a prompt
 // without user message fails to render, and oMLX then silently counts a plain concatenation.
 import { commonPrefix } from '../src/core/cache/cache';
-import { answer, chatml, stream, tokenize, type ChatMessage, type ChatTool, type Reply } from './fake-llamacpp';
+import { answer, chatml, chatText, stream, tokenize, type ChatMessage, type ChatTool, type Reply } from './fake-llamacpp';
 
 // path: the model directory the admin API names.
 export type FakeModel = { id: string; maxModelLen?: number; path?: string };
@@ -19,8 +19,9 @@ type AnthropicCount = { model: string; system?: string; messages: { role: string
 
 // Like Qwen3 templates: reasoning inline at the start of an assistant turn is taken apart.
 function reasoned(message: ChatMessage): ChatMessage {
-  const inline = /^<think>\n([\s\S]*)\n<\/think>\n\n/.exec(message.content);
-  return inline ? { ...message, content: message.content.slice(inline[0].length), reasoning_content: inline[1]! } : message;
+  const content = chatText(message.content);
+  const inline = /^<think>\n([\s\S]*)\n<\/think>\n\n/.exec(content);
+  return inline ? { ...message, content: content.slice(inline[0].length), reasoning_content: inline[1]! } : message;
 }
 
 // Back to chat messages for the ChatML template: tool_use → tool_calls, each tool_result → a tool turn.
@@ -99,7 +100,7 @@ export function startFakeOmlx({ models = [{ id: 'Qwen3-8B-4bit', maxModelLen: 57
         const reply = replies.shift();
         if (!reply) return error(500, 'no scripted reply');
         written = cache;
-        cache = [...tokenize(chatml(body.messages, true, body.tools), true), ...tokenize(answer(reply).content, false)];
+        cache = [...tokenize(chatml(body.messages, true, body.tools), true), ...tokenize(chatText(answer(reply).content), false)];
         const usage = reply.usage && { ...reply.usage, total_tokens: 0, prompt_tokens_details: { cached_tokens: reply.cacheN ?? 0 }, total_time: 0.5 };
         const final = { object: 'chat.completion.chunk', choices: [], usage: usage ?? null };
         return new Response(stream(reply, req.signal, final), { headers: { 'content-type': 'text/event-stream' } });

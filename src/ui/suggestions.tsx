@@ -1,12 +1,16 @@
 // Suggestions above the input: commands, their values and @path completions, the one chosen, and their lines.
 import { createMemo, createSignal, For } from 'solid-js';
 import { basename } from 'node:path';
-import { fileCompletions } from '../core/notes/files';
+import { fileCompletions, referencePath } from '../core/notes/files';
 import { TOOL_NAMES } from '../core/tools/catalog';
 import type { Screen } from './screen';
 import { FILTERS } from './selection';
 import type { Mode } from './prompt';
 import { ACCENT, MUTED, SELECTED_BG, TEXT } from './theme';
+
+// Lines shown at once; ↑↓ scroll through the rest. Path matches offered at most.
+const SHOWN = 8;
+const MATCHES = 200;
 
 // A line above the input: Tab puts `draft` into it; Enter runs `run`, or (null) completes as Tab does.
 export type Suggestion = { label: string; description: string; draft: string; run: string | null };
@@ -30,8 +34,8 @@ export function createSuggestions(gate: Screen, draft: () => string, mode: () =>
     }
     const value = valueSuggestions(draft());
     if (value) return value;
-    const found = fileCompletions(draft(), files());
-    return found ? found.paths.map(path => ({ label: path, description: '', draft: `${draft().slice(0, found.at)}${path} `, run: null })) : [];
+    const found = fileCompletions(draft(), files(), MATCHES);
+    return found ? found.paths.map(path => ({ label: path, description: '', draft: `${draft().slice(0, found.at)}${referencePath(path)} `, run: null })) : [];
   });
   // The values after `/filter `, `all` first while one is off, `/policy `, `off` first while one is on, `/thinking `
   // and the /git: commands; null for any other draft.
@@ -68,9 +72,13 @@ export function createSuggestions(gate: Screen, draft: () => string, mode: () =>
   const worktreeValues = () =>
     gate.worktree() ? [{ name: 'off', description: 'run in the project directory, keep the worktree' }] : [{ name: 'on', description: 'run in its own worktree in the Project Home' }];
   const chosen = () => Math.min(suggested(), suggestions().length - 1);
+  // The lines shown: the first ones, scrolled so the chosen one stays the last line once past them.
+  const first = () => Math.max(0, chosen() - SHOWN + 1);
   return {
     suggestions,
     chosen,
+    shown: () => suggestions().slice(first(), first() + SHOWN),
+    shownChosen: () => chosen() - first(),
     suggestion: () => suggestions()[chosen()],
     // ↑↓ cycle through the suggestions.
     move: (step: number) => setSuggested((suggested() + suggestions().length + step) % suggestions().length),

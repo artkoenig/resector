@@ -2,7 +2,7 @@
 import type { Backend } from '../../gate/ports';
 import { commonPrefix } from '../../core/cache/cache';
 import type { Thinking } from '../../core/log/events';
-import { EMPTY_REQUEST as EMPTY, withoutThinking, type AssistantMessage, type Message, type Request } from '../../core/render/native';
+import { EMPTY_REQUEST as EMPTY, withoutImages, withoutThinking, type AssistantMessage, type Message, type Request } from '../../core/render/native';
 import { thinkingModes } from '../../core/render/template';
 import { thinkingShares } from '../../core/tokens/thinking';
 import { splitTokens } from '../../core/tokens/split';
@@ -83,7 +83,9 @@ export async function connectLlamaCpp(endpoint: string, { window, model, samplin
     thinkingModes: props.chat_template ? thinkingModes(props.chat_template) : null,
     exact: true,
 
-    async count(requests) {
+    // Images are not counted (withoutImages): their tokens only the server knows.
+    async count(images) {
+      const requests = images.map(withoutImages);
       const request = requests.at(-1) ?? EMPTY;
       const prefixes = await Promise.all(requests.map(prefix));
       const [empty, bos, sent] = await Promise.all([prefix(emptyOf(request)), tokens(''), rendered(request)]);
@@ -96,10 +98,12 @@ export async function connectLlamaCpp(endpoint: string, { window, model, samplin
     },
 
     // llama.cpp always evaluates at least the last prompt token; --cache-reuse is off per request.
-    async chat(chat, options) {
+    // The slot prediction runs on the request as counted, without its images.
+    async chat(withImages, options) {
+      const chat = withoutImages(withImages);
       const sent = await ids(await template(chat, true));
       const predicted = Math.min(commonPrefix(slotTokens, sent), sent.length - 1);
-      const result = await streamChat({ name: 'llama.cpp', request }, { model, ...slot, ...sampling, ...thinkingFields(chat), n_cache_reuse: 0 }, chat, options);
+      const result = await streamChat({ name: 'llama.cpp', request }, { model, ...slot, ...sampling, ...thinkingFields(chat), n_cache_reuse: 0 }, withImages, options);
       const exchange = { ...chat, messages: [...chat.messages, answerMessage(result)] };
       // Generated tool call syntax is template-specific and not in the slot prediction: it only errs low.
       slotTokens = result.thinking ? await prefill(exchange) : [...sent, ...(await ids(result.content, false))];

@@ -23,6 +23,7 @@ export const FILTERS: readonly Filter[] = [
   { name: 'assistant', kinds: ['Assistant'] },
   { name: 'tool-calls', kinds: ['Tool Call', 'Tool Result'] },
   { name: 'note', kinds: ['Note'] },
+  { name: 'image', kinds: ['Image'] },
 ];
 
 export type Selection = ReturnType<typeof createSelection>;

@@ -78,6 +78,10 @@ export function Preview(props: { shown: Shown }) {
           {s().content}
         </text>
       </Match>
+      {/* The image itself goes to the model only; the terminal shows where it comes from. */}
+      <Match when={s().kind === 'Image'}>
+        <text fg={MUTED}>{`${s().content}\nimage · sent as it is`}</text>
+      </Match>
       <Match when={file()}>
         {(f: () => { head: string; body: string; filetype?: string }) => (
           <box flexDirection="column">

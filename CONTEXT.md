@@ -11,7 +11,7 @@ The ordered list of Context Blocks sent in the next request.
 _Avoid_: prompt, history, window
 
 **Context Block**:
-Smallest addressable unit of what is sent to the model. Kinds: System, Tools, User, Thinking, Assistant, Tool Call, Tool Result, Note. Has a stable identity across Revisions and a token count (rendered, including role markers); can be edited, moved, removed (undoable), compacted.
+Smallest addressable unit of what is sent to the model. Kinds: System, Tools, User, Thinking, Assistant, Tool Call, Tool Result, Note, Image. Has a stable identity across Revisions and a token count (rendered, including role markers); can be edited, moved, removed (undoable), compacted.
 _Avoid_: message, chunk, segment
 
 **Revision**:
@@ -33,6 +33,10 @@ Context Block of free text without API role semantics, keeping a reference to it
 **File Reference**:
 `@<path>` (optionally with a line range) in the user's input: a Note that shows the file as it is now until the Context is sent, then becomes a snapshot that is never refreshed. A file missing at send stops the send.
 _Avoid_: mention, attachment
+
+**Image**:
+Context Block of a File Reference to an image file (png, jpg, gif, webp): a user-role message of its reference and the image. On send the image is copied into the Project Home and sent from that copy from then on. Its tokens only the server knows: with an Image in the Context the count is inexact by the drift last measured.
+_Avoid_: picture, attachment
 
 **Environment Note**:
 Note describing where the Session runs (working directory, OS and shell, date, branch), right after the Tools Block. The harness refreshes it in place, as a new Revision, when it changes.

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
-import { fileCompletions, fileNote, parseReference, peekReferences, readReferences, references, snapshot } from './files';
+import { fileCompletions, fileNote, referencePath, parseReference, peekReferences, readReferences, references, snapshot, type ImageFiles } from './files';
 
 test('@path references are taken from the input; the rest is the User text', () => {
   expect(references('@src/a.ts explain this')).toEqual({ files: ['src/a.ts'], text: 'explain this' });
@@ -9,6 +9,7 @@ test('@path references are taken from the input; the rest is the User text', () 
   expect(references('@a.ts')).toEqual({ files: ['a.ts'], text: '' });
   expect(references('mail me@file.io')).toEqual({ files: [], text: 'mail me@file.io' });
   expect(references('  hi  ')).toEqual({ files: [], text: 'hi' });
+  expect(references('@"my shot.png" and @"a b.ts":3-5, ok')).toEqual({ files: ['my shot.png', 'a b.ts:3-5'], text: 'and , ok' });
   expect(references('a @ b.ts')).toEqual({ files: [], text: 'a @ b.ts' });
   expect(references('see @a.ts:3-5, then @b.ts).')).toEqual({ files: ['a.ts:3-5', 'b.ts'], text: 'see then' });
   expect(references('@a.ts\nline one\nline two')).toEqual({ files: ['a.ts'], text: 'line one\nline two' });
@@ -26,6 +27,15 @@ test('the @path being typed is completed from the project files, file name match
 test('a file name starting with the typed path beats a path starting with it, which beats one containing it', () => {
   expect(fileCompletions('@s', ['sa/b.ts', 'x/y/sb.ts'])?.paths).toEqual(['x/y/sb.ts', 'sa/b.ts']);
   expect(fileCompletions('@sa', ['usa.md', 'sa/b.ts'])?.paths).toEqual(['sa/b.ts', 'usa.md']);
+});
+
+test('a path with spaces completes quoted, also while typed after a quote', () => {
+  const files = ['Bild 1.png', 'b.ts'];
+  expect(fileCompletions('@bild', files)).toEqual({ at: 1, paths: ['Bild 1.png'] });
+  expect(fileCompletions('@"Bild ', files)).toEqual({ at: 1, paths: ['Bild 1.png'] });
+  expect(fileCompletions('@"Bild 1.png" ', files)).toBeNull();
+  expect(referencePath('Bild 1.png')).toBe('"Bild 1.png"');
+  expect(referencePath('b.ts')).toBe('b.ts');
 });
 
 test('no completion once the path is complete, ended or not being typed', () => {
@@ -72,10 +82,12 @@ const session = (...then: SessionEvent[]) =>
     { type: 'BlockAdded', id: 1, kind: 'System', origin: 'config', content: 'sys' },
     ...then,
   ]);
+// One image in the project: shot.png, copied as `copy.png`.
+const images: ImageFiles = { exists: path => path === 'shot.png', save: path => (path === 'shot.png' ? 'copy.png' : null) };
 const twoRefs = session({ type: 'FileReferenced', id: 2, file: 'a.ts:1' }, { type: 'FileReferenced', id: 3, file: 'b.ts' });
 
 test('at the Gate an unread reference shows the file as it is now; a missing one says so', () => {
-  const { context, missing } = peekReferences(twoRefs, read);
+  const { context, missing } = peekReferences(twoRefs, read, images);
   expect(context.blocks[1]).toMatchObject({ id: 2, unread: true, content: '[a.ts:1]\n1: one' });
   expect(context.blocks[2]).toMatchObject({ id: 3, unread: true, content: '' });
   expect(context.blocks[0]).toBe(twoRefs.blocks[0]!);
@@ -83,13 +95,25 @@ test('at the Gate an unread reference shows the file as it is now; a missing one
 });
 
 test('on send each unread reference is read into its snapshot', () => {
-  const found = readReferences(session({ type: 'FileReferenced', id: 2, file: 'a.ts:1' }, { type: 'FileReferenced', id: 3, file: 'a.ts' }), read);
+  const found = readReferences(session({ type: 'FileReferenced', id: 2, file: 'a.ts:1' }, { type: 'FileReferenced', id: 3, file: 'a.ts' }), read, images);
   expect(found).toEqual({ events: [{ type: 'FileRead', id: 2, content: '[a.ts:1]\n1: one' }, { type: 'FileRead', id: 3, content: `[a.ts]\n${text}` }] });
 });
 
 test('a missing file aborts sending; removed references are not read', () => {
-  expect(readReferences(twoRefs, read)).toEqual({ error: 'file not found: b.ts', id: 3 });
+  expect(readReferences(twoRefs, read, images)).toEqual({ error: 'file not found: b.ts', id: 3 });
   const removed = session({ type: 'FileReferenced', id: 2, file: 'b.ts' }, { type: 'Remove', id: 2 });
-  expect(readReferences(removed, read)).toEqual({ events: [] });
-  expect(readReferences(session({ type: 'FileReferenced', id: 2, file: 'a.ts' }, { type: 'FileRead', id: 2, content: 'x' }), read)).toEqual({ events: [] });
+  expect(readReferences(removed, read, images)).toEqual({ events: [] });
+  expect(readReferences(session({ type: 'FileReferenced', id: 2, file: 'a.ts' }, { type: 'FileRead', id: 2, content: 'x' }), read, images)).toEqual({ events: [] });
+});
+
+test('an image reference is an Image block: checked at the Gate, copied on send', () => {
+  const refs = session({ type: 'FileReferenced', id: 2, file: 'shot.png' }, { type: 'FileReferenced', id: 3, file: 'gone.jpg' }, { type: 'FileReferenced', id: 4, file: 'shot.png:2' });
+  expect(refs.blocks[1]).toMatchObject({ kind: 'Image', unread: true, content: '[shot.png]' });
+  expect([...peekReferences(refs, read, images).missing]).toEqual([[3, 'file not found: gone.jpg'], [4, 'no lines in image shot.png']]);
+  const one = session({ type: 'FileReferenced', id: 2, file: 'shot.png' });
+  expect(readReferences(one, read, images)).toEqual({ events: [{ type: 'ImageRead', id: 2, image: 'copy.png' }] });
+  expect(readReferences(refs, read, images)).toEqual({ error: 'file not found: gone.jpg', id: 3 });
+  const read2 = session({ type: 'FileReferenced', id: 2, file: 'shot.png' }, { type: 'ImageRead', id: 2, image: 'copy.png' });
+  expect(read2.blocks[1]).toMatchObject({ kind: 'Image', image: 'copy.png', content: '[shot.png]' });
+  expect(read2.blocks[1]!.unread).toBeUndefined();
 });

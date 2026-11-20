@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { listProjectFiles, probeEnvironment, projectFiles, projectInstructions } from './project';
+import { listProjectFiles, probeEnvironment, projectFiles, projectImages, projectInstructions } from './project';
 
 const dir = () => realpathSync(mkdtempSync(join(tmpdir(), 'resector-project-')));
 
@@ -55,4 +55,22 @@ test('the environment: cwd, OS, bash, local date and the git branch', () => {
   expect(probeEnvironment(root, at)).toEqual({ cwd: root, os: `${process.platform} ${process.arch}`, shell: 'bash', date: '2026-09-26', branch: null });
   git('init', '-q', '-b', 'feature/x');
   expect(probeEnvironment(root, at).branch).toBe('feature/x');
+});
+
+test('an image is copied under its content hash, once; loaded as a data URL; no copy of what is not an image', () => {
+  const root = dir();
+  const store = join(dir(), 'images');
+  writeFileSync(join(root, 'a.PNG'), 'png');
+  writeFileSync(join(root, 'b.png'), 'png');
+  writeFileSync(join(root, 'c.txt'), 'text');
+  const images = projectImages(root, store);
+  expect([images.exists('a.PNG'), images.exists('gone.png')]).toEqual([true, false]);
+  const copy = images.save('a.PNG')!;
+  expect(copy).toMatch(/^[0-9a-f]{64}\.png$/);
+  expect(images.save('b.png')).toBe(copy);
+  expect(readdirSync(store)).toEqual([copy]);
+  expect(images.save('c.txt')).toBeNull();
+  expect(images.save('gone.png')).toBeNull();
+  expect(images.load(copy)).toBe(`data:image/png;base64,${Buffer.from('png').toString('base64')}`);
+  expect(existsSync(join(root, 'images'))).toBe(false);
 });

@@ -118,7 +118,7 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   // The band in the preview's place: the dock grows past the preview's height when it needs to, leaving one block row;
   // the preview again while reading older rows.
   const beside = () =>
-    size().height - 2 - 2 - (gate.hiding() ? 1 : 0) - 1 - errorLines() - 1 - suggestions().length - footerLines(footerStatus()?.text ?? '', keys(), width()) - promptLines(inputLines());
+    size().height - 2 - 2 - (gate.hiding() ? 1 : 0) - 1 - errorLines() - 1 - suggest.shown().length - footerLines(footerStatus()?.text ?? '', keys(), width()) - promptLines(inputLines());
   const dockLayout = createMemo(() => (docked.open() && !docked.peeking() && docked.state() ? docked.layout(width() - 2, Math.max(previewHeight(), beside() - 1)) : null));
   const dockLines = () => {
     const l = dockLayout();
@@ -240,7 +240,7 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
         )}
       </Show>
       <text flexShrink={0}> </text>
-      <Suggestions suggestions={suggestions()} chosen={suggest.chosen()} />
+      <Suggestions suggestions={suggest.shown()} chosen={suggest.shownChosen()} />
       <PromptBand
         inputLines={inputLines()}
         meta={

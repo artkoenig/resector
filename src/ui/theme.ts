@@ -22,5 +22,6 @@ export const KIND_COLOR: Record<Kind, string> = {
   'Tool Call': '#e5c07b',
   'Tool Result': '#b4b4b4',
   Note: '#e6a2c5',
+  Image: '#98c379',
 };
 export const TONE = { info: '#56b6c2', ok: '#7fd88f', warn: '#f5a742', error: '#e06c75' };
