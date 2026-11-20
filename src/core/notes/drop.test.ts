@@ -9,6 +9,10 @@ test('a dropped path as terminals paste it: plain, shell-escaped, quoted or a fi
   expect(droppedPaths("'/a/it'\\''s.png'")).toEqual(["/a/it's.png"]);
   expect(droppedPaths('file:///a/Screen%20Shot.png')).toEqual(['/a/Screen Shot.png']);
   expect(droppedPaths('file://localhost/a/b.png')).toEqual(['/a/b.png']);
+  expect(droppedPaths('file:///a/localhost/b.png')).toEqual(['/a/localhost/b.png']);
+  // Inside "…" only \", \\, \$ and \` are escapes.
+  expect(droppedPaths('"/a/say \\"hi\\" \\$x \\y.png"')).toEqual(['/a/say "hi" $x \\y.png']);
+  expect(droppedPaths('"/a/b\\ c.png"')).toEqual(['/a/b\\ c.png']);
 });
 
 test('several dropped files, separated by spaces or lines', () => {
@@ -22,6 +26,8 @@ test('no dropped paths: relative words, an open quote, empty text', () => {
   expect(droppedPaths("'/a/shot.png")).toBeNull();
   expect(droppedPaths('  ')).toBeNull();
   expect(droppedPaths('file://host/a.png')).toBeNull();
+  expect(droppedPaths('file:///a/%zz.png')).toBeNull();
+  expect(droppedPaths('/a/x.png y.png')).toBeNull();
 });
 
 const exists = (files: string[]) => (path: string) => files.includes(path);
@@ -40,6 +46,8 @@ test('a paste stays as it is unless every path is an existing image', () => {
   expect(droppedImages('hello world', '/project', found)).toBeNull();
   // A path the reference syntax cannot write.
   expect(droppedImages('\'/a/"b".png\'', '/project', () => true)).toBeNull();
+  expect(droppedImages('/a/shot.png:12-34', '/project', () => true)).toBeNull();
+  expect(droppedImages('/a/shot.png:1', '/project', () => true)).toBeNull();
 });
 
 test('the Project root itself is no prefix of a sibling directory', () => {
