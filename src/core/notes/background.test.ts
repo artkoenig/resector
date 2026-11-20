@@ -20,7 +20,8 @@ test('a reused pid is the later process', () => {
 test('every logged exit without its Note is owed one, in order; the command is the one that ran', () => {
   const events: SessionEvent[] = [
     call(4, 'serve'), started(4, 42), call(6, 'watch'), { type: 'Edit', id: 6, revision: 2, content: 'watch -v' }, started(6, 43),
-    { type: 'BackgroundExited', call: 6, signal: 'user' }, { type: 'BackgroundExited', call: 4, exit: 2 },
+    { type: 'Edit', id: 6, revision: 3, content: 'later' }, { type: 'BackgroundExited', call: 6, signal: 'user' },
+    { type: 'BackgroundExited', call: 4, exit: 2 },
   ];
   expect(owedExitNotes(events)).toEqual([
     { exited: 6, content: 'Background Process pid 43 ended: stopped by the user\ncommand: watch -v\nlog: /logs/43.log' },
@@ -28,6 +29,11 @@ test('every logged exit without its Note is owed one, in order; the command is t
   ]);
   const noted: SessionEvent = { type: 'BlockAdded', id: 9, kind: 'Note', origin: 'background', content: '…', exited: 6 };
   expect(owedExitNotes([...events, noted]).map(n => n.exited)).toEqual([4]);
+});
+
+test('no content of the call before its start: no command; an exit without its start: no Note', () => {
+  const events: SessionEvent[] = [started(4, 42), { type: 'BackgroundExited', call: 4, exit: 0 }, { type: 'BackgroundExited', call: 5, exit: 0 }];
+  expect(owedExitNotes(events)).toEqual([{ exited: 4, content: 'Background Process pid 42 ended: exited with 0\ncommand: \nlog: /logs/42.log' }]);
 });
 
 test('the Note says why it ended', () => {

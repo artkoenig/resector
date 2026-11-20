@@ -5,13 +5,15 @@ import type { BackgroundEnd, SessionEvent } from '../log/events';
 type Started = Extract<SessionEvent, { type: 'BackgroundStarted' }>;
 type Exited = Extract<SessionEvent, { type: 'BackgroundExited' }>;
 
-const exitedCalls = (events: SessionEvent[]) => new Set(events.flatMap(e => (e.type === 'BackgroundExited' ? [e.call] : [])));
+// The Background Processes by their Tool Call.
+const startsOf = (events: SessionEvent[]) =>
+  new Map(events.flatMap(e => (e.type === 'BackgroundStarted' ? [[e.call, e] as const] : [])));
+const hasExited = (events: SessionEvent[], call: number) => events.some(e => e.type === 'BackgroundExited' && e.call === call);
 
 // The event for an exit of process group `pid`: of the Background Process running with it (the latest, a pid may be
 // reused); null when none runs (a call that ended within its wait never started one).
 export function exitOf(events: SessionEvent[], pid: number, end: BackgroundEnd): Exited | null {
-  const ended = exitedCalls(events);
-  const start = events.findLast((e): e is Started => e.type === 'BackgroundStarted' && e.pid === pid && !ended.has(e.call));
+  const start = [...startsOf(events).values()].findLast(s => s.pid === pid && !hasExited(events, s.call));
   return start ? { type: 'BackgroundExited', call: start.call, ...end } : null;
 }
 
@@ -35,10 +37,12 @@ function commandOf(events: SessionEvent[], start: Started): string {
 
 // The Notes still owed, in the order the exits were logged: every exit no Note was added for yet, whatever ended it.
 export function owedExitNotes(events: SessionEvent[]): { exited: number; content: string }[] {
-  const noted = new Set(events.flatMap(e => (e.type === 'BlockAdded' && e.exited !== undefined ? [e.exited] : [])));
+  // Only an exit Note carries `exited`.
+  const noted = new Set(events.map(e => (e as { exited?: number }).exited));
+  const starts = startsOf(events);
   return events.flatMap(e => {
     if (e.type !== 'BackgroundExited' || noted.has(e.call)) return [];
-    const start = events.find((s): s is Started => s.type === 'BackgroundStarted' && s.call === e.call);
+    const start = starts.get(e.call);
     if (!start) return [];
     const { type: _, call, ...end } = e;
     return [{ exited: call, content: exitNoteText({ pid: start.pid, log: start.log, command: commandOf(events, start) }, end as BackgroundEnd) }];
