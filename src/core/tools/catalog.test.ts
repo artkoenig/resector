@@ -73,3 +73,16 @@ test('/tools websearch switches websearch on after bash, with one query paramete
   expect(toggleTool('[]', 'websearch')).toEqual({ content: JSON.stringify([JSON.parse(on.content)[1]], null, 2) });
   expect(toggleTool(on.content, 'websearch')).toEqual({ content: TOOLS });
 });
+
+const IMAGE = {
+  name: 'image',
+  description:
+    'Look at an image file (png, jpg, jpeg, gif, webp), e.g. a screenshot you took. The image is attached after the ' +
+    'results of your tool calls.',
+  parameters: { type: 'object', properties: { path: { type: 'string', description: 'the image file, relative to the project root' } }, required: ['path'] },
+};
+
+test('/tools image switches image on, with one path parameter; it is off in a new Tools Block', () => {
+  const on = toggleTool(TOOLS, 'image') as { content: string };
+  expect(JSON.parse(on.content)).toEqual([BASH, QUESTION_TOOL, SKILL, IMAGE]);
+});

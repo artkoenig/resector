@@ -3,6 +3,7 @@ import { batch, createMemo, createSignal } from 'solid-js';
 import { quoted, sessionRules } from '../core/approval/approval';
 import type { ChatResult } from '../core/tools/answer';
 import * as ops from '../core/context/operations';
+import type { Tool } from '../core/log/events';
 import type { Block } from '../core/log/fold';
 import { imageError, type ImageFiles } from '../core/notes/files';
 import { IMAGE_EXTENSIONS, isImage } from '../core/notes/images';
@@ -130,14 +131,8 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
 
   // Runs the call with its tool's runner; its output streams into a live Tool Result row, then the next call is decided.
   async function run(call: Block, notes: string[]) {
-    if (call.tool === 'image') return attach(call, notes);
-    if (call.tool === 'skill') {
-      // First: its Notes take ids before the Tool Result.
-      const result = tools.skills.run(call);
-      append(ops.toolResult(call, nextId(), result, 0));
-      goOn(notes);
-      return;
-    }
+    const atOnce = AT_ONCE[call.tool as Tool];
+    if (atOnce) return void (atOnce(call), goOn(notes));
     const abort = new AbortController();
     const tool = call.tool === 'websearch' ? tools.searcher : tools.runner;
     setStopping(false);
@@ -160,14 +155,20 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
     }
   }
 
+  // A `skill` call: its Notes first, so they take ids before the Tool Result.
+  function loadSkill(call: Block) {
+    const result = tools.skills.run(call);
+    append(ops.toolResult(call, nextId(), result, 0));
+  }
   // An `image` call: its Tool Result, then the image as an @path reference adds it, placed after the answer's results.
-  function attach(call: Block, notes: string[]) {
+  function attach(call: Block) {
     const file = call.content;
     const error = isImage(file) ? imageError(file, tools.images) : `not an image: ${file} (${IMAGE_EXTENSIONS.join(', ')})`;
     append(ops.toolResult(call, nextId(), { output: error ?? `attached ${file}`, exit: error ? 1 : 0, stopped: null }, 0));
     if (!error) append({ type: 'FileReferenced', id: nextId(), call: call.id, file });
-    goOn(notes);
   }
+  // Tools resolved at once, without a runner; the loop goes on after them.
+  const AT_ONCE: Partial<Record<Tool, (call: Block) => void>> = { skill: loadSkill, image: attach };
 
   // The Question the dock asks now: the next pending call, while nothing streams or runs.
   const asked = createMemo((): Asked | null => {
