@@ -101,12 +101,16 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
     insert(state, afterCalls(state.order.map(id => entry(state, id)), e.call), e.id);
     for (const b of [call!, result!]) b.removed = true;
   },
-  // The Note takes the first source's place.
+  // The Note takes the first source's place; one of a Tool Pair follows the calls and results of its answer, so the
+  // answer's other calls keep their results right after them.
   Compact: (state, e) => {
     const [first, ...rest] = e.sources.map(id => entry(state, id));
     const compacted = { sources: e.sources, instruction: e.instruction };
+    const blocks = state.order.map(id => entry(state, id));
+    // Sources come in Context order, a Tool Pair whole: its call first.
+    const at = first!.kind === 'Tool Call' ? afterCalls(blocks, first!.id) : state.order.indexOf(first!.id);
     state.entries.set(e.noteId, { id: e.noteId, kind: 'Note', origin: 'compaction', content: e.content, compacted, cutOff: false, ...NEW_ENTRY });
-    insert(state, state.order.indexOf(first!.id), e.noteId);
+    insert(state, at, e.noteId);
     for (const b of [first!, ...rest]) b.removed = true;
   },
   NoteAdded: (state, e) => {

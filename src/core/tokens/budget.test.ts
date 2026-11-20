@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { bool, forAll, int, oneOf, constant, record } from '../../../test/property';
 import type { SessionEvent } from '../log/events';
 import { budget, lastDrift } from './budget';
 
@@ -64,4 +65,17 @@ test('an inexact tokenizer subtracts the last drift, either sign, from the windo
   expect(budget({ ...inexact, drift: -30, total: 970 })).toMatchObject({ tone: 'over', over: 1, driftLabel: '±30' });
   // max_tokens stays the window minus the Context: the drift only guards the send.
   expect(budget({ ...inexact, drift: 30, total: 900 }).maxTokens).toBe(100);
+});
+
+// Property: sendable exactly when the Context plus the drift margin leaves room; the answer gets the rest of the window.
+test('a Context is sendable exactly when it fits the window minus the drift', () => {
+  const input = record({ total: int(0, 1200), window: int(1, 1000), exact: bool, drift: oneOf(constant(null), int(-100, 100)) });
+  forAll(input, ({ total, window, exact, drift }) => {
+    const b = budget({ total, window, exact, drift });
+    const margin = exact ? 0 : Math.abs(drift ?? 0);
+    expect(b.over === 0).toBe(total + margin < window);
+    expect(b.tone === 'over').toBe(b.over > 0);
+    expect(b.maxTokens + total).toBe(window);
+    if (b.over) expect(budget({ total: total - b.over, window, exact, drift }).over).toBe(0);
+  });
 });

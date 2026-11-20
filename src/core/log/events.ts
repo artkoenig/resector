@@ -45,7 +45,7 @@ export type SessionEvent =
   | ({ type: 'Remove'; id: number; others?: number[] } & By)
   // The Tool Pair of Tool Call `call` becomes Note `id` after the calls and results of its answer.
   | ({ type: 'PairToNote'; id: number; call: number } & By)
-  // Accepted Compaction: Note `noteId` with `content` replaces `sources` at the first one's place.
+  // Accepted Compaction: Note `noteId` with `content` replaces `sources` at the first one's place (a Tool Pair's: after its answer's calls and results).
   | ({ type: 'Compact'; sources: number[]; instruction: string; noteId: number; content: string } & By)
   // A Context Policy's Note `id` with `content` right after block `after`.
   | ({ type: 'NoteAdded'; id: number; after: number; content: string } & By)

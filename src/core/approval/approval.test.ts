@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { array, forAll, map, pick, string, tuple } from '../../../test/property';
 import { BUILTIN_ALLOW, deniedTools, evaluate, matches, verdictOf, permissionRules, prefixRule, quoted, sessionAllowed, sessionRules, type Command, type Rule, type Split } from './approval';
 
 const ROOT = '/work/project';
@@ -112,6 +113,8 @@ test('an argument outside the project turns allow into ask, which no session rul
   expect(outside('-f/etc/shadow').why).toBe('argument outside project: -f/etc/shadow');
   expect(outside('-I../include').action).toBe('ask');
   expect(outside('-I~/x').action).toBe('ask');
+  expect(outside('-cf/etc/cron.d/x').why).toBe('argument outside project: -cf/etc/cron.d/x');
+  expect(outside('-xvf../a.tar').action).toBe('ask');
 });
 
 test('arguments inside the project, flags and the null devices are fine', () => {
@@ -185,4 +188,36 @@ test('the session rules are the AllowRuleAdded events of the Session Log', () =>
 
 test('patterns are shown quoted', () => {
   expect(quoted(['make *', 'rm *'])).toBe('"make *", "rm *"');
+});
+
+// Property: the rule `a` adds for a command allows that command.
+test('the session rule for a command matches it', () => {
+  const word = pick('git', 'bun', 'run', 'npm', 'docker', 'compose', 'X=1', '-f', 'a.ts', '*', '.', '$x', 'ä');
+  const space = pick(' ', '  ', '\t');
+  const command = map(tuple(word, array(tuple(space, word), 5)), ([first, rest]) => first + rest.flat().join(''));
+  forAll(command, text => {
+    expect(matches(prefixRule(text), text)).toBe(true);
+  });
+});
+
+// Property: a pattern without `*` matches exactly the same command, up to whitespace.
+test('a pattern without a star matches only its own command', () => {
+  const text = string(['a', 'b', ' ', '.', '(', '+', '?', '^', '$', '|', '\\']);
+  forAll(tuple(text, text), ([pattern, command]) => {
+    const norm = (s: string) => s.trim().replace(/\s+/g, ' ');
+    expect(matches(pattern, command)).toBe(pattern === norm(command));
+  });
+});
+
+// Property: with the built-in allow, a call runs without asking only if every path argument stays in the project.
+test('an allowed call never names a path outside the project', () => {
+  const OUTSIDE = ['/etc/passwd', '../x', '~/x', '/work/project/../x', '/work/projectx', 'a/../../x'];
+  const INSIDE = ['a.ts', './a', 'src/../a', '/work/project/a', '/dev/null', '.'];
+  const flag = pick('', '-f', '-o=', '--out=', '--file=', '-xf', '-cvf');
+  const arg = tuple(flag, pick(...OUTSIDE, ...INSIDE));
+  forAll(array(arg, 4), args => {
+    const command = ['cat', ...args.map(([f, path]) => f + path)].join(' ');
+    const escapes = args.some(([, path]) => OUTSIDE.includes(path));
+    if (escapes) expect(verdict(command).action).not.toBe('allow');
+  });
 });

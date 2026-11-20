@@ -19,7 +19,7 @@ TUI harness for local LLMs (Bun + TypeScript, UI with OpenTUI/Solid). No build s
   - `screen.ts` — the main screen's state: the Gate plus `selection.ts` (rows, selection, marks, Kind Filters).
   - `app.tsx` — composition of the main screen; its parts: `table.tsx`, `header.tsx`, `prompt.tsx`, `suggestions.tsx`, `dock-view.tsx`, `preview.tsx`; key maps in `keys.ts` (`CONTEXT_KEYS`: one table for the Context's keys and their footer hints), key hints in `hints.ts`.
   - `parts.tsx` (header, prompt band, footer), `format.ts` (view helpers: flags, cells), `launch.tsx`/`start.tsx` (startup), `setup.tsx`, `sessions.tsx`, `dock.ts` (Question dock), `theme.ts`.
-- `test/` — shared test support: fake model servers (`fake-llamacpp.ts`, `fake-omlx.ts`), `frames.ts` (`frameMatching`), `requests.ts`, golden fixtures.
+- `test/` — shared test support: fake model servers (`fake-llamacpp.ts`, `fake-omlx.ts`), `frames.ts` (`frameMatching`), `requests.ts`, golden fixtures, `property.ts` (property-based tests: `forAll` with generators and shrinking; `PROPERTY_SEED=random` / `PROPERTY_RUNS=<n>` to explore beyond the fixed seed).
 - Every module has its tests next to it: `x.ts` → `x.test.ts`. The first comment line of each file says what it is.
 
 ## Tests

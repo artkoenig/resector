@@ -1,8 +1,11 @@
-import { expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
+import { array, forAll, int, pick, record, tuple } from '../../../test/property';
+import { accept, sourcesOf } from '../compaction/compaction';
+import { pairOf, type Block, type Context } from '../log/fold';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
 import { TOOLS } from '../tools/catalog';
-import { addNote, approvable, attributed, decline, deny, edit, isFixed, inPair, move, moveAfter, nextCall, reject, remove, removeAll, revise, toggleTool, untouchable, withoutDenied, toNote, toolResult, unattended, undo } from './operations';
+import { addNote, approvable, attributed, decline, deny, edit, isFixed, inPair, move, moveAfter, nextCall, reject, remove, removeAll, revise, toggleTool, untouchable, withoutDenied, toNote, toolResult, unattended, undo, type Outcome } from './operations';
 
 const session = (...then: SessionEvent[]): SessionEvent[] => [
   { type: 'SessionCreated', profile: 'default', protocol: 'native' },
@@ -311,4 +314,128 @@ test('addNote: a Context Policy\'s Note after any block sent, keeping System and
 
 test('undo cancels a policy\'s Note', () => {
   expect(undo(session({ type: 'NoteAdded', id: 5, after: 2, content: 'n' }))).toEqual({ event: { type: 'Undo', eventId: 5 } });
+});
+
+
+// Property: any sequence of Context operations at the Gate – each applied only when it yields an event – keeps the
+// Context sendable, and Undo always restores the Context before the latest operation.
+describe('random sequences of Context operations', () => {
+  const OPS = ['user', 'answer', 'run', 'reject', 'move', 'moveAfter', 'note', 'remove', 'removeAll', 'toNote', 'edit', 'compact', 'undo'] as const;
+  type Op = { op: (typeof OPS)[number]; i: number; j: number; dir: -1 | 1; n: number; marks: number[] };
+  const sequence = () =>
+    array(record<Op>({ op: pick(...OPS), i: int(0, 20), j: int(0, 20), dir: pick(-1, 1), n: int(1, 3), marks: array(int(0, 20), 4) }), 60, 25);
+  const RUN = { output: 'out', exit: 0, stopped: null };
+
+  const start = (): SessionEvent[] => [
+    { type: 'SessionCreated', profile: 'default', protocol: 'native' },
+    { type: 'BlockAdded', id: 1, kind: 'System', origin: 'config', content: 'sys' },
+    { type: 'BlockAdded', id: 2, kind: 'Tools', origin: 'config', content: TOOLS },
+    { type: 'BlockAdded', id: 3, kind: 'User', origin: 'user', content: 'u' },
+  ];
+  const added = (id: number, kind: Block['kind'], content: string): SessionEvent =>
+    kind === 'Tool Call' ? { type: 'BlockAdded', id, kind, origin: 'model', content, tool: 'bash' } : { type: 'BlockAdded', id, kind, origin: kind === 'User' ? 'user' : 'model', content };
+
+  const ok = (outcome: Outcome) => ('event' in outcome ? [outcome.event] : []);
+  // The events an operation appends, the last one the operation the Gate would undo; none when refused.
+  function step(events: SessionEvent[], { op, i, j, dir, n, marks }: Op): SessionEvent[] {
+    const context = fold(events);
+    const { blocks, nextId } = context;
+    const block = blocks[i % blocks.length]!;
+    const call = nextCall(context);
+    switch (op) {
+      case 'user': return call ? [] : [added(nextId, 'User', `u${nextId}`)];
+      case 'answer': return call ? [] : Array.from({ length: n }, (_, k) => added(nextId + k, 'Tool Call', `c${nextId + k}`));
+      case 'run': return call ? [toolResult(call, nextId, RUN, 30)] : [];
+      case 'reject': return call ? ok(reject(context, call, nextId)) : [];
+      case 'move': return viaNote(events, context, block, (c, b) => move(c, b, dir));
+      case 'moveAfter': return viaNote(events, context, block, (c, b) => moveAfter(c, b, blocks[j % blocks.length]!.id));
+      case 'note': return ok(addNote(context, nextId, blocks[j % blocks.length]!.id, 'policy note'));
+      case 'remove': return ok(remove(block));
+      case 'removeAll': return ok(removeAll(blocks.filter((_, k) => marks.includes(k))));
+      case 'toNote': return ok(toNote(block, nextId));
+      case 'edit': return ok(edit(events, block, `${block.content}!`));
+      case 'compact': {
+        // As the Gate marks: a Tool Pair as a whole, never a fixed block or a pending call.
+        const markable = marks.map(k => blocks[k % blocks.length]!).filter(b => !isFixed(b) && !b.pending);
+        const found = sourcesOf(context, new Set(markable.flatMap(b => pairOf(blocks, b.id))), block.id);
+        return 'error' in found ? [] : ok(accept(found.sources, 'shorter', nextId, 'summary'));
+      }
+      case 'undo': return ok(undo(events));
+    }
+  }
+  // As the Gate moves a Tool Pair: as a Note first.
+  function viaNote(events: SessionEvent[], context: Context, block: Block, operation: (c: Context, b: Block) => Outcome): SessionEvent[] {
+    if (!inPair(block)) return ok(operation(context, block));
+    const converted = toNote(block, context.nextId);
+    if ('error' in converted) return [];
+    const after = fold([...events, converted.event]);
+    // The Gate keeps the Note when the operation is then refused.
+    return [converted.event, ...ok(operation(after, after.blocks.find(b => b.id === context.nextId)!))];
+  }
+
+  const isTool = (b: Block | undefined) => b?.kind === 'Tool Call' || b?.kind === 'Tool Result';
+  // The Context as one line, `*` marking a pending call: the failure names it.
+  const layout = ({ blocks }: Context) => blocks.map(b => `${b.id}:${b.kind}${b.call ? `(${b.call})` : ''}${b.pending ? '*' : ''}`).join(' ');
+  function expectSendable(context: Context) {
+    try {
+      sendable(context);
+    } catch (e) {
+      throw new Error(`${layout(context)}\n${(e as Error).message}`);
+    }
+  }
+  function sendable({ blocks, nextId }: Context) {
+    expect(blocks.slice(0, 2).map(b => b.kind)).toEqual(['System', 'Tools']);
+    expect(blocks.slice(2).some(isFixed)).toBe(false);
+    const ids = blocks.map(b => b.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(Math.max(...ids)).toBeLessThan(nextId);
+    blocks.forEach((b, r) => {
+      if (b.kind === 'Tool Call' && !b.pending) expect(blocks.some(x => x.call === b.id)).toBe(true);
+      if (b.kind !== 'Tool Result') return;
+      // Its call precedes it, with only calls and results of the same answer in between.
+      const c = blocks.findIndex(x => x.id === b.call);
+      expect(c).toBeGreaterThanOrEqual(0);
+      expect(c).toBeLessThan(r);
+      expect(blocks.slice(c, r).every(isTool)).toBe(true);
+    });
+  }
+
+  test('the Context stays sendable', () => {
+    forAll(sequence(), sequence => {
+      let events = start();
+      for (const o of sequence) {
+        events = [...events, ...step(events, o)];
+        expectSendable(fold(events));
+      }
+    }, { runs: 300 });
+  });
+
+  test('Undo restores the Context before the latest operation', () => {
+    forAll(sequence(), ops => {
+      let events = start();
+      for (const o of ops) {
+        const appended = step(events, o);
+        const before = events;
+        events = [...events, ...appended];
+        const last = appended.at(-1);
+        if (!last || last.type === 'Undo' || last.type === 'BlockAdded') continue;
+        const u = undo(events);
+        expect(u).toEqual({ event: { type: 'Undo', eventId: events.length - 1 } });
+        expect(fold([...events, (u as { event: SessionEvent }).event])).toEqual(fold([...before, ...appended.slice(0, -1)]));
+      }
+    }, { runs: 300 });
+  });
+
+  test('Revisions of a block only grow, undone ones included', () => {
+    forAll(sequence(), ops => {
+      let events = start();
+      for (const o of ops) events = [...events, ...step(events, o)];
+      const last = new Map<number, number>();
+      for (const e of events) {
+        if (e.type !== 'Edit') continue;
+        expect(e.revision).toBeGreaterThan(last.get(e.id) ?? 1);
+        last.set(e.id, e.revision);
+      }
+    }, { runs: 200 });
+  });
 });
