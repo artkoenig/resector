@@ -55,14 +55,14 @@ test('the error asks for a summary between summary tags and says the call ran', 
   expect(ERROR).toBe(ERROR.trim());
 });
 
-test('a summary of the model becomes a Note led by the handover in its place; every block before it goes but the System, Tools Block, intro and the project\'s Notes; then it is sent on', () => {
+test('a summary of the model becomes a Note led by the handover in its place; every block before it goes but the System, Tools Block, intro, the project\'s Notes and the Skills; then it is sent on', () => {
   const context = blocks(
-    'System', 'Tools', intro, ['Note', { origin: 'environment' }], ['Note', { origin: 'file' }], 'User', 'Tool Call', ['Tool Result', { content: ERROR }], 'Thinking',
+    'System', 'Tools', intro, ['Note', { origin: 'environment' }], ['Note', { origin: 'file' }], ['Note', { origin: 'skill' }], 'User', 'Tool Call', ['Tool Result', { content: ERROR }], 'Thinking',
     ['Assistant', { content: 'Here it is.\n<summary>\n## Task\nfix x\n</summary>' }], 'User',
   );
   expect(summaryReset({ window: 99, used: 10, blocks: context })).toEqual([
-    { op: 'note', after: 10, content: `${HANDOVER}\n\n## Task\nfix x` },
-    ...[6, 7, 9, 10].map(id => ({ op: 'remove' as const, id })),
+    { op: 'note', after: 11, content: `${HANDOVER}\n\n## Task\nfix x` },
+    ...[7, 8, 10, 11].map(id => ({ op: 'remove' as const, id })),
     send,
   ]);
 });
