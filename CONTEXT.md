@@ -28,7 +28,7 @@ Context Block holding the model's reasoning for one answer, placed before that a
 _Avoid_: reasoning, chain of thought
 
 **Note**:
-Context Block of free text without API role semantics, keeping a reference to its origin: a moved Tool Pair, a Compaction result, a Context Policy, the Environment Note, Project Instructions, a File Reference or a Skill.
+Context Block of free text without API role semantics, keeping a reference to its origin: a moved Tool Pair, a Compaction result, a Context Policy, the Environment Note, Project Instructions, a File Reference, a Skill or the exit of a Background Process.
 
 **File Reference**:
 `@<path>` (optionally with a line range) in the user's input: a Note that shows the file as it is now until the Context is sent, then becomes a snapshot that is never refreshed. A file missing at send stops the send.
@@ -66,6 +66,10 @@ _Avoid_: breakpoint, approval
 
 **Tool Loop**:
 The follow-up requests after an answer with Tool Calls: its calls are decided in order, run, and their results sent, until the model answers without calls or the loop is held.
+
+**Background Process**:
+Process a bash Tool Call starts that keeps running after the call's Tool Result. Ends when resector exits or the Session is closed or switched (a Headless Run: when the run ends); never outlives the app: after a crash, it is ended at the next start in the Project.
+_Avoid_: job, service, daemon
 
 **Hold**:
 Stop of the Tool Loop at the Review Gate with the results unsent, for the user to review: asked for with Esc, or because a call was not run (rejected, denied) or was stopped (killed, timeout). A Headless Run does not stop at a Hold: the results go back to the model.

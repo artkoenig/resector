@@ -1,5 +1,5 @@
 // Startup: read the config (or run the first-start setup), open a new or resumed session, then show the Gate.
-import { createSignal, onMount, Show } from 'solid-js';
+import { createSignal, onCleanup, onMount, Show } from 'solid-js';
 import { discover, LOCAL_SERVERS, type DiscoveredModel, type LocalServer } from '../adapters/backend/discover';
 import { writeInitialConfig, type ConfigPaths } from '../adapters/fs/config';
 import type { SessionStore } from '../adapters/store/sessions';
@@ -27,7 +27,10 @@ export type LaunchOptions = {
   clipboard: Clipboard;
   // -c [id]: true = the last session.
   resume?: SessionRef;
+  // Quitting waits for the session's Background Processes to stop.
   onQuit: () => void;
+  // SIGTERM or SIGHUP: quits the same way; returns the unsubscribe. Absent: not listened for.
+  onTerminate?: (quit: () => void) => () => void;
   onFatal: (message: string) => void;
 };
 
@@ -48,7 +51,7 @@ export function Launch(props: LaunchOptions) {
 
   async function open(loaded: Loaded, how: OpenWith = {}) {
     const opened = await workspace.open(loaded, how);
-    if (session?.id !== opened.id) session?.release();
+    if (session?.id !== opened.id) void session?.release();
     session = opened;
     setCurrent(opened.id);
     setFound(null);
@@ -70,6 +73,7 @@ export function Launch(props: LaunchOptions) {
     const switched = id === current();
     if (switched) await open(load(), { which: props.store.list().find(s => !s.locked && s.id !== id)?.id });
     const kept = workspace.removeWorktree(id, force);
+    workspace.removeBackgroundLogs(id);
     props.store.delete(id);
     return [`deleted "${title}"`, ...(switched ? [`switched to "${titleOf(current())}"`] : []), ...kept].join(' · ');
   }
@@ -92,16 +96,15 @@ export function Launch(props: LaunchOptions) {
   }
 
   const fail = (e: unknown) => props.onFatal(errorText(e));
-  const quit = () => {
-    session?.release();
-    props.onQuit();
-  };
+  const quit = () => void (session?.release() ?? Promise.resolve()).finally(props.onQuit);
   const choose = (model: DiscoveredModel) => {
     writeInitialConfig(props.paths, model);
     open(load()).catch(fail);
   };
 
   onMount(() => {
+    const off = props.onTerminate?.(quit);
+    if (off) onCleanup(off);
     const start = async () => {
       // A switched worktree: the Gate again, running in the session's directory now.
       workspace = await openWorkspace({ paths: props.paths, store: props.store, cwd: props.cwd, openFile: props.openFile, onReopen: changed => setGate({ ...gate()!, ...changed }) });

@@ -10,8 +10,8 @@ const SEARCH = {
 
 const BASH = {
   name: 'bash',
-  description: expect.stringContaining('project root'),
-  parameters: { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] },
+  description: expect.stringMatching(/project root.*With background: true it keeps running/),
+  parameters: { type: 'object', properties: { command: { type: 'string' }, background: { type: 'boolean', description: expect.stringContaining('ends with the session') } }, required: ['command'] },
 };
 
 const OPTION = { type: 'object', properties: { label: { type: 'string' }, description: { type: 'string' } }, required: ['label', 'description'] };

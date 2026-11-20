@@ -100,6 +100,13 @@ test('a command with nothing to run: ask', () => {
   expect(verdict('# only a comment', BUILTIN_ALLOW, () => [])).toEqual({ action: 'ask', checks: [{ text: '# only a comment', action: 'ask', why: 'no command', unallowable: true }] });
 });
 
+test('the Background Process logs are readable without asking; writing to them still asks', () => {
+  const input = (command: Command) => ({ rules: BUILTIN_ALLOW, split: only(command), root: ROOT, readable: '/home/background/ses_1' });
+  expect(evaluate('tail', input({ text: 'tail -n 20 /home/background/ses_1/42.log', args: ['-n', '20', '/home/background/ses_1/42.log'], writes: [] })).action).toBe('allow');
+  expect(evaluate('cat', input({ text: 'cat /home/background/ses_2/1.log', args: ['/home/background/ses_2/1.log'], writes: [] })).action).toBe('ask');
+  expect(evaluate('echo', input({ text: 'echo x > /home/background/ses_1/42.log', args: ['x'], writes: ['/home/background/ses_1/42.log'] })).action).toBe('ask');
+});
+
 test('an argument outside the project turns allow into ask, which no session rule changes', () => {
   const outside = (arg: string) => verdict('cat', BUILTIN_ALLOW, only({ text: `cat ${arg}`, args: [arg], writes: [] })).checks[0]!;
   expect(outside('/etc/passwd')).toEqual({ text: 'cat /etc/passwd', action: 'ask', why: 'argument outside project: /etc/passwd', unallowable: true });

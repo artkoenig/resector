@@ -28,12 +28,15 @@ export type SessionEvent =
   // Tool Call: content = the bash command, the websearch query or the question's arguments (JSON), `tool` = its tool (absent: bash);
   // Tool Result: `call` = its Tool Call, content = the output (origin user: the answer to a Question).
   // file: the file a Note was read from. Older logs may carry `pin` (ADR 0002): ignored on replay.
-  | { type: 'BlockAdded'; id: number; kind: Kind; origin: Origin; content: string; tool?: Tool; cutOff?: true; call?: number; stopped?: Stopped; file?: string }
+  // background: a bash Tool Call run as a Background Process.
+  | { type: 'BlockAdded'; id: number; kind: Kind; origin: Origin; content: string; tool?: Tool; cutOff?: true; call?: number; stopped?: Stopped; file?: string; background?: true }
   // `@<path>[:a-b]`: a reference row, read only on send (an image file: an Image block) …
   | { type: 'FileReferenced'; id: number; call?: number; file: string }
   // … into a snapshot, never refreshed afterwards; an image into a copy in the Project Home, `image` its name.
   | { type: 'FileRead'; id: number; content: string }
   | { type: 'ImageRead'; id: number; image: string }
+  // Tool Call `call` keeps running as a Background Process: its process group `pid`, its output in `log`.
+  | { type: 'BackgroundStarted'; call: number; pid: number; log: string }
   | { type: 'RequestSent'; hash: string; tokens: number }
   // A new Revision of the block's content; the block's first content is Revision 1.
   // harness: the environment Note refreshed or a tool denied by rule taken out of the Tools Block, not undoable.

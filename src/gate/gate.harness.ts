@@ -18,6 +18,8 @@ import type { Backend, RunOptions } from './ports';
 const split: Split = command => command.split('\n').map(text => ({ text, args: text.split(' ').slice(1), writes: [] }));
 
 export const bash = (command: string): RawCall => ({ name: 'bash', arguments: JSON.stringify({ command }) });
+// A bash call to run as a Background Process.
+export const background = (command: string): RawCall => ({ name: 'bash', arguments: JSON.stringify({ command, background: true }) });
 
 // An answer of the scripted backend. It streams `thinking` and `content`, then ends after `delay` ms, or hangs until
 // aborted; aborted, it keeps what streamed. error: the request fails.
@@ -71,12 +73,13 @@ const abortedWithin = (signal: AbortSignal, ms: number) =>
   });
 
 // Runs a command: it prints `ran <command>`, or its entry of `results`; a `slow` one takes 20 ms, a `hang` one
-// prints `partial` and runs until killed.
+// prints `partial` and runs until killed. With background it keeps running: `started <command>`, pid 4242.
 export function scriptedRunner({ timeout = 120, slow = [] as string[], hang = [] as string[], results = {} as Record<string, RunResult> } = {}) {
   const ran: string[] = [];
-  const run = async (command: string, { signal, onOutput }: RunOptions): Promise<RunResult> => {
+  const run = async (command: string, { signal, onOutput, background }: RunOptions): Promise<RunResult> => {
     ran.push(command);
     if (results[command]) return results[command];
+    if (background) return { output: `started ${command}\n`, exit: null, stopped: null, background: { pid: 4242, log: '/home/background/4242.log' } };
     if (!hang.includes(command) && !slow.includes(command)) return { output: `ran ${command}\n`, exit: 0, stopped: null };
     if (hang.includes(command)) onOutput('partial\n');
     const killed = await abortedWithin(signal, slow.includes(command) ? 20 : Infinity);

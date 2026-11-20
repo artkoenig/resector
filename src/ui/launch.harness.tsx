@@ -80,6 +80,8 @@ export async function launch(setup: Setup = {}) {
   });
   for (const [id, pid] of Object.entries(locks)) put(join(sessionsDir, `${id}.lock`), String(pid));
   const quit: string[] = [];
+  // SIGTERM / SIGHUP, as start.tsx delivers them.
+  let terminate = () => {};
   ui = await testRender(
     () => (
       <Launch
@@ -92,13 +94,14 @@ export async function launch(setup: Setup = {}) {
         clipboard={async () => {}}
         resume={resume}
         onQuit={() => quit.push('quit')}
+        onTerminate={q => ((terminate = q), () => {})}
         onFatal={m => fatal.push(m)}
       />
     ),
     { width: 80, height: 16 },
   );
   const log = () => readFileSync(join(sessionsDir, 'ses_test.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
-  return { paths, fatal, log, store, quit, root, project, other, sessionsDir };
+  return { paths, fatal, log, store, quit, root, project, other, sessionsDir, terminate: () => terminate() };
 }
 
 export const profileConfig = (url: string, extra = '') => `{

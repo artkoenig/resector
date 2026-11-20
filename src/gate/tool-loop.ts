@@ -2,6 +2,7 @@
 import { batch, createMemo, createSignal } from 'solid-js';
 import { quoted, sessionRules } from '../core/approval/approval';
 import type { ChatResult } from '../core/tools/answer';
+import type { RunResult } from '../core/tools/call';
 import * as ops from '../core/context/operations';
 import type { Tool } from '../core/log/events';
 import type { Block } from '../core/log/fold';
@@ -141,13 +142,8 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
     setStatus(null);
     try {
       const onOutput = (text: string) => setRunning({ ...running()!, output: running()!.output + text });
-      const result = await tool.run(call.content, { signal: abort.signal, onOutput });
-      setRunning(null);
-      follow(nextId());
-      append(ops.toolResult(call, nextId(), result, tool.timeout));
-      git.lookAgain();
-      if (result.stopped) held = true;
-      goOn(result.stopped ? [...notes, `⚠ ${result.stopped}`] : notes);
+      const result = await tool.run(call.content, { signal: abort.signal, onOutput, ...(call.background && { background: true }) });
+      ran(call, result, tool.timeout, notes);
     } catch (e) {
       setRunning(null);
       follow(call.id);
@@ -169,6 +165,16 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
   }
   // Tools resolved at once, without a runner; the loop goes on after them.
   const AT_ONCE: Partial<Record<Tool, (call: Block) => void>> = { skill: loadSkill, image: attach };
+  // The run ended: its Tool Result (and the Background Process it left), then the next call is decided.
+  function ran(call: Block, result: RunResult, timeout: number, notes: string[]) {
+    setRunning(null);
+    follow(nextId());
+    append(ops.toolResult(call, nextId(), result, timeout));
+    if (result.background) append({ type: 'BackgroundStarted', call: call.id, ...result.background });
+    git.lookAgain();
+    if (result.stopped) held = true;
+    goOn(result.stopped ? [...notes, `⚠ ${result.stopped}`] : notes);
+  }
 
   // The Question the dock asks now: the next pending call, while nothing streams or runs.
   const asked = createMemo((): Asked | null => {

@@ -1,8 +1,10 @@
 // The app's wiring outside any view: config and Context Policies, opening a new or resumed session, where it runs
 // (checkout or Session Worktree) and the ports for it. Shared by the TUI and runs without it.
+import { rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createSignal } from 'solid-js';
 import { connect } from '../adapters/backend/connect';
+import { createBackground, type Background } from '../adapters/bash/background';
 import { createRunner } from '../adapters/bash/runner';
 import { createSplit } from '../adapters/bash/split';
 import { loadConfig, type ConfigPaths } from '../adapters/fs/config';
@@ -41,10 +43,13 @@ type Running = 'runner' | 'searcher' | 'approval' | 'project' | 'git';
 type ViewOptions = 'editor' | 'clipboard' | 'openSessions';
 // What a new session starts with instead of the config's defaults (a Headless Run's settings).
 export type StartWith = Omit<Settings, 'show' | 'maxTurns'>;
-export type Opened = { id: string; options: Omit<GateOptions, ViewOptions>; release: () => void };
+// release: stops the session's Background Processes, then frees it for other instances.
+export type Opened = { id: string; options: Omit<GateOptions, ViewOptions>; release: () => Promise<void> };
 export type Workspace = Awaited<ReturnType<typeof openWorkspace>>;
 
 const DEFAULT_TIMEOUT = 120;
+// Seconds a Background Process is waited for before its result.
+const DEFAULT_BACKGROUND_WAIT = 5;
 // A websearch runs into this timeout (seconds).
 const SEARCH_TIMEOUT = 30;
 
@@ -71,6 +76,8 @@ export async function openWorkspace(options: WorkspaceOptions) {
   const project = mainCheckout(here);
   // Session Worktrees live in the Project Home's data root (ADR 0004).
   const worktrees = join(paths.projectHome.data, 'worktrees');
+  // The logs of a session's Background Processes.
+  const backgroundLogs = (id: string) => join(paths.projectHome.data, 'background', id);
   // The project as seen from where a session runs: its checkout or its worktree.
   const projectAt = (dir: string, checkout = here) => ({
     read: projectFiles(dir),
@@ -155,10 +162,15 @@ export async function openWorkspace(options: WorkspaceOptions) {
     });
     const { dir, checkout, warning } = sessionDir(events, opened.id);
     const instruction = () => loaded.compactionInstruction();
+    // One per opened session, also across a worktree's reopen.
+    const background = createBackground({ dir: backgroundLogs(opened.id) });
     return {
       id: opened.id,
-      release: opened.release,
-      options: { backend, ...runningIn(loaded, dir, checkout, opened.id), log: opened.log, events, notice: withFailed(withWarning(notice, warning)), instruction, compactor: compactor(loaded, profile, opened.id), policies, autoApprove, skills },
+      release: async () => {
+        await background.stopAll();
+        opened.release();
+      },
+      options: { backend, ...runningIn(loaded, dir, checkout, opened.id, background), log: opened.log, events, notice: withFailed(withWarning(notice, warning)), instruction, compactor: compactor(loaded, profile, opened.id), policies, autoApprove, skills },
     };
   }
   // The checkout the session started in, from any worktree of the Project; the current one if that is gone, or for
@@ -179,7 +191,7 @@ export async function openWorkspace(options: WorkspaceOptions) {
     }
   }
   // What depends on where the session runs: bash and websearch, the arguments' root, the project, git.
-  function runningIn(loaded: Loaded, dir: string, checkout: string, id: string): Pick<GateOptions, Running> {
+  function runningIn(loaded: Loaded, dir: string, checkout: string, id: string, background: Background): Pick<GateOptions, Running> {
     const git: Git = {
       branches: () => listBranches(dir),
       status: () => status(dir),
@@ -190,13 +202,17 @@ export async function openWorkspace(options: WorkspaceOptions) {
       reopen: notice => {
         const events = store.read(id);
         const at = sessionDir(events, id);
-        options.onReopen({ ...runningIn(loaded, at.dir, at.checkout, id), events, notice });
+        options.onReopen({ ...runningIn(loaded, at.dir, at.checkout, id, background), events, notice });
       },
     };
     return {
-      runner: createRunner({ cwd: dir, timeout: loaded.config.bash?.timeout ?? DEFAULT_TIMEOUT }),
+      runner: createRunner({
+        cwd: dir,
+        timeout: loaded.config.bash?.timeout ?? DEFAULT_TIMEOUT,
+        background: { registry: background, wait: loaded.config.bash?.backgroundWait ?? DEFAULT_BACKGROUND_WAIT },
+      }),
       searcher: createSearcher({ cwd: dir, timeout: SEARCH_TIMEOUT }),
-      approval: { split: split!, root: dir, permissions: () => loaded.permissions },
+      approval: { split: split!, root: dir, readable: backgroundLogs(id), permissions: () => loaded.permissions },
       project: projectAt(dir, checkout),
       git: repository ? git : null,
     };
@@ -219,6 +235,8 @@ export async function openWorkspace(options: WorkspaceOptions) {
       const removed = repository ? removeWorktree(here, worktrees, id, force) : null;
       return removed?.kept ? [`branch ${removed.branch} kept – not merged`] : [];
     },
+    // A deleted session's Background Process logs.
+    removeBackgroundLogs: (id: string) => rmSync(backgroundLogs(id), { recursive: true, force: true }),
     worktreeDirty: (id: string) => repository && worktreeDirty(worktrees, id),
     // Where a listed session started, when that is another checkout of the Project: its branch and directory.
     origin(events: SessionEvent[]): string | null {
