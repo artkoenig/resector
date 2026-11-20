@@ -105,3 +105,12 @@ test('a session whose checkout is gone runs in the current one and says so', asy
   expect(options.approval.root).toBe(project);
   expect(options.notice?.text).toContain('checkout /nowhere/gone gone – runs in');
 });
+
+test('releasing a session logs its Background Processes as ended with it, also with no Gate listening', async () => {
+  const { open, log } = await workspace({ extra: ', "bash": { "backgroundWait": 0.2 }' });
+  const { id, options, release } = await open();
+  const result = await options.runner.run('sleep 30', { signal: new AbortController().signal, onOutput: () => {}, background: true });
+  options.log.append({ type: 'BackgroundStarted', call: 9, ...result.background! });
+  await release();
+  expect(log(id).at(-1)).toEqual({ type: 'BackgroundExited', call: 9, signal: 'session ended' });
+});

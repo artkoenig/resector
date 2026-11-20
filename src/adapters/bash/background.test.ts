@@ -51,8 +51,8 @@ test('aborting during the wait kills it', async () => {
 
 test('it has exited only when its process group is empty, not when bash exits', async () => {
   const r = registry();
-  const exits: [number, number | null][] = [];
-  r.onExit((pid, exit) => exits.push([pid, exit]));
+  const exits: [number, unknown][] = [];
+  r.onExit((pid, end) => exits.push([pid, end]));
   // bash ends at once; the server it forked keeps the group.
   const result = await r.start('(sleep 0.6; echo served) & exit 0', { cwd, wait: 0.2, signal: new AbortController().signal });
   const pid = result.background!.pid;
@@ -60,9 +60,19 @@ test('it has exited only when its process group is empty, not when bash exits', 
   expect(exits).toEqual([]);
   expect(r.running()).toEqual([pid]);
   while (!exits.length) await Bun.sleep(20);
-  expect(exits).toEqual([[pid, 0]]);
+  expect(exits).toEqual([[pid, { exit: 0 }]]);
   expect(r.running()).toEqual([]);
   expect(readFileSync(result.background!.log, 'utf8')).toBe('served\n');
+});
+
+test('a Background Process killed by a signal ends with its name', async () => {
+  const r = registry();
+  const ends: unknown[] = [];
+  r.onExit((_, end) => ends.push(end));
+  const pid = (await r.start('sleep 30', { cwd, wait: 0.1, signal: new AbortController().signal })).background!.pid;
+  process.kill(-pid, 'SIGTERM');
+  while (!ends.length) await Bun.sleep(20);
+  expect(ends).toEqual([{ signal: 'SIGTERM' }]);
 });
 
 test('stopAll ends every Background Process with SIGTERM, SIGKILL for those ignoring it', async () => {
@@ -70,8 +80,11 @@ test('stopAll ends every Background Process with SIGTERM, SIGKILL for those igno
   const signal = new AbortController().signal;
   const polite = (await r.start('sleep 30', { cwd, wait: 0.1, signal })).background!.pid;
   const stubborn = (await r.start("trap '' TERM; echo trapped; while :; do sleep 0.05; done", { cwd, wait: 0.2, signal })).background!.pid;
+  const ends: unknown[] = [];
+  r.onExit((_, end) => ends.push(end));
   const started = Date.now();
   await r.stopAll();
+  expect(ends).toEqual([{ signal: 'session ended' }, { signal: 'session ended' }]);
   expect(Date.now() - started).toBeGreaterThan(1500);
   expect(Date.now() - started).toBeLessThan(4000);
   expect([alive(polite), alive(stubborn)]).toEqual([false, false]);

@@ -3,7 +3,7 @@ import { createRoot, createSignal } from 'solid-js';
 import { BASH_TOOLS, withTools } from '../../test/requests';
 import { permissionRules, type Permissions, type Split } from '../core/approval/approval';
 import type { ChatResult } from '../core/tools/answer';
-import type { SessionEvent, Thinking, Tool } from '../core/log/events';
+import type { BackgroundEnd, SessionEvent, Thinking, Tool } from '../core/log/events';
 import type { Policy } from '../core/policy/policy';
 import type { Request } from '../core/render/native';
 import { newSession } from '../core/session/session';
@@ -12,7 +12,7 @@ import type { RunResult } from '../core/tools/call';
 import { createGate, type Compactor, type Gate, type View } from '.';
 import type { Skill } from '../core/skills/skills';
 import { minimalView } from './minimal-view';
-import type { Backend, RunOptions } from './ports';
+import type { Backend, Background, RunOptions } from './ports';
 
 // One simple command per line, its words as arguments: enough for the rules to decide.
 const split: Split = command => command.split('\n').map(text => ({ text, args: text.split(' ').slice(1), writes: [] }));
@@ -88,7 +88,20 @@ export function scriptedRunner({ timeout = 120, slow = [] as string[], hang = []
   return { runner: { timeout, run }, ran };
 }
 
-// users: User blocks in the Session Log, not yet sent; calls: pending Tool Calls after them, as at a resume.
+// Background Processes the test ends: exit(pid, end) tells the Gate one's process group is empty.
+export function scriptedBackground() {
+  const listeners = new Set<(pid: number, end: BackgroundEnd) => void>();
+  const background: Background = {
+    onExit: listener => {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
+    },
+  };
+  return { background, exit: (pid: number, end: BackgroundEnd) => listeners.forEach(l => l(pid, end)) };
+}
+
+// users: User blocks in the Session Log, not yet sent; calls: pending Tool Calls after them, as at a resume; logged:
+// events after them (e.g. a Background Process's start and exit).
 // global, project: permission rules of the config. files: the project's files for @path references.
 export type GateSetup = {
   users?: string[];
@@ -102,6 +115,7 @@ export type GateSetup = {
   editor?: (text: string) => Promise<string>;
   runner?: Parameters<typeof scriptedRunner>[0];
   skills?: Skill[];
+  logged?: SessionEvent[];
 } & Parameters<typeof scriptedBackend>[0];
 
 // The Gate on the minimal view: rows are the blocks sent next, the selection follows. focused: the blocks the Gate
@@ -110,12 +124,14 @@ export function gateWith(setup: GateSetup = {}) {
   const { users = [], calls = [], tools = BASH_TOOLS, global, project, policies = [], compactor, files = {}, editor = async text => text, skills } = setup;
   const { backend, sent, reply } = scriptedBackend(setup);
   const { runner, ran } = scriptedRunner(setup.runner);
+  const { background, exit } = scriptedBackground();
   const opening = withTools(newSession('default', 'You are an agent.'), tools);
   const first = opening.length;
   const events: SessionEvent[] = [
     ...opening,
     ...users.map((content, i) => ({ type: 'BlockAdded' as const, id: first + i, kind: 'User' as const, origin: 'user' as const, content })),
     ...calls.map((call, i) => ({ type: 'BlockAdded' as const, id: first + users.length + i, kind: 'Tool Call' as const, origin: 'model' as const, ...(typeof call === 'string' ? { content: call } : call) })),
+    ...(setup.logged ?? []),
   ];
   const logged: SessionEvent[] = [...events];
   const focused: number[] = [];
@@ -138,11 +154,11 @@ export function gateWith(setup: GateSetup = {}) {
     compactor: async () => compactor ?? null,
     policies: { all: policies, active, set: setActive },
     autoApprove: { on: autoOn, set: setAutoOn },
-    openSessions: () => {}, skills,
+    openSessions: () => {}, skills, background,
   }, k => (selection = minimalView(k, id => focused.push(id)))));
   const select = (id: number) => selection.setSelected(id);
   const mark = (...ids: number[]) => selection.setMarked(new Set(ids));
-  return { gate, sent, reply, ran, focused, events: logged, select, mark };
+  return { gate, sent, reply, ran, focused, events: logged, select, mark, exit };
 }
 
 // Until the Gate is idle: no answer streaming, no call running, no policy or Compaction under way.

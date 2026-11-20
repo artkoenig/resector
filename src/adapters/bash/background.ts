@@ -3,6 +3,7 @@
 import { spawn } from 'node:child_process';
 import { closeSync, mkdirSync, openSync, readFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
+import type { BackgroundEnd } from '../../core/log/events';
 import type { RunResult } from '../../core/tools/call';
 
 // How often a process group is checked for members (ms).
@@ -10,7 +11,8 @@ const POLL = 100;
 // SIGTERM, then SIGKILL after this (ms).
 const GRACE = 2000;
 
-type Entry = { exit: number | null; leaderDone: boolean; gone: Promise<void> };
+// signal: what killed the leader; stopped: ended by stopAll.
+type Entry = { exit: number | null; signal: string | null; leaderDone: boolean; stopped: boolean; gone: Promise<void> };
 export type Background = ReturnType<typeof createBackground>;
 
 const groupAlive = (pid: number) => {
@@ -27,10 +29,12 @@ const signalGroup = (pid: number, signal: NodeJS.Signals) => {
   } catch {}
 };
 
+const endOf = (e: Entry): BackgroundEnd => (e.stopped ? { signal: 'session ended' } : e.exit !== null ? { exit: e.exit } : { signal: e.signal ?? 'SIGKILL' });
+
 // dir: where the logs go (`<pid>.log`), made at the first start.
 export function createBackground({ dir }: { dir: string }) {
   const running = new Map<number, Entry>();
-  const listeners = new Set<(pid: number, exit: number | null) => void>();
+  const listeners = new Set<(pid: number, end: BackgroundEnd) => void>();
   let next = 0;
 
   // wait: seconds until the result, unless it ends sooner; signal: aborts the wait, killing it.
@@ -45,9 +49,10 @@ export function createBackground({ dir }: { dir: string }) {
     const pid = child.pid!;
     const log = join(dir, `${pid}.log`);
     renameSync(pending, log);
-    const entry: Entry = { exit: null, leaderDone: false, gone: Promise.resolve() };
-    child.on('exit', code => {
+    const entry: Entry = { exit: null, signal: null, leaderDone: false, stopped: false, gone: Promise.resolve() };
+    child.on('exit', (code, signal) => {
       entry.exit = code;
+      entry.signal = signal;
       entry.leaderDone = true;
     });
     entry.gone = new Promise(resolve => {
@@ -55,7 +60,7 @@ export function createBackground({ dir }: { dir: string }) {
         if (!entry.leaderDone || groupAlive(pid)) return;
         clearInterval(timer);
         running.delete(pid);
-        listeners.forEach(l => l(pid, entry.exit));
+        listeners.forEach(l => l(pid, endOf(entry)));
         resolve();
       }, POLL);
     });
@@ -82,7 +87,10 @@ export function createBackground({ dir }: { dir: string }) {
   async function stopAll(): Promise<void> {
     const entries = [...running];
     if (!entries.length) return;
-    entries.forEach(([pid]) => signalGroup(pid, 'SIGTERM'));
+    entries.forEach(([pid, e]) => {
+      e.stopped = true;
+      signalGroup(pid, 'SIGTERM');
+    });
     const all = Promise.all(entries.map(([, e]) => e.gone));
     let timer: Timer | undefined;
     const grace = new Promise<'late'>(resolve => (timer = setTimeout(() => resolve('late'), GRACE)));
@@ -96,7 +104,8 @@ export function createBackground({ dir }: { dir: string }) {
     stopAll,
     // pids of the groups not yet empty.
     running: () => [...running.keys()],
-    onExit(listener: (pid: number, exit: number | null) => void) {
+    // Once per Background Process, when its group is empty; also for a run that ended within its wait.
+    onExit(listener: (pid: number, end: BackgroundEnd) => void) {
       listeners.add(listener);
       return () => void listeners.delete(listener);
     },
