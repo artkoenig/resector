@@ -86,7 +86,7 @@ export async function start({ tools = BASH_TOOLS, template, window = 4096, exact
     { width: 80, height: 20 },
   );
   const size = ` / ${formatTokens(window)}`;
-  await frameMatching(ui, f => f.includes(users.length || notes || tools !== BASH_TOOLS ? size : `52${size}`) && !f.includes(`…${size}`));
+  await frameMatching(ui, f => f.includes(users.length || notes || tools !== BASH_TOOLS ? size : `112${size}`) && !f.includes(`…${size}`));
   const events = () => readFileSync(log.path, 'utf8').trim().split('\n').map(l => JSON.parse(l));
   return { events, opened };
 }

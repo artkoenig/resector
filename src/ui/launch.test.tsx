@@ -145,6 +145,14 @@ test('quitting releases the session lock', async () => {
   expect(readdirSync(sessionsDir)).toEqual(['ses_test.jsonl']);
 });
 
+test('SIGTERM or SIGHUP quits as q does: the session lock is released', async () => {
+  const { quit, sessionsDir, terminate } = await launch({ config: url => profileConfig(url) });
+  await frameMatching(ui, f => f.includes('/ 2k'));
+  terminate();
+  await until(() => quit.length > 0);
+  expect(readdirSync(sessionsDir)).toEqual(['ses_test.jsonl']);
+});
+
 async function until(condition: () => boolean) {
   while (!condition()) await Bun.sleep(10);
 }

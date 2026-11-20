@@ -1,13 +1,22 @@
 // bash runner: `bash -c` in the project root, stdin /dev/null, output streamed,
-// killed with everything it started on abort (Esc) or timeout.
+// killed with everything it started on abort (Esc) or timeout. Ends when bash exits: processes it left
+// running would hold the pipes open, so they are killed.
 import { spawn } from 'node:child_process';
 import type { Runner } from '../../gate/ports';
+import type { Background } from './background';
 import type { RunResult } from '../../core/tools/call';
 import type { Stopped } from '../../core/log/events';
 
-// timeout: seconds.
-export function createRunner({ cwd, timeout }: { cwd: string; timeout: number }): Runner {
-  return processRunner(command => ['bash', '-c', command], { cwd, timeout });
+// timeout: seconds. background: where calls with `background` run, waited for `wait` seconds; without it they run as
+// any other.
+export function createRunner({ cwd, timeout, background }: { cwd: string; timeout: number; background?: { registry: Background; wait: number } }): Runner {
+  const runner = processRunner(command => ['bash', '-c', command], { cwd, timeout });
+  if (!background) return runner;
+  return {
+    timeout,
+    run: (command, options) =>
+      options.background ? background.registry.start(command, { cwd, wait: background.wait, signal: options.signal }) : runner.run(command, options),
+  };
 }
 
 // A runner starting the process `argv` gives for a Tool Call's content (e.g. the search adapter's ddgr).
@@ -38,11 +47,21 @@ export function processRunner(argv: (content: string) => string[], { cwd, timeou
         const timer = setTimeout(() => stop('timeout'), timeout * 1000);
         if (signal.aborted) kill();
         else signal.addEventListener('abort', kill, { once: true });
+        let exit: number | null = null;
+        let leftover = false;
         child.on('error', reject);
-        child.on('close', code => {
+        child.on('exit', code => {
+          exit = code;
+          try {
+            process.kill(-child.pid!, 'SIGKILL');
+            leftover = !stopped;
+          } catch {}
+        });
+        // After the group is gone the pipes close, with all output read.
+        child.on('close', () => {
           clearTimeout(timer);
           signal.removeEventListener('abort', kill);
-          resolve({ output, exit: stopped ? null : code, stopped });
+          resolve({ output, exit: stopped ? null : exit, stopped, ...(leftover && { leftover: true }) });
         });
       }),
   };

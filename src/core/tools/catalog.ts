@@ -6,8 +6,14 @@ type ToolDefinition = { name: string; description: string; parameters: object };
 const CATALOG: ToolDefinition[] = [
   {
     name: 'bash',
-    description: 'Run a shell command in the project root. Returns combined stdout/stderr and the exit code.',
-    parameters: { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] },
+    description:
+      'Run a shell command in the project root. Returns combined stdout/stderr and the exit code. ' +
+      'With background: true it keeps running (e.g. a server): returns its first output, pid and log file after a few seconds.',
+    parameters: {
+      type: 'object',
+      properties: { command: { type: 'string' }, background: { type: 'boolean', description: 'keep it running after the call; ends with the session' } },
+      required: ['command'],
+    },
   },
   {
     name: 'websearch',

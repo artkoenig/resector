@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createBackground } from './background';
 import { createRunner } from './runner';
 
 const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'resector-run-')));
@@ -41,4 +42,25 @@ test('an already aborted signal kills at once', async () => {
   const abort = new AbortController();
   abort.abort();
   expect((await run('sleep 5', { signal: abort.signal }).result).stopped).toBe('killed');
+});
+
+test('a command leaving a process running returns when bash exits; the leftover is killed', async () => {
+  const started = Date.now();
+  const result = await run('echo a; sleep 30 & echo $! > leftover.pid').result;
+  expect(Date.now() - started).toBeLessThan(1000);
+  expect(result).toEqual({ output: 'a\n', exit: 0, stopped: null, leftover: true });
+  const pid = Number(await Bun.file(join(cwd, 'leftover.pid')).text());
+  await Bun.sleep(50);
+  expect(() => process.kill(pid, 0)).toThrow();
+});
+
+test('a call with background runs in the registry: still running after the wait, it returns its pid and log', async () => {
+  const registry = createBackground({ dir: join(cwd, 'logs') });
+  const runner = createRunner({ cwd, timeout: 120, background: { registry, wait: 0.2 } });
+  const signal = new AbortController().signal;
+  const result = await runner.run('echo up; sleep 30', { signal, onOutput: () => {}, background: true });
+  expect(result).toMatchObject({ output: 'up\n', exit: null, stopped: null, background: { pid: expect.any(Number) } });
+  expect(registry.running()).toEqual([result.background!.pid]);
+  expect(await runner.run('echo plain', { signal, onOutput: () => {} })).toEqual({ output: 'plain\n', exit: 0, stopped: null });
+  await registry.stopAll();
 });

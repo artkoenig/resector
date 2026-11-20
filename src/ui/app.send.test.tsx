@@ -13,7 +13,7 @@ useHarness();
 test('the Gate shows every Context Block with its exact tokens and the Template row', async () => {
   const { events } = await start();
   const frame = await frameMatching(ui, f => previewed(f) === 'You are an agent.');
-  expect(line(frame, /default/)).toMatch(/^ {2}resector {2}default · thinking off +52 \/ 4k/);
+  expect(line(frame, /default/)).toMatch(/^ {2}resector {2}default · thinking off +112 \/ 4k/);
   expect(frame.split('\n')[1]).toMatch(/^ {2}▀+/);
   expect(line(frame, /Type/)).toMatch(/#\s+Type\s+Content\s+Tokens\s+Cache\s+Flags/);
   expect(line(frame, /System prompt/)).toMatch(/1\s+System\s+System prompt\s+12\b/);
@@ -32,14 +32,14 @@ test('Enter in input mode adds a User block and sends the Context; the answer st
   const { events } = await start();
   fake.reply({ chunks: ['Hello', ' world'], usage: { prompt_tokens: 24, completion_tokens: 2 }, cacheN: 16 });
   await write('hi there');
-  const frame = await frameMatching(ui, f => f.includes('68 / 4k'));
+  const frame = await frameMatching(ui, f => f.includes('128 / 4k'));
   expect(line(frame, /hi there/)).toMatch(/3\s+User\s+hi there\s+8\b/);
   expect(line(frame, /Assistant/)).toMatch(/4\s+Assistant\s+Hello world\s+8\b/);
   expect(frame).toContain('⌥↑↓ move  e edit');
   expect(fake.chatRequests).toHaveLength(1);
   expect(events().slice(3)).toEqual([
     { type: 'BlockAdded', id: 3, kind: 'User', origin: 'user', content: 'hi there' },
-    { type: 'RequestSent', hash: expect.any(String), tokens: 60 },
+    { type: 'RequestSent', hash: expect.any(String), tokens: 120 },
     { type: 'BlockAdded', id: 4, kind: 'Assistant', origin: 'model', content: 'Hello world' },
     { type: 'ResponseReceived', usage: { prompt_tokens: 24, completion_tokens: 2 }, cached: 16 },
   ]);
@@ -68,18 +68,18 @@ const headerTone = () => {
 };
 
 test('from 90 % of the window the tokens turn yellow', async () => {
-  await start({ window: 64, users: ['short'] });
+  await start({ window: 124, users: ['short'] });
   const frame = ui.captureCharFrame();
-  expect(line(frame, /default/)).toMatch(/58 \/ 64 {2}$/);
+  expect(line(frame, /default/)).toMatch(/118 \/ 124 {2}$/);
   expect(headerTone()).toEqual([TONE.warn.slice(1)]);
 });
 
 const LONG = 'a b c d e f g h i j k l m n o p q r s t';
 
 test('a Context as big as the window blocks sending: red over by X, the bar marks the window edge', async () => {
-  const { events } = await start({ window: 80, users: [LONG, 'short'] });
+  const { events } = await start({ window: 140, users: [LONG, 'short'] });
   let frame = ui.captureCharFrame();
-  expect(line(frame, /default/)).toMatch(/102 \/ 80 over by 23 {2}$/);
+  expect(line(frame, /default/)).toMatch(/162 \/ 140 over by 23 {2}$/);
   expect(headerTone()).toEqual([TONE.error.slice(1)]);
   expect(frame.split('\n')[1]).toMatch(/^ {2}▀+│▀+ *$/);
   const before = events().length;
@@ -92,32 +92,32 @@ test('a Context as big as the window blocks sending: red over by X, the bar mark
   await press('down');
   await press('down');
   await press('d');
-  frame = await frameMatching(ui, f => f.includes('58 / 80'));
+  frame = await frameMatching(ui, f => f.includes('118 / 140'));
   expect(frame.split('\n')[1]).not.toContain('│');
   fake.reply({ chunks: ['ok'] });
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('answer complete'));
-  expect(fake.chatRequests[0]).toMatchObject({ max_tokens: 80 - 58 });
+  expect(fake.chatRequests[0]).toMatchObject({ max_tokens: 140 - 118 });
 });
 
 test('an inexact tokenizer shows ±drift and blocks sending that much below the window', async () => {
-  const { events } = await start({ window: 80, exact: false, users: ['short'] });
-  expect(line(ui.captureCharFrame(), /default/)).toMatch(/58 \/ 80 ±\? {2}$/);
+  const { events } = await start({ window: 140, exact: false, users: ['short'] });
+  expect(line(ui.captureCharFrame(), /default/)).toMatch(/118 \/ 140 ±\? {2}$/);
   // The server counts 10 more prompt tokens than the backend did.
-  fake.reply({ chunks: ['ok'], usage: { prompt_tokens: 68, completion_tokens: 1 } });
+  fake.reply({ chunks: ['ok'], usage: { prompt_tokens: 128, completion_tokens: 1 } });
   ui.mockInput.pressEnter();
-  let frame = await frameMatching(ui, f => f.includes('answer complete') && /\d+ \/ 80 ±10 {2}$/m.test(f));
-  expect(events().find(e => e.type === 'RequestSent')).toMatchObject({ tokens: 58 });
-  const total = Number(/(\d+) \/ 80 ±10 {2}$/m.exec(frame)![1]);
+  let frame = await frameMatching(ui, f => f.includes('answer complete') && /\d+ \/ 140 ±10 {2}$/m.test(f));
+  expect(events().find(e => e.type === 'RequestSent')).toMatchObject({ tokens: 118 });
+  const total = Number(/(\d+) \/ 140 ±10 {2}$/m.exec(frame)![1]);
   // One word per two tokens: enough to reach the window less the drift, not the window itself.
-  await write('x '.repeat(Math.ceil((70 - total - 5) / 2)).trim());
-  const over = /(\d+) \/ 80 ±10 over by (\d+) {2}$/m;
+  await write('x '.repeat(Math.ceil((130 - total - 5) / 2)).trim());
+  const over = /(\d+) \/ 140 ±10 over by (\d+) {2}$/m;
   // The count comes after the block: wait for both.
   frame = await frameMatching(ui, f => f.includes('sending blocked') && over.test(f));
   const header = over.exec(frame)!;
-  expect(Number(header[1])).toBeGreaterThanOrEqual(70);
-  expect(Number(header[1])).toBeLessThan(80);
-  expect(Number(header[2])).toBe(Number(header[1]) - 70 + 1);
+  expect(Number(header[1])).toBeGreaterThanOrEqual(130);
+  expect(Number(header[1])).toBeLessThan(140);
+  expect(Number(header[2])).toBe(Number(header[1]) - 130 + 1);
   expect(fake.chatRequests).toHaveLength(1);
 });
 
@@ -137,10 +137,10 @@ test('Enter in the Context sends it', async () => {
   const { events } = await start({ users: ['hi there'] });
   fake.reply({ chunks: ['Hello', ' world'] });
   ui.mockInput.pressEnter();
-  const frame = await frameMatching(ui, f => f.includes('68 / 4k'));
+  const frame = await frameMatching(ui, f => f.includes('128 / 4k'));
   expect(line(frame, /Assistant/)).toMatch(/4\s+Assistant\s+Hello world\s+8\b/);
   expect(fake.chatRequests).toHaveLength(1);
-  expect(events().at(-3)).toEqual({ type: 'RequestSent', hash: expect.any(String), tokens: 60 });
+  expect(events().at(-3)).toEqual({ type: 'RequestSent', hash: expect.any(String), tokens: 120 });
 });
 
 test('Esc again aborts streaming; the partial answer is kept as cut off', async () => {

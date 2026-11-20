@@ -10,7 +10,7 @@ export type Rules = ReturnType<typeof createRules>;
 export function createRules(k: Kernel, approval: Approval, autoApprove: AutoApprove) {
   // The rules for a call: built-in, global and project rules, then the ones allowed for this session; last match wins.
   const rules = () => [...approval.permissions(), ...sessionAllowed(k.events())];
-  const verdictOf = (call: Block): Verdict => decide(call, { rules: rules(), split: approval.split, root: approval.root });
+  const verdictOf = (call: Block): Verdict => decide(call, { rules: rules(), split: approval.split, root: approval.root, readable: approval.readable });
   const denied = () => deniedTools(rules());
 
   // What happens to a call: it runs (allow), waits for the user (ask) or is denied. Auto-approve runs what a rule

@@ -177,6 +177,11 @@
           "description": "Seconds (default 120)",
           "type": "number",
           "exclusiveMinimum": 0
+        },
+        "backgroundWait": {
+          "description": "Seconds a Background Process is waited for before its first output is returned (default 5)",
+          "type": "number",
+          "exclusiveMinimum": 0
         }
       },
       "additionalProperties": false

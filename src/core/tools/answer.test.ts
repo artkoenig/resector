@@ -33,6 +33,11 @@ test('a websearch call becomes a Tool Call of tool websearch, its query the cont
   ]);
 });
 
+test('a bash call in the background becomes a Tool Call marked background', () => {
+  const serve = { name: 'bash', arguments: '{"command":"serve","background":true}' };
+  expect(answerBlocks(result({ calls: [serve] }), 3, ['bash']).events).toEqual([{ type: 'BlockAdded', id: 3, kind: 'Tool Call', origin: 'model', content: 'serve', background: true }]);
+});
+
 test('a cut-off answer runs no call: its calls stay in the text', () => {
   for (const finish of ['length', 'aborted'] as const)
     expect(answerBlocks(result({ content: 'Hm', calls: [bash('ls')], finish }), 3, ['bash'])).toEqual({

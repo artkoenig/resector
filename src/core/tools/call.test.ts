@@ -16,6 +16,13 @@ test('a bash call yields its command, a websearch call its query', () => {
 
 const QUESTION = { questions: [{ question: 'Which?', header: 'Pick', options: [{ label: 'A', description: 'a' }, { label: 'B', description: 'b' }], recommended: 'A' }] };
 
+test('a bash call with background: true runs in the background; it is sent back with it', () => {
+  expect(parseCall({ name: 'bash', arguments: '{"command":"serve","background":true}' }, ['bash'])).toEqual({ tool: 'bash', content: 'serve', background: true });
+  expect(parseCall({ name: 'bash', arguments: '{"command":"ls","background":false}' }, ['bash'])).toEqual({ tool: 'bash', content: 'ls' });
+  expect(parseCall({ name: 'websearch', arguments: '{"query":"bun","background":true}' }, ['websearch'])).toEqual({ tool: 'websearch', content: 'bun' });
+  expect(callArguments('bash', 'serve', true)).toBe('{"command":"serve","background":true}');
+});
+
 test('a question call yields its arguments as content; an invalid one is rejected back to the model', () => {
   const args = JSON.stringify(QUESTION);
   expect(parseCall({ name: 'question', arguments: args }, ['question'])).toEqual({ tool: 'question', content: args });
@@ -48,6 +55,20 @@ test('the result is the output, then how the run ended', () => {
   expect(resultText({ output: '  \n', exit: 1, stopped: null }, 120)).toBe('[exit 1]');
   expect(resultText({ output: 'partial', exit: null, stopped: 'killed' }, 120)).toBe('partial\n[killed]');
   expect(resultText({ output: '', exit: null, stopped: 'timeout' }, 5)).toBe('[timeout after 5 s]');
+});
+
+test('a result whose leftover processes were killed says so before how it ended', () => {
+  expect(resultText({ output: 'a\n', exit: 0, stopped: null, leftover: true }, 120)).toBe('a\n[processes it left running were killed; start long-running ones with background: true]\n[exit 0]');
+  expect(resultText({ output: '', exit: 0, stopped: null, leftover: true }, 120)).toBe('[processes it left running were killed; start long-running ones with background: true]\n[exit 0]');
+});
+
+test('a Background Process still running: its last 20 lines, then its pid, log and how to stop it', () => {
+  const output = Array.from({ length: 25 }, (_, i) => `line ${i + 1}`).join('\n') + '\n';
+  const lines = Array.from({ length: 20 }, (_, i) => `line ${i + 6}`).join('\n');
+  expect(resultText({ output, exit: null, stopped: null, background: { pid: 42, log: '/h/42.log' } }, 120))
+    .toBe(`${lines}\n[running in the background: pid 42 · log /h/42.log · stop: kill -- -42]`);
+  expect(resultText({ output: '', exit: null, stopped: null, background: { pid: 42, log: '/h/42.log' } }, 120))
+    .toBe('[running in the background: pid 42 · log /h/42.log · stop: kill -- -42]');
 });
 
 test('how the run ended is read back from the result; a result without that line has none', () => {
