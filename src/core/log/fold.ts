@@ -1,3 +1,4 @@
+import { isImage } from '../notes/images';
 import type { Kind, Origin, SessionEvent, Stopped, Thinking, Tool, ToolProtocol } from './events';
 
 export type Block = {
@@ -15,8 +16,10 @@ export type Block = {
   source?: string;
   // Note from a Compaction only: the blocks it replaced and the instruction.
   compacted?: { sources: number[]; instruction: string };
-  // Note from a file only: the file; unread: an @path reference not read yet.
+  // Note or Image from a file only: the file; unread: an @path reference not read yet.
   file?: string;
+  // Image only, once read: its copy in the Project Home.
+  image?: string;
   unread?: true;
   // Note from a loaded Skill only: its name.
   skill?: string;
@@ -66,9 +69,16 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
     state.entries.set(e.id, { ...block, ...NEW_ENTRY });
     insert(state, e.call === undefined ? state.order.length : afterCalls(state.order.map(id => entry(state, id)), e.call), e.id);
   },
+  // An image's content is its reference: the model knows where the image comes from.
   FileReferenced: (state, e) => {
-    state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'file', file: e.file, unread: true, content: '', cutOff: false, ...NEW_ENTRY });
+    const image = isImage(e.file);
+    const block = { id: e.id, kind: image ? 'Image' as const : 'Note' as const, origin: 'file' as const, file: e.file, unread: true as const };
+    state.entries.set(e.id, { ...block, content: image ? `[${e.file}]` : '', cutOff: false, ...NEW_ENTRY });
     state.order.push(e.id);
+  },
+  ImageRead: (state, e) => {
+    const { unread: _, ...read } = entry(state, e.id);
+    state.entries.set(e.id, { ...read, image: e.image });
   },
   FileRead: (state, e) => {
     const { unread: _, ...read } = entry(state, e.id);

@@ -2,7 +2,7 @@
 import type { Rule, Split } from '../core/approval/approval';
 import type { Kind, SessionEvent } from '../core/log/events';
 import type { Block } from '../core/log/fold';
-import type { ReadFile } from '../core/notes/files';
+import type { ImageFiles, ReadFile } from '../core/notes/files';
 import type { Policy } from '../core/policy/policy';
 import type { Question } from '../core/tools/question';
 import type { Skill } from '../core/skills/skills';
@@ -60,7 +60,14 @@ export type AutoApprove = { on: () => boolean; set: (on: boolean) => void };
 export type Compactor = { profile: string; backend: Backend };
 // The project on disk: files for @path references and their completion, the environment Note's text now,
 // and $EDITOR on a file of the project (`e` on a reference).
-export type Project = { read: ReadFile; list: () => string[]; environment: () => string; open: (path: string) => Promise<void> };
+// images: image files and their copies in the Project Home; load: a copy as a data URL.
+export type Project = {
+  read: ReadFile;
+  images: ImageFiles & { load: (image: string) => string };
+  list: () => string[];
+  environment: () => string;
+  open: (path: string) => Promise<void>;
+};
 // Tool Approval: the splitter, the project root arguments must stay in, and the config's rules as read
 // when the session opened.
 export type Approval = { split: Split; root: string; permissions: () => Rule[] };

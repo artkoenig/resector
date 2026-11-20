@@ -4,7 +4,7 @@ import * as ops from '../core/context/operations';
 import { fold, type Block } from '../core/log/fold';
 import { readReferences } from '../core/notes/files';
 import type { Policy } from '../core/policy/policy';
-import { renderNative } from '../core/render/native';
+import { inlineImages, renderNative } from '../core/render/native';
 import { openingBlocks } from '../core/session/session';
 import type { ChatResult } from '../core/tools/answer';
 import { errorText, formatTokens, generationRate, speedText } from './text';
@@ -14,11 +14,11 @@ import type { PolicySlice } from './policy';
 import { APPROVE, QUESTION_HINT, type ToolLoop } from './tool-loop';
 import type { Policies, Project, Status, Streaming, View } from './types';
 
-// The last block: a User message, a Tool Result or a Note (e.g. an @path reference) asks for an answer,
+// The last block: a User message, a Tool Result, a Note or an Image (e.g. an @path reference) asks for an answer,
 // not the Notes a new session starts with (environment, project instructions).
 function asksForAnswer(blocks: Block[], opening: Set<number>): boolean {
   const last = blocks.findLast(b => !opening.has(b.id))?.kind;
-  return last === 'User' || last === 'Tool Result' || last === 'Note';
+  return last === 'User' || last === 'Tool Result' || last === 'Note' || last === 'Image';
 }
 
 // mayRequest: whether another request may go (a Headless Run's turns).
@@ -35,7 +35,7 @@ export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy:
 
   // On send: the references are read into snapshots, a missing file aborts; the environment is refreshed.
   function prepare(): boolean {
-    const read = readReferences(context(), deps.project.read);
+    const read = readReferences(context(), deps.project.read, deps.project.images);
     if ('error' in read) {
       setSelected(read.id);
       setStatus({ text: `${read.error} – sending aborted`, tone: 'error' });
@@ -126,7 +126,7 @@ export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy:
         setStreaming({ ...s, tokens: s.tokens + 1, first: s.first ?? Date.now() });
       };
       const sent = Date.now();
-      const result = await backend().chat(payload, { signal: abort.signal, onDelta, onThinking, onToken, maxTokens: k.budgetOf(total).maxTokens });
+      const result = await backend().chat(inlineImages(payload, deps.project.images.load), { signal: abort.signal, onDelta, onThinking, onToken, maxTokens: k.budgetOf(total).maxTokens });
       const speed = speedOf(result, streaming()!, sent);
       setStreaming(null);
       ended = loop.finish(result, did, speed);

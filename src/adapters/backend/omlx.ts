@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { Backend, CacheHit } from '../../gate/ports';
 import { commonPrefix } from '../../core/cache/cache';
 import type { Thinking } from '../../core/log/events';
-import { EMPTY_REQUEST as EMPTY, type AssistantMessage, type Message, type Request } from '../../core/render/native';
+import { EMPTY_REQUEST as EMPTY, withoutImages, type AssistantMessage, type Message, type Request } from '../../core/render/native';
 import { probedModes, RANK, thinkingModes } from '../../core/render/template';
 import { thinkingShares } from '../../core/tokens/thinking';
 import { splitTokens } from '../../core/tokens/split';
@@ -181,7 +181,9 @@ export async function connectOmlx(endpoint: string, { window, model, sampling, t
     thinkingModes: modes,
     exact: true,
 
-    async count(requests) {
+    // Images are not counted (withoutImages): their tokens only the server knows.
+    async count(images) {
+      const requests = images.map(withoutImages);
       const whole = requests.at(-1) ?? EMPTY;
       const prefix = (r: Request) => tokens({ ...r, messages: [...r.messages, TRAILER] });
       const [empty, ...prefixes] = await Promise.all([EMPTY, ...requests].map(prefix));
@@ -194,9 +196,11 @@ export async function connectOmlx(endpoint: string, { window, model, sampling, t
       return { ...split, cached: last.cached };
     },
 
-    async chat(chat, options) {
+    async chat(sent, options) {
+      // The cache prediction runs on the request as counted.
+      const chat = withoutImages(sent);
       const predicted = last?.key === JSON.stringify(chat) && last.cached.exact ? last.cached.tokens : null;
-      const result = await streamChat({ name: 'oMLX', request }, { model, ...sampling, ...thinkingFields(chat.thinking ?? thinking) }, chat, options);
+      const result = await streamChat({ name: 'oMLX', request }, { model, ...sampling, ...thinkingFields(chat.thinking ?? thinking) }, sent, options);
       lastRequest = chat;
       lastExchange = { ...chat, messages: [...chat.messages, answerMessage(result)] };
       return { ...result, predicted };

@@ -1,10 +1,11 @@
 // The project on disk: @path reads, the environment probe, project instructions.
 import { spawnSync } from 'node:child_process';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import type { Environment } from '../../core/notes/environment';
-import type { ReadFile } from '../../core/notes/files';
+import type { ImageFiles, ReadFile } from '../../core/notes/files';
+import { imageType } from '../../core/notes/images';
 import type { Instructions } from '../../core/session/session';
 
 // A path relative to the project root, or absolute; null when it is no readable file.
@@ -16,6 +17,38 @@ export const projectFiles = (root: string): ReadFile => path => {
     return null;
   }
 };
+
+const isFile = (file: string) => {
+  try {
+    return statSync(file).isFile();
+  } catch {
+    return false;
+  }
+};
+
+// Image files of the project (paths as for projectFiles), copied on send into `store` under their content's hash, so a
+// resumed session sends the image as it was; load: a copy as a data URL.
+export function projectImages(root: string, store: string): ImageFiles & { load: (image: string) => string } {
+  const loaded = new Map<string, string>();
+  return {
+    exists: path => isFile(resolve(root, path)),
+    save: path => {
+      const file = resolve(root, path);
+      const type = imageType(file);
+      if (!type || !isFile(file)) return null;
+      const bytes = readFileSync(file);
+      const image = `${new Bun.CryptoHasher('sha256').update(bytes).digest('hex')}${file.slice(file.lastIndexOf('.')).toLowerCase()}`;
+      mkdirSync(store, { recursive: true });
+      if (!existsSync(join(store, image))) writeFileSync(join(store, image), bytes);
+      return image;
+    },
+    load: image => {
+      const url = loaded.get(image) ?? `data:${imageType(image)};base64,${readFileSync(join(store, image)).toString('base64')}`;
+      loaded.set(image, url);
+      return url;
+    },
+  };
+}
 
 // The project's files for @path completion, relative to the root: in a git repository the tracked and
 // untracked ones not ignored, else a walk skipping dot directories and node_modules. At most `limit`.

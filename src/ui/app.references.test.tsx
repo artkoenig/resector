@@ -1,6 +1,6 @@
 // UI tests: @path references, the environment Note and project instructions.
 import { expect, test } from 'bun:test';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { frameMatching } from '../../test/frames';
 import { fake, fixture, line, messages, openedFiles, press, project, start, ui, useHarness, write } from './app.harness';
@@ -52,6 +52,25 @@ test('an @path is completed from the project files: ↑↓ choose, Tab or Enter 
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('1 file reference added'));
   expect(events().at(-1)).toEqual({ type: 'FileReferenced', id: 3, file: 'docs/complete-me.md' });
+});
+
+test('↑↓ scroll past the shown @path suggestions; a path with spaces completes quoted', async () => {
+  for (let i = 0; i < 10; i++) writeFileSync(join(project, `f${i}.md`), 'x\n');
+  writeFileSync(join(project, 'my long screenshot.png'), 'png');
+  await start();
+  ui.mockInput.pressTab();
+  await ui.flush();
+  await ui.mockInput.typeText('@');
+  let frame = await frameMatching(ui, f => f.includes('f0.md'));
+  expect(frame).not.toContain('my long screenshot.png');
+  await press('up');
+  frame = await frameMatching(ui, f => f.includes('my long screenshot.png'));
+  expect(frame).not.toContain('f0.md');
+  ui.mockInput.pressEnter();
+  await frameMatching(ui, f => f.includes('┃ @"my long screenshot.png" '));
+  // The project is shared: these files would be offered in the other tests.
+  for (let i = 0; i < 10; i++) rmSync(join(project, `f${i}.md`));
+  rmSync(join(project, 'my long screenshot.png'));
 });
 
 test('a referenced file missing at send aborts sending', async () => {
@@ -115,4 +134,34 @@ test('a file reference alone is sent with Enter, the file as the last user messa
   ui.mockInput.pressEnter();
   await frameMatching(ui, f => f.includes('answer complete'));
   expect(messages(0).at(-1)).toEqual({ role: 'user', content: '[alone.txt]\ncontent' });
+});
+
+test('@image.png adds an Image row; on send the image goes as a data URL after its reference', async () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+  writeFileSync(join(project, 'shot.png'), png);
+  const { events } = await start();
+  await write('@shot.png');
+  let frame = await frameMatching(ui, f => f.includes('1 file reference added'));
+  expect(line(frame, /@shot/)).toMatch(/3\s+Image\s+@shot\.png\s+.*@ read at send/);
+  fake.reply({ chunks: ['a red square'] });
+  await write('what is this?');
+  frame = await frameMatching(ui, f => f.includes('answer complete'));
+  expect(events().slice(4, 6)).toEqual([
+    { type: 'BlockAdded', id: 4, kind: 'User', origin: 'user', content: 'what is this?' },
+    { type: 'ImageRead', id: 3, image: `${new Bun.CryptoHasher('sha256').update(png).digest('hex')}.png` },
+  ]);
+  expect(messages(0).slice(1)).toEqual([
+    { role: 'user', content: [{ type: 'text', text: '[shot.png]' }, { type: 'image_url', image_url: { url: `data:image/png;base64,${png.toString('base64')}` } }] },
+    { role: 'user', content: 'what is this?' },
+  ]);
+});
+
+test('an @image that is gone at send stops the send', async () => {
+  await start();
+  await write('@gone.png');
+  const frame = await frameMatching(ui, f => f.includes('1 file reference added'));
+  expect(line(frame, /@gone/)).toContain('not found');
+  await write('look');
+  await frameMatching(ui, f => f.includes('sending aborted'));
+  expect(fake.chatRequests).toEqual([]);
 });

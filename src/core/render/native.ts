@@ -4,8 +4,11 @@ import { callArguments } from '../tools/call';
 
 export type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
 export type AssistantMessage = { role: 'assistant'; content: string; reasoning_content?: string; tool_calls?: ToolCall[] };
+// An image goes as a part of a user message; its url is the image's copy until the request is sent (inlineImages).
+export type ContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
 export type Message =
-  | { role: 'system' | 'user'; content: string }
+  | { role: 'system'; content: string }
+  | { role: 'user'; content: string | ContentPart[] }
   | AssistantMessage
   | { role: 'tool'; tool_call_id: string; content: string };
 export type ToolDefinition = { type: 'function'; function: { name: string; description: string; parameters: unknown } };
@@ -44,10 +47,14 @@ function addText({ messages }: Request, _: Map<number, string>, b: Block) {
 
 type Add = (request: Request, ids: Map<number, string>, b: Block) => void;
 const user: Add = (r, _, b) => void r.messages.push({ role: 'user', content: b.content });
+// Its reference as text, then the image once it is read.
+const image: Add = (r, _, b) =>
+  void r.messages.push({ role: 'user', content: b.image ? [{ type: 'text', text: b.content }, { type: 'image_url', image_url: { url: b.image } }] : b.content });
 const ADD: Record<Block['kind'], Add> = {
   System: (r, _, b) => void r.messages.push({ role: 'system', content: b.content }),
   User: user,
   Note: user,
+  Image: image,
   // Sent with every request; the chat template decides whether it reaches the model.
   Thinking: (r, _, b) => void r.messages.push({ role: 'assistant', content: '', reasoning_content: b.content }),
   Assistant: addText,
@@ -72,3 +79,27 @@ export function renderPrefixes(context: Context): Request[] {
 // and its Tool Calls → one assistant message with reasoning_content and tool_calls; each Tool Result → a tool message; a Note is a
 // user-role message.
 export const renderNative = (context: Context): Request => renderPrefixes(context).at(-1) ?? EMPTY_REQUEST;
+
+const mapParts = (request: Request, part: (p: ContentPart) => ContentPart | null): Request => ({
+  ...request,
+  messages: request.messages.map(m =>
+    m.role === 'user' && typeof m.content !== 'string' ? { ...m, content: m.content.map(part).filter(p => p !== null) } : m),
+});
+
+// The request as it is counted: without its images, whose tokens only the server knows (the drift after sending).
+export function withoutImages(request: Request): Request {
+  const stripped = mapParts(request, p => (p.type === 'text' ? p : null));
+  return {
+    ...stripped,
+    messages: stripped.messages.map(m =>
+      m.role === 'user' && typeof m.content !== 'string' ? { ...m, content: m.content.map(p => (p.type === 'text' ? p.text : '')).join('') } : m),
+  };
+}
+
+// Whether the request carries an image.
+export const hasImages = (request: Request): boolean =>
+  request.messages.some(m => m.role === 'user' && typeof m.content !== 'string' && m.content.some(p => p.type === 'image_url'));
+
+// The request as it is sent: each image's copy as a data URL (`load`).
+export const inlineImages = (request: Request, load: (image: string) => string): Request =>
+  mapParts(request, p => (p.type === 'image_url' ? { ...p, image_url: { url: load(p.image_url.url) } } : p));

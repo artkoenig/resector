@@ -59,7 +59,7 @@ test('after /filter the Kinds are suggested in glossary order with on/off; all f
   const suggested = (f: string) => [...f.matchAll(/^ {2}([a-z-]+) +(?:on|off|show all blocks)/gm)].map(m => m[1]);
   await typing('/filter ');
   let frame = await frameMatching(ui, f => f.includes('tool-calls'));
-  expect(suggested(frame)).toEqual(['system', 'user', 'thinking', 'assistant', 'tool-calls', 'note']);
+  expect(suggested(frame)).toEqual(['system', 'user', 'thinking', 'assistant', 'tool-calls', 'note', 'image']);
   await ui.mockInput.typeText('us');
   frame = await frameMatching(ui, f => !f.includes('tool-calls'));
   expect(suggested(frame)).toEqual(['user']);
@@ -70,7 +70,7 @@ test('after /filter the Kinds are suggested in glossary order with on/off; all f
   expect(suggested(frame)).toEqual(['thinking', 'tool-calls']);
   ui.mockInput.pressBackspace();
   frame = await frameMatching(ui, f => f.includes('  all'));
-  expect(suggested(frame)).toEqual(['all', 'system', 'user', 'thinking', 'assistant', 'tool-calls', 'note']);
+  expect(suggested(frame)).toEqual(['all', 'system', 'user', 'thinking', 'assistant', 'tool-calls', 'note', 'image']);
   expect(line(frame, /^ {2}user /)).toMatch(/off · User/);
 });
 
@@ -198,6 +198,6 @@ test('/filter alone shows each filter on or off and the values', async () => {
   await write('/filter note');
   await write('/filter');
   const frame = await frameMatching(ui, f => f.includes('filter: system on'));
-  expect(frame.replace(/\s+/g, ' ')).toContain('note off · /filter all system');
+  expect(frame.replace(/\s+/g, ' ')).toContain('note off, image on · /filter all system');
   expect(frame).not.toContain('✗');
 });

@@ -159,3 +159,17 @@ test('a failing request says so; no answer is added', async () => {
   expect(g.gate.status()?.text).toContain('server overloaded');
   expect(g.events.at(-1)!.type).toBe('RequestSent');
 });
+
+test('an @image goes inlined; its tokens only the server knows, so with an image the last drift counts against the window', async () => {
+  const g = gateWith({ files: { 'shot.png': '' }, window: 1050 });
+  g.reply({ content: 'a cat', usage: { prompt_tokens: 1040, completion_tokens: 2 } });
+  g.gate.submit('@shot.png what is it?');
+  await settled(g.gate);
+  expect(g.sent[0]!.request.messages[1]).toEqual({
+    role: 'user', content: [{ type: 'text', text: '[shot.png]' }, { type: 'image_url', image_url: { url: 'data:copy-shot.png' } }],
+  });
+  g.gate.submit('and the colour?');
+  await settled(g.gate);
+  expect(g.sent).toHaveLength(1);
+  expect(g.gate.status()?.text).toStartWith('over by 11');
+});

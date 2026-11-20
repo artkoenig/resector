@@ -30,20 +30,24 @@ export type Reply = {
 // template: the Jinja source /props reports as chat_template.
 export type FakeOptions = { jinja?: boolean; nCtx?: number; model?: string; slots?: number; template?: string };
 
-export type ChatMessage = { role: string; content: string; reasoning_content?: string; tool_calls?: { function: { name: string; arguments: string } }[] };
+// Like llama.cpp with a vision projector: an image part renders as its media marker.
+export type ChatPart = { type: string; text?: string };
+export const MEDIA = '<__media__>';
+export const chatText = (content: string | ChatPart[]) => (typeof content === 'string' ? content : content.map(p => (p.type === 'text' ? p.text : MEDIA)).join(''));
+export type ChatMessage = { role: string; content: string | ChatPart[]; reasoning_content?: string; tool_calls?: { function: { name: string; arguments: string } }[] };
 export type ChatTool = { type?: string; function: { name: string; [key: string]: unknown } };
 
 // kept: the reasoning is rendered (after the last user message).
 const content = (m: ChatMessage, kept = false) =>
   (kept && m.reasoning_content !== undefined ? `<think>\n${m.reasoning_content}\n</think>\n\n` : '') +
-  m.content +
+  chatText(m.content) +
   (m.tool_calls ?? []).map(c => `\n<tool_call>\n${JSON.stringify({ name: c.function.name, arguments: JSON.parse(c.function.arguments) })}\n</tool_call>`).join('');
 // Tool definitions go at the end of the system message (one is added if there is none).
 function withTools(messages: ChatMessage[], tools: ChatTool[] = []): ChatMessage[] {
   if (!tools.length) return messages;
   const list = `\n\n<tools>\n${tools.map(t => JSON.stringify(t)).join('\n')}\n</tools>`;
   const [first, ...rest] = messages;
-  return first?.role === 'system' ? [{ ...first, content: first.content + list }, ...rest] : [{ role: 'system', content: list.trim() }, ...messages];
+  return first?.role === 'system' ? [{ ...first, content: chatText(first.content) + list }, ...rest] : [{ role: 'system', content: list.trim() }, ...messages];
 }
 
 // The assistant message a reply renders as.

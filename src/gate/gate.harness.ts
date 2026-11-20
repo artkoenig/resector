@@ -123,7 +123,14 @@ export function gateWith(setup: GateSetup = {}) {
   const gate = createRoot(() => createGate({
     backend, runner, searcher, events, log: { append: e => void logged.push(e) }, editor, clipboard: async () => {},
     approval: { split, root: '/project', permissions: () => permissionRules(ASK_ALL(global), project) },
-    project: { read: path => files[path] ?? null, list: () => Object.keys(files), environment: () => '', open: async () => {} },
+    project: {
+      read: path => files[path] ?? null,
+      // An image's copy is named after its path; sent as its name behind a data URL prefix.
+      images: { exists: path => path in files, save: path => (path in files ? `copy-${path}` : null), load: image => `data:${image}` },
+      list: () => Object.keys(files),
+      environment: () => '',
+      open: async () => {},
+    },
     instruction: () => 'keep the gist',
     compactor: async () => compactor ?? null,
     policies: { all: policies, active, set: setActive },
