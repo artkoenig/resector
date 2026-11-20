@@ -221,3 +221,11 @@ test('an allowed call never names a path outside the project', () => {
     if (escapes) expect(verdict(command).action).not.toBe('allow');
   });
 });
+
+test('an image inside the project is allowed whatever the rules; outside it asks, and no rule allows it', () => {
+  const input = { rules: [rule('*', 'deny')], split: words, root: ROOT };
+  expect(verdictOf({ tool: 'image', content: 'shots/a.png' }, input)).toEqual({ action: 'allow', checks: [] });
+  expect(verdictOf({ tool: 'image', content: '/tmp/a.png' }, input)).toEqual({
+    action: 'ask', checks: [{ text: '/tmp/a.png', action: 'ask', why: 'argument outside project: /tmp/a.png', unallowable: true }],
+  });
+});

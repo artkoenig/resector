@@ -271,3 +271,10 @@ test('skills loaded by a call follow its answer’s calls and results, in load o
   // At the end of the Context: the notes still keep their order.
   expect(ids(session(1, call(3, 'a'), result(4, 3), skillLoaded(5, 'x', 3), skillLoaded(6, 'y', 3)))).toEqual([1, 2, 3, 4, 5, 6]);
 });
+
+test('an image an `image` call attached follows its answer’s calls and results and the skills loaded before, unread', () => {
+  const attached: SessionEvent = { type: 'FileReferenced', id: 7, call: 4, file: 'shot.png' };
+  const events = session(1, call(3, 'a'), call(4, 'b'), result(5, 3), skillLoaded(6, 'x', 3), attached, result(8, 4));
+  expect(ids(events)).toEqual([1, 2, 3, 4, 5, 8, 6, 7]);
+  expect(block(events, 7)).toMatchObject({ kind: 'Image', origin: 'tool', file: 'shot.png', content: '[shot.png]', unread: true });
+});

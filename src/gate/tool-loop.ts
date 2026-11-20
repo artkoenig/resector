@@ -4,6 +4,8 @@ import { quoted, sessionRules } from '../core/approval/approval';
 import type { ChatResult } from '../core/tools/answer';
 import * as ops from '../core/context/operations';
 import type { Block } from '../core/log/fold';
+import { imageError, type ImageFiles } from '../core/notes/files';
+import { IMAGE_EXTENSIONS, isImage } from '../core/notes/images';
 import { answerBlocks } from '../core/tools/answer';
 import type { Runner, Terminal } from './ports';
 import { answerText, parseQuestions, type Answer } from '../core/tools/question';
@@ -32,7 +34,7 @@ export type Driver = { ask: (call: Block) => void; stopped: () => boolean };
 // How a call the rules ask for is decided: the terminal's choice, or no user to ask.
 export type Choice = Awaited<ReturnType<Terminal['approve']>> | 'unattended';
 
-export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice, tools: { runner: Runner; searcher: Runner; skills: SkillsSlice; send: () => void }) {
+export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice, tools: { runner: Runner; searcher: Runner; skills: SkillsSlice; images: ImageFiles; send: () => void }) {
   const { context, nextId, append, apply, setStatus, running, setRunning } = k;
   const { follow } = sel;
 
@@ -128,6 +130,7 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
 
   // Runs the call with its tool's runner; its output streams into a live Tool Result row, then the next call is decided.
   async function run(call: Block, notes: string[]) {
+    if (call.tool === 'image') return attach(call, notes);
     if (call.tool === 'skill') {
       // First: its Notes take ids before the Tool Result.
       const result = tools.skills.run(call);
@@ -155,6 +158,15 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
       follow(call.id);
       setStatus({ text: `${call.tool ?? 'bash'} failed: ${errorText(e)}`, tone: 'error' });
     }
+  }
+
+  // An `image` call: its Tool Result, then the image as an @path reference adds it, placed after the answer's results.
+  function attach(call: Block, notes: string[]) {
+    const file = call.content;
+    const error = isImage(file) ? imageError(file, tools.images) : `not an image: ${file} (${IMAGE_EXTENSIONS.join(', ')})`;
+    append(ops.toolResult(call, nextId(), { output: error ?? `attached ${file}`, exit: error ? 1 : 0, stopped: null }, 0));
+    if (!error) append({ type: 'FileReferenced', id: nextId(), call: call.id, file });
+    goOn(notes);
   }
 
   // The Question the dock asks now: the next pending call, while nothing streams or runs.

@@ -3,8 +3,8 @@ import type { Stopped, Tool } from '../log/events';
 import { TOOL_NAMES } from './catalog';
 import { parseQuestions } from './question';
 
-// The one argument of bash and websearch: a Tool Call's content. A question's content is all its arguments.
-const ARGUMENT: Record<Exclude<Tool, 'question'>, string> = { bash: 'command', websearch: 'query', skill: 'name' };
+// The one argument of the other tools: a Tool Call's content. A question's content is all its arguments.
+const ARGUMENT: Record<Exclude<Tool, 'question'>, string> = { bash: 'command', websearch: 'query', skill: 'name', image: 'path' };
 
 // A run's output; exit: null when the run was stopped.
 export type RunResult = { output: string; exit: number | null; stopped: Stopped | null };

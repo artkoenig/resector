@@ -1,4 +1,4 @@
-// The tool catalog: bash, websearch, question and skill, their definitions, and the Tools Block content offering them.
+// The tool catalog: bash, websearch, question, skill and image, their definitions, and the Tools Block content offering them.
 import { QUESTION_DEFINITION } from './question';
 
 type ToolDefinition = { name: string; description: string; parameters: object };
@@ -23,13 +23,21 @@ const CATALOG: ToolDefinition[] = [
       'Its dependencies load with it.',
     parameters: { type: 'object', properties: { name: { type: 'string', description: 'the name of the skill to load' } }, required: ['name'] },
   },
+  {
+    name: 'image',
+    description:
+      'Look at an image file (png, jpg, jpeg, gif, webp), e.g. a screenshot you took. The image is attached after the ' +
+      'results of your tool calls.',
+    parameters: { type: 'object', properties: { path: { type: 'string', description: 'the image file, relative to the project root' } }, required: ['path'] },
+  },
 ];
 export const TOOL_NAMES = CATALOG.map(t => t.name);
 
 // Tools Block content, protocol-neutral: name, description, JSON schema of the arguments.
 const toolsContent = (tools: ToolDefinition[]) => JSON.stringify(tools, null, 2);
-// A new session's Tools Block: bash and question; websearch is switched on with /tools (it needs ddgr).
-export const TOOLS = toolsContent(CATALOG.filter(t => t.name !== 'websearch'));
+// A new session's Tools Block: bash, question and skill; websearch (it needs ddgr) and image (it needs a vision model)
+// are switched on with /tools.
+export const TOOLS = toolsContent(CATALOG.filter(t => t.name !== 'websearch' && t.name !== 'image'));
 
 // The names of the tools in Tools Block content.
 export const toolsIn = (tools: string): string[] => (JSON.parse(tools) as { name: string }[]).map(t => t.name);

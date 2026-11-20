@@ -3,6 +3,8 @@
 // The image types a vision model takes, by file extension.
 const IMAGE_TYPES: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
 
+export const IMAGE_EXTENSIONS = Object.keys(IMAGE_TYPES);
+
 // The MIME type of an image file (or its copy, or an @path reference `path[:a[-b]]` to it), null for any other file.
 export const imageType = (path: string): string | null => {
   const extension = /\.([^.:]+)(?::\d+(?:-\d+)?)?$/.exec(path)?.[1];

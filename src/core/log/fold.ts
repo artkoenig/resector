@@ -61,6 +61,14 @@ export const callText = ({ tool, content }: Pick<Block, 'tool' | 'content'>): st
 const NEW_ENTRY = { revision: 1, removed: false };
 
 const pairIn = (state: State, id: number) => pairOf([...state.entries.values()], id);
+// Where a block a call adds goes (a skill's Notes, an attached image): after the answer's calls and results and
+// the blocks its calls added before, so they keep their order and none splits the calls and results.
+function afterAnswer(state: State, call: number): number {
+  let at = afterCalls(state.order.map(id => entry(state, id)), call);
+  const added = (b: Entry) => b.skill !== undefined || (b.kind === 'Image' && b.origin === 'tool');
+  while (at < state.order.length && added(entry(state, state.order[at]!))) at++;
+  return at;
+}
 
 const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   BlockAdded: (state, e) => {
@@ -69,12 +77,15 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
     state.entries.set(e.id, { ...block, ...NEW_ENTRY });
     insert(state, e.call === undefined ? state.order.length : afterCalls(state.order.map(id => entry(state, id)), e.call), e.id);
   },
-  // An image's content is its reference: the model knows where the image comes from.
+  // An image's content is its reference: the model knows where the image comes from. One an `image` call attached
+  // (origin tool) follows the calls and results of its answer, as a skill's Notes do.
   FileReferenced: (state, e) => {
     const image = isImage(e.file);
-    const block = { id: e.id, kind: image ? 'Image' as const : 'Note' as const, origin: 'file' as const, file: e.file, unread: true as const };
+    const origin = e.call === undefined ? 'file' as const : 'tool' as const;
+    const block = { id: e.id, kind: image ? 'Image' as const : 'Note' as const, origin, file: e.file, unread: true as const };
     state.entries.set(e.id, { ...block, content: image ? `[${e.file}]` : '', cutOff: false, ...NEW_ENTRY });
-    state.order.push(e.id);
+    if (e.call === undefined) return void state.order.push(e.id);
+    insert(state, afterAnswer(state, e.call), e.id);
   },
   ImageRead: (state, e) => {
     const { unread: _, ...read } = entry(state, e.id);
@@ -120,10 +131,7 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   SkillLoaded: (state, e) => {
     state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'skill', skill: e.name, file: e.file, content: e.content, cutOff: false, ...NEW_ENTRY });
     if (e.call === undefined) return void state.order.push(e.id);
-    // Notes of one call keep their order, and none splits the answer's calls and results.
-    let at = afterCalls(state.order.map(id => entry(state, id)), e.call);
-    while (at < state.order.length && entry(state, state.order[at]!).skill !== undefined) at++;
-    insert(state, at, e.id);
+    insert(state, afterAnswer(state, e.call), e.id);
   },
 };
 

@@ -62,8 +62,8 @@ test('/tools switches a tool off and on again; an unknown one is refused', () =>
   const off = toggleTool(TOOLS, 'bash') as { content: string };
   expect(toolNames(off.content)).toBe('question, skill');
   expect(toggleTool(off.content, 'bash')).toEqual({ content: TOOLS });
-  expect(toggleTool(TOOLS, 'python')).toEqual({ error: 'unknown tool python – bash websearch question skill' });
-  expect(toggleTool(TOOLS, 'toString')).toEqual({ error: 'unknown tool toString – bash websearch question skill' });
+  expect(toggleTool(TOOLS, 'python')).toEqual({ error: 'unknown tool python – bash websearch question skill image' });
+  expect(toggleTool(TOOLS, 'toString')).toEqual({ error: 'unknown tool toString – bash websearch question skill image' });
 });
 
 test('/tools websearch switches websearch on after bash, with one query parameter; off again, bash stays', () => {

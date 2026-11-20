@@ -77,9 +77,15 @@ function questionVerdict(rules: Rule[]): Verdict {
   if (rule?.action !== 'deny') return ALLOWED;
   return { action: 'deny', checks: [{ text: 'question', action: 'deny', why: `${rule.source} rule "question"`, unallowable: false }] };
 }
+// image only reads a file: inside the project allowed, outside it asks, whatever the rules.
+function imageVerdict(path: string, root: string): Verdict {
+  const problem = argumentProblem(path, root);
+  return problem ? { action: 'ask', checks: [{ text: path, action: 'ask', why: problem, unallowable: true }] } : ALLOWED;
+}
 // websearch only reads the web: always allowed, no rule decides it.
 export function verdictOf(call: Pick<Block, 'tool' | 'content'>, input: ApprovalInput): Verdict {
   if (call.tool === 'websearch' || call.tool === 'skill') return ALLOWED;
+  if (call.tool === 'image') return imageVerdict(call.content, input.root);
   return call.tool === 'question' ? questionVerdict(input.rules) : evaluate(call.content, input);
 }
 // The tools rules switch off: kept out of the Tools Block, calls denied.
