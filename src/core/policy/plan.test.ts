@@ -19,6 +19,19 @@ test('System, Tools Block, pending Tool Calls and blocks not sent are untouchabl
   expect(planOf({ op: 'move', id: 99, after: 3 })).toEqual({ error: 'no block 99 in the Context' });
 });
 
+test('a Tool Pair whose Background Process runs is untouchable on both blocks until it ended; a compaction including it is refused whole', () => {
+  const RUNS = { error: 'Tool Call runs a Background Process – k stop first' };
+  const running = session({ type: 'BackgroundStarted', call: 5, pid: 42, log: '/h/5.log' });
+  for (const id of [5, 6]) {
+    expect(planOf({ op: 'remove', id }, running)).toEqual(RUNS);
+    expect(planOf({ op: 'edit', id, content: 'x' }, running)).toEqual(RUNS);
+    expect(planOf({ op: 'move', id, after: 1 }, running)).toEqual(RUNS);
+  }
+  expect(planOf({ op: 'compact', sources: [4, 6], instruction: 'sum' }, running)).toEqual(RUNS);
+  const ended = [...running, { type: 'BackgroundExited' as const, call: 5, exit: 0 }];
+  expect(planOf({ op: 'remove', id: 6 }, ended)).toMatchObject({ events: [{ type: 'Remove', id: 6 }] });
+});
+
 test('edit: the content as is becomes the next Revision', () => {
   expect(planOf({ op: 'edit', id: 7, content: 'go on\n' })).toEqual({ events: [{ type: 'Edit', id: 7, revision: 2, content: 'go on\n' }], change: { noun: 'block', verb: 'edited' } });
   expect(planOf({ op: 'edit', id: 6, content: 'a' })).toMatchObject({ events: [{ type: 'Edit', id: 6, content: 'a' }] });

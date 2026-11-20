@@ -10,6 +10,10 @@ export type Block = {
   // Tool Call only: its tool, absent for bash; background: run as a Background Process.
   tool?: Tool;
   background?: true;
+  // Tool Call only, once started: its Background Process (process group, log) and whether it still runs.
+  process?: { pid: number; log: string; running: boolean };
+  // Both blocks of a Tool Pair whose Background Process runs: no Context operation touches them.
+  running?: true;
   // Tool Result only: its Tool Call, and how the run stopped early.
   call?: number;
   stopped?: Stopped;
@@ -89,6 +93,14 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
     if (e.call === undefined) return void state.order.push(e.id);
     insert(state, afterAnswer(state, e.call), e.id);
   },
+  BackgroundStarted: (state, e) => {
+    const call = state.entries.get(e.call);
+    if (call) call.process = { pid: e.pid, log: e.log, running: true };
+  },
+  BackgroundExited: (state, e) => {
+    const call = state.entries.get(e.call);
+    if (call?.process) call.process = { ...call.process, running: false };
+  },
   ImageRead: (state, e) => {
     const { unread: _, ...read } = entry(state, e.id);
     state.entries.set(e.id, { ...read, image: e.image });
@@ -157,5 +169,7 @@ export function fold(events: SessionEvent[], skip = undone(events)): Context {
     .filter(e => !e.removed)
     .map(({ removed, ...block }): Block => block)
     .map(block => (block.kind === 'Tool Call' ? { ...block, pending: !answered.has(block.id) } : block));
-  return { profile: state.profile, protocol: first.protocol, thinking: state.thinking, blocks, nextId: Math.max(0, ...state.entries.keys()) + 1 };
+  const runs = new Set(blocks.flatMap(b => (b.process?.running ? [b.id] : [])));
+  const marked = runs.size ? blocks.map(b => (runs.has(b.id) || runs.has(b.call!) ? { ...b, running: true as const } : b)) : blocks;
+  return { profile: state.profile, protocol: first.protocol, thinking: state.thinking, blocks: marked, nextId: Math.max(0, ...state.entries.keys()) + 1 };
 }

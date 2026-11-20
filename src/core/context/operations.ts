@@ -16,8 +16,10 @@ const NAME = { System: 'System prompt', Tools: 'Tools Block' } as Record<string,
 const fixed = (block: Block) => ({ error: `${NAME[block.kind]} is fixed` });
 // A Tool Call awaiting approval keeps its place until it has a result.
 const AWAITS = { error: 'Tool Call awaits approval – y run once · a allow for session · n reject · e edit' };
+// A Tool Pair whose Background Process runs stays as it is until the process ended (ADR 0001 rules alike for policies).
+const RUNS = { error: 'Tool Call runs a Background Process – k stop first' };
 // Why an operation may not touch the block, if not.
-export const untouchable = (block: Block) => (isFixed(block) ? fixed(block) : block.pending ? AWAITS : null);
+export const untouchable = (block: Block) => (isFixed(block) ? fixed(block) : block.pending ? AWAITS : block.running ? RUNS : null);
 const UNDOABLE = new Set<SessionEvent['type']>(['Move', 'Remove', 'Rename', 'Edit', 'PairToNote', 'Compact', 'NoteAdded']);
 
 const isTool = (block: Block | undefined) => block?.kind === 'Tool Call' || block?.kind === 'Tool Result';
@@ -64,6 +66,7 @@ export function addNote({ blocks }: Context, id: number, after: number, content:
 export function remove(block: Block): Outcome {
   if (isFixed(block)) return { error: `${NAME[block.kind]} cannot be removed` };
   if (block.pending) return AWAITS;
+  if (block.running) return RUNS;
   return { event: { type: 'Remove', id: block.id } };
 }
 
@@ -82,6 +85,7 @@ const FIRST_REVISION = 1;
 
 // Why the block cannot be edited, or null: all kinds but the Tools Block, executed Tool Calls and Questions.
 export function editable(block: Block): string | null {
+  if (block.running) return RUNS.error;
   if (block.kind === 'Tools') return 'Tools Block is not editable';
   if (block.tool === 'question' && block.pending) return 'a Question is answered in the dock, not edited';
   return block.kind === 'Tool Call' && !block.pending ? 'executed Tool Calls are immutable' : null;

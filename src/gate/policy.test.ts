@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test';
 import { BUILT_IN } from '../core/policy/built-in';
 import { ERROR, HANDOVER, INTRO } from '../core/policy/summary-reset';
 import type { Policy, PolicyOperation } from '../core/policy/policy';
-import { bash, gateWith, ofType, scriptedBackend, settled, until } from './gate.harness';
+import { background, bash, gateWith, ofType, scriptedBackend, settled, until } from './gate.harness';
 
 // A policy returning `passes` in turn, then nothing; `seen`: the block ids of each Context it was called with.
 function scripted(name: string, passes: PolicyOperation[][], seen: number[][] = []): Policy {
@@ -203,4 +203,14 @@ test('Esc while the answer streams, or a policy asking to send on without a chan
   await settled(g.gate);
   expect(g.sent).toHaveLength(2);
   expect(g.gate.status()?.text).toBe('answer complete');
+});
+
+test('a policy removing a Tool Pair whose Background Process runs stops the Gate with the reason: nothing is sent', async () => {
+  const remover: Policy = { name: 'tidy', run: ({ blocks }) => (blocks.some(b => b.id === 5) ? [{ op: 'remove', id: 5 }] : []) };
+  const g = policed({ global: { '*': 'allow' }, policies: [remover] });
+  g.reply({ calls: [background('serve')] }, { content: 'up' });
+  g.gate.submit('go');
+  await settled(g.gate);
+  expect(g.gate.status()?.text).toBe('policy tidy: remove 5: Tool Call runs a Background Process – k stop first – not sent');
+  expect(g.sent).toHaveLength(1);
 });
