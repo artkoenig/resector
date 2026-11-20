@@ -45,7 +45,7 @@ export type Opened = { id: string; options: Omit<GateOptions, ViewOptions>; rele
 export type Workspace = Awaited<ReturnType<typeof openWorkspace>>;
 
 const DEFAULT_TIMEOUT = 120;
-// A search runs into this timeout (seconds).
+// A websearch runs into this timeout (seconds).
 const SEARCH_TIMEOUT = 30;
 
 // which: a session to resume, else a new session (with start); started: at start.
@@ -178,7 +178,7 @@ export async function openWorkspace(options: WorkspaceOptions) {
       return { dir: checkout, checkout, warning: `worktree: ${errorText(e)} – runs in ${checkout}` };
     }
   }
-  // What depends on where the session runs: bash and search, the arguments' root, the project, git.
+  // What depends on where the session runs: bash and websearch, the arguments' root, the project, git.
   function runningIn(loaded: Loaded, dir: string, checkout: string, id: string): Pick<GateOptions, Running> {
     const git: Git = {
       branches: () => listBranches(dir),

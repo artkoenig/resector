@@ -68,7 +68,7 @@ export async function start({ tools = BASH_TOOLS, template, window = 4096, exact
   const backend = { ...(await connectLlamaCpp(fake.url)), exact };
   const log = createSessionLog(mkdtempSync(join(tmpdir(), 'resector-')), 'ses_test');
   const runner = createRunner({ cwd: project, timeout });
-  // search without ddgr: the query is echoed back as its result.
+  // websearch without ddgr: the query is echoed back as its result.
   const searcher = { timeout: 30, run: async (query: string) => ({ output: `results for ${query}\n`, exit: 0, stopped: null }) };
   const first = newSession('default', '', notes).length;
   const initial = [

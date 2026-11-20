@@ -49,9 +49,9 @@ test('-p runs a prompt without the TUI; with -c or a stray argument it is a usag
 });
 
 test('the flags of -p are passed on; none without -p, a bad value is a usage error', () => {
-  const args = ['-m', 'big', '--policy', 'off', '--thinking', 'high', '--tools', 'bash,search', '--show', 'tools,notes', '--max-turns', '7', '-w', '--auto-approve'];
+  const args = ['-m', 'big', '--policy', 'off', '--thinking', 'high', '--tools', 'bash,websearch', '--show', 'tools,notes', '--max-turns', '7', '-w', '--auto-approve'];
   expect(main(['-p', 'hi', ...args])).toEqual({
-    run: { prompt: 'hi', flags: { profile: 'big', policy: 'off', thinking: 'high', tools: ['bash', 'search'], show: ['tools', 'notes'], maxTurns: 7, worktree: true, autoApprove: true } },
+    run: { prompt: 'hi', flags: { profile: 'big', policy: 'off', thinking: 'high', tools: ['bash', 'websearch'], show: ['tools', 'notes'], maxTurns: 7, worktree: true, autoApprove: true } },
   });
   expect(main(['-p', 'hi', '--tools', 'none', '--show', 'all', '--model', 'big', '--worktree'])).toEqual({
     run: { prompt: 'hi', flags: { tools: [], show: ['thinking', 'tools', 'notes', 'policy'], profile: 'big', worktree: true } },

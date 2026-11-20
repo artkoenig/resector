@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { readConfig } from './config';
 import { headlessSettings } from './headless';
 
-const known = { policies: ['summary-reset', 'mine'], tools: ['bash', 'question', 'search'], repository: true };
+const known = { policies: ['summary-reset', 'mine'], tools: ['bash', 'question', 'websearch'], repository: true };
 const config = (headless: object) =>
   readConfig([{ source: 'global', text: JSON.stringify({ profiles: { a: { backend: 'llamacpp' }, b: { backend: 'ollama' } }, defaultProfile: 'a', headless }) }]).config;
 
@@ -15,7 +15,7 @@ test('flags override the headless section, which overrides nothing else', () => 
 test('an unknown profile, policy or tool is a usage error naming the valid ones', () => {
   expect(headlessSettings(config({ profile: 'x' }), {}, known)).toEqual({ usage: 'unknown profile x (profiles: a, b)' });
   expect(headlessSettings(config({}), { policy: 'nope' }, known)).toEqual({ usage: 'unknown policy nope (policies: summary-reset, mine, off)' });
-  expect(headlessSettings(config({}), { tools: ['bash', 'web', 'grep'] }, known)).toEqual({ usage: 'unknown tools web, grep (tools: bash, question, search)' });
+  expect(headlessSettings(config({}), { tools: ['bash', 'web', 'grep'] }, known)).toEqual({ usage: 'unknown tools web, grep (tools: bash, question, websearch)' });
 });
 
 test('a worktree outside a git repository is a usage error, from a flag or the headless section', () => {

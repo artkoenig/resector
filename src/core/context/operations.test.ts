@@ -92,9 +92,9 @@ test('/tools switches a tool in the Tools Block as its next Revision; unknown to
   const on = { type: 'BlockAdded', id: 5, kind: 'Tools', origin: 'config', content: TOOLS } as const;
   const events = session(on);
   const [context] = at(events, 5);
-  expect(toggleTool(events, context, 'search', [])).toEqual({ event: { type: 'Edit', id: 5, revision: 2, content: expect.stringContaining('"search"') } });
-  expect(toggleTool(events, context, 'python', [])).toEqual({ error: 'unknown tool python – bash search question skill' });
-  expect(toggleTool(session(), fold(session()), 'search', [])).toEqual({ error: 'no Tools Block' });
+  expect(toggleTool(events, context, 'websearch', [])).toEqual({ event: { type: 'Edit', id: 5, revision: 2, content: expect.stringContaining('"websearch"') } });
+  expect(toggleTool(events, context, 'python', [])).toEqual({ error: 'unknown tool python – bash websearch question skill' });
+  expect(toggleTool(session(), fold(session()), 'websearch', [])).toEqual({ error: 'no Tools Block' });
 });
 
 // The new session's Tools Block without one tool.
@@ -112,7 +112,7 @@ test('the harness takes denied tools out of the Tools Block, not undoable; nothi
   const events = session({ type: 'BlockAdded', id: 5, kind: 'Tools', origin: 'config', content: TOOLS });
   expect(withoutDenied(events, fold(events), ['question'])).toEqual({ type: 'Edit', id: 5, revision: 2, content: toolsWithout('question'), harness: true });
   expect(withoutDenied(events, fold(events), [])).toBeNull();
-  expect(withoutDenied(events, fold(events), ['search'])).toBeNull();
+  expect(withoutDenied(events, fold(events), ['websearch'])).toBeNull();
   expect(withoutDenied(session(), fold(session()), ['question'])).toBeNull();
 });
 

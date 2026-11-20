@@ -9,10 +9,10 @@ const rule = (pattern: string, action: Rule['action'], source: Rule['source'] = 
 const verdict = (command: string, rules: Rule[] = BUILTIN_ALLOW, split: Split = words) => evaluate(command, { rules, split, root: ROOT });
 const only = (command: Command) => () => [command];
 
-test('search and skill are always allowed, whatever the rules; a bash call is decided by them', () => {
+test('websearch and skill are always allowed, whatever the rules; a bash call is decided by them', () => {
   const input = { rules: [rule('*', 'deny')], split: words, root: ROOT };
-  expect(verdictOf({ tool: 'search', content: 'rm -rf /' }, input)).toEqual({ action: 'allow', checks: [] });
-  // Loading a skill only reads it, like search.
+  expect(verdictOf({ tool: 'websearch', content: 'rm -rf /' }, input)).toEqual({ action: 'allow', checks: [] });
+  // Loading a skill only reads it, like websearch.
   expect(verdictOf({ tool: 'skill', content: 'rm -rf /' }, input)).toEqual({ action: 'allow', checks: [] });
   expect(verdictOf({ content: 'ls' }, input).action).toBe('deny');
   expect(verdictOf({ tool: 'bash', content: 'ls' }, input).action).toBe('deny');

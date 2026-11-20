@@ -1,7 +1,7 @@
 // The built-in Context Policy summary-reset (ADR 0001): an intro at the front tells the model what is coming. Once the
 // work since the last reset takes half the room the kept blocks leave, the results of the newest Tool Calls are replaced by an error
 // asking the model for a summary between <summary> tags. Once the model wrote one, it alone stays, as a Note led by a handover: everything before it
-// goes but the System, Tools Block, the intro and the project's Notes; the Context is sent on at once. The request
+// goes but the System, Tools Block, the intro, the project's Notes and the Skills; the Context is sent on at once. The request
 // asked for the summary goes without thinking: the model would draft the summary there first, twice the room.
 // A policy runs before a request, after the calls ran: the error says the call ran, its output is withheld.
 import instruction from './summary-reset-instruction.md' with { type: 'text' };
@@ -71,6 +71,7 @@ function errored({ window, used, blocks }: PolicyContext): PolicyOperation[] {
 
 const isIntro = (b: PolicyBlock) => b.origin === 'policy' && b.content === INTRO;
 const isHandover = (b: PolicyBlock) => b.kind === 'Note' && b.origin === 'policy' && b.content.startsWith(HANDOVER);
-// The System, Tools Block, the intro, the project's Notes and a Tool Call awaiting approval stay.
-const removable = (b: PolicyBlock) =>
-  b.kind !== 'System' && b.kind !== 'Tools' && !b.pending && b.origin !== 'environment' && b.origin !== 'file' && !isIntro(b);
+// The System, Tools Block, the intro, the project's Notes, the Skills note and loaded Skills (the summary does not repeat
+// them) and a Tool Call awaiting approval stay.
+const KEPT = new Set<PolicyBlock['origin']>(['environment', 'file', 'skill']);
+const removable = (b: PolicyBlock) => b.kind !== 'System' && b.kind !== 'Tools' && !b.pending && !KEPT.has(b.origin) && !isIntro(b);
