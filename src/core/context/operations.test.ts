@@ -38,6 +38,7 @@ test('the user may not remove, edit, move or note either block of a Tool Pair wh
     expect(edit(events, block, 'x')).toEqual(RUNS);
   }
   expect(removeAll([at(events, 2)[1], at(events, 6)[1]])).toEqual(RUNS);
+  expect(untouchable(at(events, 2)[1])).toBeNull();
   const ended = [...events, { type: 'BackgroundExited' as const, call: 5, signal: 'SIGTERM' }];
   expect(untouchable(at(ended, 6)[1])).toBeNull();
   expect(at(ended, 5)[1].process).toEqual({ pid: 42, log: '/h/5.log', running: false });

@@ -62,7 +62,7 @@ function errored({ window, used, blocks }: PolicyContext): PolicyOperation[] {
   const since = blocks.findLastIndex(b => b.kind !== 'Tool Call' && b.kind !== 'Tool Result');
   // A Question's answers are the user's, not a tool's.
   // A Tool Result whose Background Process runs is untouchable: it stays as it is.
-  const runs = (b: PolicyBlock) => blocks.find(c => c.id === b.pair)?.background?.running === true;
+  const runs = (b: PolicyBlock) => blocks.find(c => c.id === b.pair)!.background?.running === true;
   const results = blocks.slice(since + 1).filter(b => b.kind === 'Tool Result' && b.origin !== 'user' && !runs(b));
   if (!results.length) return [];
   return [

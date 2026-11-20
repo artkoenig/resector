@@ -93,14 +93,9 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
     if (e.call === undefined) return void state.order.push(e.id);
     insert(state, afterAnswer(state, e.call), e.id);
   },
-  BackgroundStarted: (state, e) => {
-    const call = state.entries.get(e.call);
-    if (call) call.process = { pid: e.pid, log: e.log, running: true };
-  },
-  BackgroundExited: (state, e) => {
-    const call = state.entries.get(e.call);
-    if (call?.process) call.process = { ...call.process, running: false };
-  },
+  BackgroundStarted: (state, e) => void (entry(state, e.call).process = { pid: e.pid, log: e.log, running: true }),
+  // Logged only for a started process.
+  BackgroundExited: (state, e) => void (entry(state, e.call).process!.running = false),
   ImageRead: (state, e) => {
     const { unread: _, ...read } = entry(state, e.id);
     state.entries.set(e.id, { ...read, image: e.image });
@@ -169,7 +164,7 @@ export function fold(events: SessionEvent[], skip = undone(events)): Context {
     .filter(e => !e.removed)
     .map(({ removed, ...block }): Block => block)
     .map(block => (block.kind === 'Tool Call' ? { ...block, pending: !answered.has(block.id) } : block));
-  const runs = new Set(blocks.flatMap(b => (b.process?.running ? [b.id] : [])));
-  const marked = runs.size ? blocks.map(b => (runs.has(b.id) || runs.has(b.call!) ? { ...b, running: true as const } : b)) : blocks;
+  const runs = new Set(blocks.filter(b => b.process?.running).map(b => b.id));
+  const marked = blocks.map(b => (runs.has(b.id) || runs.has(b.call!) ? { ...b, running: true as const } : b));
   return { profile: state.profile, protocol: first.protocol, thinking: state.thinking, blocks: marked, nextId: Math.max(0, ...state.entries.keys()) + 1 };
 }
