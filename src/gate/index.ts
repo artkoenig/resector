@@ -48,7 +48,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     '/sessions': openSessions, '/rename': settings.renameSession, '/tools': settings.toggleTool, '/filter': sel.filterBy, '/policy': policy.switchPolicy,
     '/auto': settings.switchAutoApprove, '/thinking': settings.setThinking, '/git:branch': repo.switchBranch, '/git:worktree': repo.switchWorktree,
     '/skill': skills.loadSkill,
-  }, { inRepo: !!git, send: () => void sender.api.send() });
+  }, { inRepo: !!git, send: () => void sender.api.send(), root: approval.root, exists: project.images.exists });
 
   rules.dropDenied();
   // Calls still pending when the Gate opens (resume) are decided like fresh ones.

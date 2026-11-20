@@ -35,7 +35,7 @@ Context Block of free text without API role semantics, keeping a reference to it
 _Avoid_: mention, attachment
 
 **Image**:
-Context Block of an image file (png, jpg, gif, webp), from a File Reference or attached by the model's `image` tool (after the results of that answer's Tool Calls): a user-role message of its reference and the image. On send the image is copied into the Project Home and sent from that copy from then on. Its tokens only the server knows: with an Image in the Context the count is inexact by the drift last measured.
+Context Block of an image file (png, jpg, gif, webp), from a File Reference or attached by the model's `image` tool (after the results of that answer's Tool Calls): a user-role message of its reference and the image. On send the image is copied into the Project Home and sent from that copy from then on. Its tokens only the server knows: with an Image in the Context the count is inexact by the drift last measured. An image file dropped onto the prompt (its path pasted by the terminal: shell-escaped, quoted or a file URL) goes in as its File Reference: relative inside the Project, absolute outside.
 _Avoid_: picture, attachment
 
 **Environment Note**:
