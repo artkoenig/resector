@@ -80,25 +80,23 @@ export function renderPrefixes(context: Context): Request[] {
 // user-role message.
 export const renderNative = (context: Context): Request => renderPrefixes(context).at(-1) ?? EMPTY_REQUEST;
 
-const mapParts = (request: Request, part: (p: ContentPart) => ContentPart | null): Request => ({
+const mapParts = (request: Request, part: (p: ContentPart) => ContentPart): Request => ({
   ...request,
   messages: request.messages.map(m =>
-    m.role === 'user' && typeof m.content !== 'string' ? { ...m, content: m.content.map(part).filter(p => p !== null) } : m),
+    // Only user messages have parts.
+    typeof m.content !== 'string' ? { role: 'user', content: m.content.map(part) } : m),
 });
 
 // The request as it is counted: without its images, whose tokens only the server knows (the drift after sending).
-export function withoutImages(request: Request): Request {
-  const stripped = mapParts(request, p => (p.type === 'text' ? p : null));
-  return {
-    ...stripped,
-    messages: stripped.messages.map(m =>
-      m.role === 'user' && typeof m.content !== 'string' ? { ...m, content: m.content.map(p => (p.type === 'text' ? p.text : '')).join('') } : m),
-  };
-}
+export const withoutImages = (request: Request): Request => ({
+  ...request,
+  messages: request.messages.map(m =>
+    typeof m.content !== 'string' ? { ...m, content: m.content.reduce((text, p) => (p.type === 'text' ? text + p.text : text), '') } : m),
+});
 
 // Whether the request carries an image.
 export const hasImages = (request: Request): boolean =>
-  request.messages.some(m => m.role === 'user' && typeof m.content !== 'string' && m.content.some(p => p.type === 'image_url'));
+  request.messages.some(m => typeof m.content !== 'string' && m.content.some(p => p.type === 'image_url'));
 
 // The request as it is sent: each image's copy as a data URL (`load`).
 export const inlineImages = (request: Request, load: (image: string) => string): Request =>

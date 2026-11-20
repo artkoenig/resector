@@ -3,11 +3,11 @@
 // The image types a vision model takes, by file extension.
 const IMAGE_TYPES: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
 
-// The MIME type of an image file (or its copy), null for any other file.
+// The MIME type of an image file (or its copy, or an @path reference `path[:a[-b]]` to it), null for any other file.
 export const imageType = (path: string): string | null => {
-  const dot = path.lastIndexOf('.');
-  return dot < 0 ? null : IMAGE_TYPES[path.slice(dot + 1).toLowerCase()] ?? null;
+  const extension = /\.([^.:]+)(?::\d+(?:-\d+)?)?$/.exec(path)?.[1];
+  return extension === undefined ? null : IMAGE_TYPES[extension.toLowerCase()] ?? null;
 };
 
-// Whether an @path reference (`path[:a[-b]]`) names an image file.
-export const isImage = (file: string) => imageType(file.replace(/:\d+(?:-\d+)?$/, '')) !== null;
+// Whether an @path reference names an image file.
+export const isImage = (file: string) => imageType(file) !== null;
