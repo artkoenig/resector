@@ -42,7 +42,8 @@ function withBlock(context: Context, id: number, then: (block: Block) => Plan): 
 
 // Moving a Tool Pair turns it into a Note first; the Note then moves.
 function moveAsNote(events: SessionEvent[], context: Context, block: Block, after: number): Plan {
-  const note = ops.toNote(block, context.nextId) as { event: SessionEvent };
+  const note = ops.toNote(block, context.nextId);
+  if ('error' in note) return note;
   const converted = fold([...events, note.event]);
   const moved = ops.moveAfter(converted, sent(converted, context.nextId)!, after);
   return 'error' in moved ? moved : { events: [note.event, moved.event], change: MOVED };

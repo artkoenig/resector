@@ -11,7 +11,7 @@ const blocks = (...specs: Spec[]): PolicyBlock[] => {
   return specs.map((s, i) => {
     const kind = kinds[i]!;
     const pair = kind === 'Tool Call' && kinds[i + 1] === 'Tool Result' ? i + 2 : kind === 'Tool Result' ? i : null;
-    const block: PolicyBlock = { id: i + 1, kind, origin: 'model', content: kind, tokens: 300, pair, pending: false };
+    const block: PolicyBlock = { id: i + 1, kind, origin: 'model', content: kind, tokens: 300, pair, pending: false, background: null };
     return Array.isArray(s) ? { ...block, ...s[1] } : block;
   });
 };
@@ -65,6 +65,29 @@ test('a summary of the model becomes a Note led by the handover in its place; ev
     ...[7, 8, 10, 11].map(id => ({ op: 'remove' as const, id })),
     send,
   ]);
+});
+
+const running = { background: { pid: 9, log: '/h/9.log', running: true } };
+
+test('a Tool Pair whose Background Process runs survives the reset in place; one whose process ended goes', () => {
+  const ended = { background: { pid: 8, log: '/h/8.log', running: false } };
+  const context = blocks('System', 'Tools', intro, 'User', ['Tool Call', running], 'Tool Result', ['Tool Call', ended], 'Tool Result', ['Assistant', { content: '<summary>s</summary>' }]);
+  expect(summaryReset({ window: 99, used: 10, blocks: context })).toEqual([
+    { op: 'note', after: 9, content: `${HANDOVER}
+
+s` },
+    ...[4, 7, 9].map(id => ({ op: 'remove' as const, id })),
+    send,
+  ]);
+});
+
+test('the result of a call whose Background Process runs does not become the error', () => {
+  const context = blocks('System', 'Tools', intro, 'User', ['Tool Call', running], 'Tool Result', 'Tool Call', 'Tool Result');
+  expect(summaryReset({ window: 1000, used: 990, blocks: context })).toEqual([error(8), thinkingOff]);
+});
+
+test('the error tells the model not to summarize or restart running Background Processes', () => {
+  expect(ERROR).toContain('Tool calls whose Background Process still runs stay in the context: do not summarize or restart them.');
 });
 
 test('a later summary overwrites the handover Note instead of adding one', () => {

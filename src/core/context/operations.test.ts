@@ -22,6 +22,28 @@ const at = (events: SessionEvent[], id: number) => {
 const FIXED = { error: 'System prompt is fixed' };
 const BOUNDARY = { error: 'boundary reached' };
 
+test('the user may not remove, edit, move or note either block of a Tool Pair whose Background Process runs', () => {
+  const RUNS = { error: 'Tool Call runs a Background Process – k stop first' };
+  const events = session(
+    { type: 'BlockAdded', id: 5, kind: 'Tool Call', origin: 'model', content: 'serve', background: true },
+    { type: 'BlockAdded', id: 6, kind: 'Tool Result', origin: 'tool', content: 'runs', call: 5 },
+    { type: 'BackgroundStarted', call: 5, pid: 42, log: '/h/5.log' },
+  );
+  for (const id of [5, 6]) {
+    const [context, block] = at(events, id);
+    expect(untouchable(block)).toEqual(RUNS);
+    expect(remove(block)).toEqual(RUNS);
+    expect(move(context, block, -1)).toEqual(RUNS);
+    expect(toNote(block, 9)).toEqual(RUNS);
+    expect(edit(events, block, 'x')).toEqual(RUNS);
+  }
+  expect(removeAll([at(events, 2)[1], at(events, 6)[1]])).toEqual(RUNS);
+  expect(untouchable(at(events, 2)[1])).toBeNull();
+  const ended = [...events, { type: 'BackgroundExited' as const, call: 5, signal: 'SIGTERM' }];
+  expect(untouchable(at(ended, 6)[1])).toBeNull();
+  expect(at(ended, 5)[1].process).toEqual({ pid: 42, log: '/h/5.log', running: false });
+});
+
 test('move up anchors the block after the neighbour’s predecessor', () => {
   expect(move(...at(session(), 3), -1)).toEqual({ event: { type: 'Move', id: 3, after: 1 } });
   expect(move(...at(session(), 4), -1)).toEqual({ event: { type: 'Move', id: 4, after: 2 } });

@@ -44,7 +44,7 @@ function resetTo(blocks: PolicyBlock[]): PolicyOperation[] {
   const content = `${HANDOVER}\n\n${SUMMARY.exec(answer.content)![1]!.trim()}`;
   const handover = blocks.find(isHandover);
   // A Tool Pair goes with its Tool Call.
-  const before = blocks.filter(b => b !== handover && blocks.indexOf(b) < blocks.indexOf(answer) && removable(b) && b.kind !== 'Tool Result');
+  const before = blocks.filter(b => b !== handover && blocks.indexOf(b) < blocks.indexOf(answer) && removable(b) && b.kind !== 'Tool Result' && !b.background?.running);
   return [
     handover ? { op: 'edit', id: handover.id, content } : { op: 'note', after: answer.id, content },
     ...[...before, answer].map(b => ({ op: 'remove' as const, id: b.id })),
@@ -61,7 +61,9 @@ function errored({ window, used, blocks }: PolicyContext): PolicyOperation[] {
   if (used - kept < (window - kept) * ERROR_FROM) return [];
   const since = blocks.findLastIndex(b => b.kind !== 'Tool Call' && b.kind !== 'Tool Result');
   // A Question's answers are the user's, not a tool's.
-  const results = blocks.slice(since + 1).filter(b => b.kind === 'Tool Result' && b.origin !== 'user');
+  // A Tool Result whose Background Process runs is untouchable: it stays as it is.
+  const runs = (b: PolicyBlock) => blocks.find(c => c.id === b.pair)!.background?.running === true;
+  const results = blocks.slice(since + 1).filter(b => b.kind === 'Tool Result' && b.origin !== 'user' && !runs(b));
   if (!results.length) return [];
   return [
     ...results.filter(b => b.content !== ERROR).map(b => ({ op: 'edit' as const, id: b.id, content: ERROR })),
@@ -72,6 +74,6 @@ function errored({ window, used, blocks }: PolicyContext): PolicyOperation[] {
 const isIntro = (b: PolicyBlock) => b.origin === 'policy' && b.content === INTRO;
 const isHandover = (b: PolicyBlock) => b.kind === 'Note' && b.origin === 'policy' && b.content.startsWith(HANDOVER);
 // The System, Tools Block, the intro, the project's Notes, the Skills note and loaded Skills (the summary does not repeat
-// them) and a Tool Call awaiting approval stay.
+// them) and a Tool Call awaiting approval stay; so does a Tool Pair whose Background Process runs, in its place.
 const KEPT = new Set<PolicyBlock['origin']>(['environment', 'file', 'skill']);
 const removable = (b: PolicyBlock) => b.kind !== 'System' && b.kind !== 'Tools' && !b.pending && !KEPT.has(b.origin) && !isIntro(b);
