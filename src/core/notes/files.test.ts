@@ -13,6 +13,8 @@ test('@path references are taken from the input; the rest is the User text', () 
   expect(references('a @ b.ts')).toEqual({ files: [], text: 'a @ b.ts' });
   expect(references('see @a.ts:3-5, then @b.ts).')).toEqual({ files: ['a.ts:3-5', 'b.ts'], text: 'see then' });
   expect(references('@a.ts\nline one\nline two')).toEqual({ files: ['a.ts'], text: 'line one\nline two' });
+  expect(references('@"a b.ts":12-34 x')).toEqual({ files: ['a b.ts:12-34'], text: 'x' });
+  expect(references('@"a b.ts":7 x')).toEqual({ files: ['a b.ts:7'], text: 'x' });
 });
 
 const FILES = ['src/ui/gate.ts', 'src/ui/app.tsx', 'docs/gate.md', 'src/core/notes/files.ts', 'package.json'];
@@ -34,6 +36,7 @@ test('a path with spaces completes quoted, also while typed after a quote', () =
   expect(fileCompletions('@bild', files)).toEqual({ at: 1, paths: ['Bild 1.png'] });
   expect(fileCompletions('@"Bild ', files)).toEqual({ at: 1, paths: ['Bild 1.png'] });
   expect(fileCompletions('@"Bild 1.png" ', files)).toBeNull();
+  expect(fileCompletions('@a"b', ['a"bc', 'abc'])?.paths).toEqual(['a"bc']);
   expect(referencePath('Bild 1.png')).toBe('"Bild 1.png"');
   expect(referencePath('b.ts')).toBe('b.ts');
 });
@@ -113,6 +116,7 @@ test('an image reference is an Image block: checked at the Gate, copied on send'
   const one = session({ type: 'FileReferenced', id: 2, file: 'shot.png' });
   expect(readReferences(one, read, images)).toEqual({ events: [{ type: 'ImageRead', id: 2, image: 'copy.png' }] });
   expect(readReferences(refs, read, images)).toEqual({ error: 'file not found: gone.jpg', id: 3 });
+  expect(readReferences(one, read, { ...images, save: () => null })).toEqual({ error: 'cannot read image shot.png', id: 2 });
   const read2 = session({ type: 'FileReferenced', id: 2, file: 'shot.png' }, { type: 'ImageRead', id: 2, image: 'copy.png' });
   expect(read2.blocks[1]).toMatchObject({ kind: 'Image', image: 'copy.png', content: '[shot.png]' });
   expect(read2.blocks[1]!.unread).toBeUndefined();

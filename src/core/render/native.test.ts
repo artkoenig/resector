@@ -192,6 +192,9 @@ test('a read Image is a user message of its reference and the image; counted wit
   expect(hasImages(request)).toBe(true);
   expect(withoutImages(request).messages[0]).toEqual({ role: 'user', content: '[shot.png]' });
   expect(hasImages(withoutImages(request))).toBe(false);
+  const parts = { role: 'user' as const, content: [{ type: 'text' as const, text: 'a' }, { type: 'image_url' as const, image_url: { url: 'x.png' } }, { type: 'text' as const, text: 'b' }] };
+  expect(withoutImages({ messages: [parts], tools: [] }).messages).toEqual([{ role: 'user', content: 'ab' }]);
+  expect(hasImages({ messages: [{ role: 'user', content: [{ type: 'text', text: 'a' }] }], tools: [] })).toBe(false);
   expect(inlineImages(request, image => `data:${image}`).messages[0]).toEqual({
     role: 'user', content: [{ type: 'text', text: '[shot.png]' }, { type: 'image_url', image_url: { url: 'data:abc.png' } }],
   });
