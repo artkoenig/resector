@@ -218,6 +218,19 @@ test('a Compaction of a Tool Pair hides both its blocks', () => {
   expect(ids(events)).toEqual([1, 2, 5]);
 });
 
+test('a Compaction of a Tool Pair puts its Note after the calls and results of the answer', () => {
+  const events: SessionEvent[] = [
+    ...session(1),
+    { type: 'BlockAdded', id: 3, kind: 'Tool Call', origin: 'model', content: 'ls' },
+    { type: 'BlockAdded', id: 4, kind: 'Tool Call', origin: 'model', content: 'pwd' },
+    { type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'a', call: 3 },
+    { type: 'BlockAdded', id: 6, kind: 'Tool Result', origin: 'tool', content: 'b', call: 4 },
+    { type: 'BlockAdded', id: 7, kind: 'User', origin: 'user', content: 'next' },
+  ];
+  expect(ids([...events, compact([4, 6], 8)])).toEqual([1, 2, 3, 5, 8, 7]);
+  expect(ids([...events, compact([2, 4, 6], 8)])).toEqual([1, 8, 3, 5, 7]);
+});
+
 test('a file reference is an unread Note until the file is read, then a plain snapshot', () => {
   const referenced = session(1, { type: 'FileReferenced', id: 3, file: 'a.ts:1-2' });
   expect(block(referenced, 3)).toEqual({

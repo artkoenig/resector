@@ -39,8 +39,8 @@ const DEVICES = new Set(['/dev/null', '/dev/stdin', '/dev/stdout', '/dev/stderr'
 // Why an argument makes the call ask, or null: not literal, or pointing outside the project root.
 function argumentProblem(arg: string | null, root: string): string | null {
   if (arg === null) return 'argument not literal';
-  // The path of `--file=/x`, `-f=/x` or `-f/x`.
-  const path = arg.replace(/^--?[\w-]+=/, '').replace(/^-\w(?=[/~.])/, '');
+  // The path of `--file=/x`, `-f=/x`, `-f/x` or bundled short flags `-cf/x`.
+  const path = arg.replace(/^--?[\w-]+=/, '').replace(/^-\w+(?=[/~.])/, '');
   const inside = !path.startsWith('~') && (DEVICES.has(path) || isInside(posix.resolve(root, path), root));
   return inside ? null : `argument outside project: ${arg}`;
 }

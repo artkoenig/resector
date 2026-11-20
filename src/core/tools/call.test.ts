@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { constant, forAll, int, oneOf, pick, record, string, tuple } from '../../../test/property';
 import { callArguments, parseCall, resultEnd, resultText } from './call';
 
 test('a call of a tool switched off is not run', () => {
@@ -56,4 +57,25 @@ test('how the run ended is read back from the result; a result without that line
   // Only a whole last line in brackets says it.
   expect(resultEnd('[a] b')).toEqual({ output: ['[a] b'], end: null });
   expect(resultEnd('a [b]')).toEqual({ output: ['a [b]'], end: null });
+});
+
+// Property: a call sent back with its arguments parses to the same content, whatever it contains.
+test('a call parses back from the arguments it is sent with', () => {
+  forAll(tuple(pick('bash' as const, 'search' as const, 'skill' as const), string()), ([tool, content]) => {
+    expect(parseCall({ name: tool, arguments: callArguments(tool, content) }, [tool])).toEqual({ tool, content });
+  });
+});
+
+// Property: resultEnd reads back the output and how the run ended, whatever the output.
+test('a Tool Result reads back as its output and its end', () => {
+  const run = record({
+    output: string(),
+    exit: oneOf(constant(null), int(0, 255)),
+    stopped: pick(null, 'killed' as const, 'timeout' as const),
+  });
+  forAll(run, r => {
+    const { output, end } = resultEnd(resultText(r, 30));
+    expect(output.join('\n')).toBe(r.output.trimEnd());
+    expect(end).toBe(r.stopped === 'killed' ? 'killed' : r.stopped === 'timeout' ? 'timeout after 30 s' : `exit ${r.exit}`);
+  });
 });

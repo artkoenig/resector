@@ -51,7 +51,7 @@ A `SKILL.md` folder in the project's `.claude/skills/` or the user's `~/.claude/
 Note at the start of a Session listing the available Skills and what each does, so the model can decide to load one. A resumed Session gets a new one when the Skills have changed.
 
 **Compaction**:
-Rewrite of selected Context Blocks by the LLM, following an instruction, into one Note at the position of the first source. The model sees only the selected blocks and the instruction. Started by the user, who reviews the proposal and accepts, discards or refines it (refine starts again from the sources), or by a Context Policy, whose result is accepted without review. On accept the sources count as removed; undo brings them back.
+Rewrite of selected Context Blocks by the LLM, following an instruction, into one Note at the position of the first source (for a Tool Pair: after the Tool Calls and Tool Results of its answer). The model sees only the selected blocks and the instruction. Started by the user, who reviews the proposal and accepts, discards or refines it (refine starts again from the sources), or by a Context Policy, whose result is accepted without review. On accept the sources count as removed; undo brings them back.
 _Avoid_: summarization, auto-compact
 
 **Context Policy**:
