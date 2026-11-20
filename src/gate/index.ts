@@ -68,6 +68,8 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     window: () => k.backend().window,
     // The Context's budget; null while counting.
     budget: () => (split() ? k.budgetOf(split()!.total) : null),
+    // The last count's split, cut to the blocks unchanged since; null before the first count.
+    known: k.known,
     // A sent block's tokens; null while it is counted.
     blockTokens: (id: number) => k.known()?.blocks[sent().findIndex(b => b.id === id)] ?? null,
     // Whether a sent block is still cached; null while it is counted.

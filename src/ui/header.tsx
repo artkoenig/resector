@@ -64,16 +64,17 @@ export function FilterLine(props: { gate: Screen }) {
 
 // One segment per block in Context order (plus Template), proportional to tokens; free space in the border colour.
 // Over the window the bar is scaled to the Context and marks the window edge.
+// While recounting it shows the last count's blocks unchanged since (and its Template), so it does not blank out.
 // Half cells: thicker than a line, lighter than a solid strip.
 const BAR = '▀';
 const EDGE = '│';
 function contextBar(gate: Screen, width: number): { char: string; color: string }[] {
-  const split = gate.split();
+  const split = gate.known();
   const cells = Array.from({ length: width }, () => ({ char: BAR, color: BORDER }));
   if (!split) return cells;
   const scale = Math.max(split.total, gate.window());
   const segments = [
-    ...gate.sent().map((b, i) => ({ tokens: split.blocks[i]!, color: b.id === gate.selected() ? TEXT : KIND_COLOR[b.kind], selected: b.id === gate.selected() })),
+    ...gate.sent().slice(0, split.blocks.length).map((b, i) => ({ tokens: split.blocks[i]!, color: b.id === gate.selected() ? TEXT : KIND_COLOR[b.kind], selected: b.id === gate.selected() })),
     { tokens: split.template, color: FAINT, selected: false },
   ];
   let sum = 0;

@@ -137,6 +137,20 @@ test('the header Context bar highlights the selected block', async () => {
   expect(user[0]).toBeGreaterThan(system[0]!);
 });
 
+test('the header Context bar keeps the blocks before a change while it is recounted', async () => {
+  await withUsers('x '.repeat(300), 'drop');
+  // Cells of the bar not in the border colour (#2a2a2a): the blocks' segments.
+  const filled = () =>
+    ui.captureSpans().lines[1]!.spans.filter(s => s.text.includes('▀') && Array.from(s.fg.buffer.slice(0, 3)).join() !== '42,42,42').reduce((n, s) => n + s.text.length, 0);
+  const before = filled();
+  expect(before).toBeGreaterThan(0);
+  const release = fake.holdCounts();
+  await press('d');
+  await frameMatching(ui, f => f.includes('removed ·'));
+  expect(filled()).toBeGreaterThan(before / 2);
+  release();
+});
+
 test('the Cache column shows ● for rows before the invalidation point, ○ from it on', async () => {
   await withUsers('hi there');
   expect(cache(await frameMatching(ui, f => cache(f).length === 3))).toEqual(['1○', '2○', '3○']);
