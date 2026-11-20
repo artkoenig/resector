@@ -309,3 +309,43 @@ test('a skill with requires auto-loads its dependencies as separate Notes', asyn
   const result = g.events.find(e => e.type === 'BlockAdded' && e.kind === 'Tool Result');
   expect(result).toMatchObject({ content: 'loaded wayfinder, grilling, domain-modeling\n[exit 0]' });
 });
+
+// The `image` tool: the image joins the Context as an Image block after the answer's results, sent as @path sends it.
+const image = (path: string) => ({ name: 'image', arguments: JSON.stringify({ path }) });
+
+test('an image call inside the project attaches the image without approval; it is sent after the tool messages', async () => {
+  const g = gateWith({ tools: toolsWith(['bash', 'image']), global: { 'echo *': 'allow' }, files: { 'shot.png': '' } });
+  g.reply({ content: 'Let me look.', calls: [image('shot.png'), bash('echo hi')] }, { content: 'done' });
+  g.gate.submit('go');
+  await settled(g.gate);
+  expect(ofType(g.events, 'FileReferenced')).toEqual([{ type: 'FileReferenced', id: 8, call: 5, file: 'shot.png' }]);
+  expect(results(g.events).map(r => r.content)).toEqual(['attached shot.png\n[exit 0]', 'ran echo hi\n[exit 0]']);
+  expect(g.sent[1]!.request.messages.slice(3)).toEqual([
+    { role: 'tool', tool_call_id: 'call_0', content: 'attached shot.png\n[exit 0]' },
+    { role: 'tool', tool_call_id: 'call_1', content: 'ran echo hi\n[exit 0]' },
+    { role: 'user', content: [{ type: 'text', text: '[shot.png]' }, { type: 'image_url', image_url: { url: 'data:copy-shot.png' } }] },
+  ]);
+});
+
+test('an image call on a missing file or no image fails in its Tool Result; nothing is attached', async () => {
+  const g = gateWith({ tools: toolsWith(['bash', 'image']), files: { 'notes.md': 'text' } });
+  g.reply({ calls: [image('gone.png'), image('notes.md')] }, { content: 'done' });
+  g.gate.submit('go');
+  await settled(g.gate);
+  expect(ofType(g.events, 'FileReferenced')).toEqual([]);
+  expect(results(g.events).map(r => r.content)).toEqual([
+    'file not found: gone.png\n[exit 1]',
+    'not an image: notes.md (png, jpg, jpeg, gif, webp)\n[exit 1]',
+  ]);
+});
+
+test('an image call outside the project asks; approved, the image is attached', async () => {
+  const g = gateWith({ tools: toolsWith(['bash', 'image']), files: { '/tmp/shot.png': '' } });
+  g.reply({ calls: [image('/tmp/shot.png')] }, { content: 'done' });
+  g.gate.submit('go');
+  await settled(g.gate);
+  expect(g.gate.status()?.text).toBe(APPROVE);
+  g.gate.approve();
+  await settled(g.gate);
+  expect(ofType(g.events, 'FileReferenced')).toEqual([{ type: 'FileReferenced', id: 6, call: 4, file: '/tmp/shot.png' }]);
+});

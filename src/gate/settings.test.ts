@@ -55,7 +55,7 @@ test('/tools switches a tool off and on; off, it is not sent', async () => {
   g.gate.submit('/tools');
   expect(g.gate.status()?.text).toBe('tools: bash · /tools <tool> switches one');
   g.gate.submit('/tools python');
-  expect(g.gate.status()?.text).toBe('unknown tool python – bash websearch question skill');
+  expect(g.gate.status()?.text).toBe('unknown tool python – bash websearch question skill image');
 });
 
 test('websearch, switched on with /tools, runs without asking; its call and result are sent as websearch', async () => {

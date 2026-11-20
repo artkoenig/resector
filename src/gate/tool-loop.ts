@@ -4,7 +4,10 @@ import { quoted, sessionRules } from '../core/approval/approval';
 import type { ChatResult } from '../core/tools/answer';
 import type { RunResult } from '../core/tools/call';
 import * as ops from '../core/context/operations';
+import type { Tool } from '../core/log/events';
 import type { Block } from '../core/log/fold';
+import { imageError, type ImageFiles } from '../core/notes/files';
+import { IMAGE_EXTENSIONS, isImage } from '../core/notes/images';
 import { answerBlocks } from '../core/tools/answer';
 import type { Runner, Terminal } from './ports';
 import { answerText, parseQuestions, type Answer } from '../core/tools/question';
@@ -33,7 +36,7 @@ export type Driver = { ask: (call: Block) => void; stopped: () => boolean };
 // How a call the rules ask for is decided: the terminal's choice, or no user to ask.
 export type Choice = Awaited<ReturnType<Terminal['approve']>> | 'unattended';
 
-export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice, tools: { runner: Runner; searcher: Runner; skills: SkillsSlice; send: () => void }) {
+export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice, tools: { runner: Runner; searcher: Runner; skills: SkillsSlice; images: ImageFiles; send: () => void }) {
   const { context, nextId, append, apply, setStatus, running, setRunning } = k;
   const { follow } = sel;
 
@@ -129,13 +132,8 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
 
   // Runs the call with its tool's runner; its output streams into a live Tool Result row, then the next call is decided.
   async function run(call: Block, notes: string[]) {
-    if (call.tool === 'skill') {
-      // First: its Notes take ids before the Tool Result.
-      const result = tools.skills.run(call);
-      append(ops.toolResult(call, nextId(), result, 0));
-      goOn(notes);
-      return;
-    }
+    const atOnce = AT_ONCE[call.tool as Tool];
+    if (atOnce) return void (atOnce(call), goOn(notes));
     const abort = new AbortController();
     const tool = call.tool === 'websearch' ? tools.searcher : tools.runner;
     setStopping(false);
@@ -153,6 +151,20 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
     }
   }
 
+  // A `skill` call: its Notes first, so they take ids before the Tool Result.
+  function loadSkill(call: Block) {
+    const result = tools.skills.run(call);
+    append(ops.toolResult(call, nextId(), result, 0));
+  }
+  // An `image` call: its Tool Result, then the image as an @path reference adds it, placed after the answer's results.
+  function attach(call: Block) {
+    const file = call.content;
+    const error = isImage(file) ? imageError(file, tools.images) : `not an image: ${file} (${IMAGE_EXTENSIONS.join(', ')})`;
+    append(ops.toolResult(call, nextId(), { output: error ?? `attached ${file}`, exit: error ? 1 : 0, stopped: null }, 0));
+    if (!error) append({ type: 'FileReferenced', id: nextId(), call: call.id, file });
+  }
+  // Tools resolved at once, without a runner; the loop goes on after them.
+  const AT_ONCE: Partial<Record<Tool, (call: Block) => void>> = { skill: loadSkill, image: attach };
   // The run ended: its Tool Result (and the Background Process it left), then the next call is decided.
   function ran(call: Block, result: RunResult, timeout: number, notes: string[]) {
     setRunning(null);

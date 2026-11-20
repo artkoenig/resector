@@ -62,8 +62,8 @@ test('/tools switches a tool off and on again; an unknown one is refused', () =>
   const off = toggleTool(TOOLS, 'bash') as { content: string };
   expect(toolNames(off.content)).toBe('question, skill');
   expect(toggleTool(off.content, 'bash')).toEqual({ content: TOOLS });
-  expect(toggleTool(TOOLS, 'python')).toEqual({ error: 'unknown tool python – bash websearch question skill' });
-  expect(toggleTool(TOOLS, 'toString')).toEqual({ error: 'unknown tool toString – bash websearch question skill' });
+  expect(toggleTool(TOOLS, 'python')).toEqual({ error: 'unknown tool python – bash websearch question skill image' });
+  expect(toggleTool(TOOLS, 'toString')).toEqual({ error: 'unknown tool toString – bash websearch question skill image' });
 });
 
 test('/tools websearch switches websearch on after bash, with one query parameter; off again, bash stays', () => {
@@ -72,4 +72,17 @@ test('/tools websearch switches websearch on after bash, with one query paramete
   expect(toolNames(on.content)).toBe('bash, websearch, question, skill');
   expect(toggleTool('[]', 'websearch')).toEqual({ content: JSON.stringify([JSON.parse(on.content)[1]], null, 2) });
   expect(toggleTool(on.content, 'websearch')).toEqual({ content: TOOLS });
+});
+
+const IMAGE = {
+  name: 'image',
+  description:
+    'Look at an image file (png, jpg, jpeg, gif, webp), e.g. a screenshot you took. The image is attached after the ' +
+    'results of your tool calls.',
+  parameters: { type: 'object', properties: { path: { type: 'string', description: 'the image file, relative to the project root' } }, required: ['path'] },
+};
+
+test('/tools image switches image on, with one path parameter; it is off in a new Tools Block', () => {
+  const on = toggleTool(TOOLS, 'image') as { content: string };
+  expect(JSON.parse(on.content)).toEqual([BASH, QUESTION_TOOL, SKILL, IMAGE]);
 });
