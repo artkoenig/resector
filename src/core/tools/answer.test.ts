@@ -25,10 +25,10 @@ test('text of only whitespace before calls adds no Assistant block', () => {
   expect(answerBlocks(result({ content: '\n\n', calls: [bash('ls')] }), 3, ['bash']).events).toEqual([{ type: 'BlockAdded', id: 3, kind: 'Tool Call', origin: 'model', content: 'ls' }]);
 });
 
-test('a search call becomes a Tool Call of tool search, its query the content', () => {
-  const search = { name: 'search', arguments: '{"query":"bun runtime"}' };
-  expect(answerBlocks(result({ calls: [search, bash('ls')] }), 3, ['bash', 'search']).events).toEqual([
-    { type: 'BlockAdded', id: 3, kind: 'Tool Call', origin: 'model', content: 'bun runtime', tool: 'search' },
+test('a websearch call becomes a Tool Call of tool websearch, its query the content', () => {
+  const websearch = { name: 'websearch', arguments: '{"query":"bun runtime"}' };
+  expect(answerBlocks(result({ calls: [websearch, bash('ls')] }), 3, ['bash', 'websearch']).events).toEqual([
+    { type: 'BlockAdded', id: 3, kind: 'Tool Call', origin: 'model', content: 'bun runtime', tool: 'websearch' },
     { type: 'BlockAdded', id: 4, kind: 'Tool Call', origin: 'model', content: 'ls' },
   ]);
 });

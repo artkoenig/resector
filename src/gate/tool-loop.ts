@@ -136,7 +136,7 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
       return;
     }
     const abort = new AbortController();
-    const tool = call.tool === 'search' ? tools.searcher : tools.runner;
+    const tool = call.tool === 'websearch' ? tools.searcher : tools.runner;
     setStopping(false);
     setRunning({ call, output: '', started: Date.now(), timeout: tool.timeout, abort });
     follow(nextId());

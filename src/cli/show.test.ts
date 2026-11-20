@@ -4,13 +4,13 @@ import { SHOWN } from '../core/config/config';
 import { createShow } from './show';
 
 const all = () => createShow([...SHOWN], false);
-const call = (content: string, tool?: 'search') => ({ type: 'BlockAdded' as const, id: 5, kind: 'Tool Call' as const, origin: 'model' as const, content, ...(tool && { tool }) });
+const call = (content: string, tool?: 'websearch') => ({ type: 'BlockAdded' as const, id: 5, kind: 'Tool Call' as const, origin: 'model' as const, content, ...(tool && { tool }) });
 const result = (content: string) => ({ type: 'BlockAdded' as const, id: 6, kind: 'Tool Result' as const, origin: 'tool' as const, content, call: 5 });
 
 test('a Tool Call is one $ line, its result cut to 3 lines and how the run ended', () => {
   const show = all();
   expect(show.event(call('ls -la'))).toBe('$ ls -la\n');
-  expect(show.event(call('bun docs', 'search'))).toBe('$ search bun docs\n');
+  expect(show.event(call('bun docs', 'websearch'))).toBe('$ websearch bun docs\n');
   expect(show.event(result('a\nb\nc\nd\ne\n[exit 1]'))).toBe('  │ a\n  │ b\n  │ c\n  │ … 2 more lines\n  └ exit 1\n');
   expect(show.event(result('[killed]'))).toBe('  └ killed\n');
   expect(show.event(result('denied by rule'))).toBe('  │ denied by rule\n');

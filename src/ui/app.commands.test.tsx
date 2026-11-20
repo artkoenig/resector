@@ -115,5 +115,5 @@ test('/tools completes the tool names and switches one off and on; off, it is no
   await write('/tools');
   await frameMatching(ui, f => f.includes('tools: bash · /tools <tool> switches one'));
   await write('/tools python');
-  await frameMatching(ui, f => f.includes('unknown tool python – bash search'));
+  await frameMatching(ui, f => f.includes('unknown tool python – bash websearch'));
 });
