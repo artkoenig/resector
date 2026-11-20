@@ -7,8 +7,9 @@ export type Block = {
   origin: Origin;
   content: string;
   cutOff: boolean;
-  // Tool Call only: its tool, absent for bash.
+  // Tool Call only: its tool, absent for bash; background: run as a Background Process.
   tool?: Tool;
+  background?: true;
   // Tool Result only: its Tool Call, and how the run stopped early.
   call?: number;
   stopped?: Stopped;
@@ -65,7 +66,8 @@ const pairIn = (state: State, id: number) => pairOf([...state.entries.values()],
 const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   BlockAdded: (state, e) => {
     const block = { id: e.id, kind: e.kind, origin: e.origin, content: e.content, cutOff: e.cutOff === true, ...(e.tool && { tool: e.tool }),
-      ...(e.call !== undefined && { call: e.call }), ...(e.stopped && { stopped: e.stopped }), ...(e.file && { file: e.file }) };
+      ...(e.call !== undefined && { call: e.call }), ...(e.stopped && { stopped: e.stopped }), ...(e.file && { file: e.file }),
+      ...(e.background && { background: e.background }) };
     state.entries.set(e.id, { ...block, ...NEW_ENTRY });
     insert(state, e.call === undefined ? state.order.length : afterCalls(state.order.map(id => entry(state, id)), e.call), e.id);
   },

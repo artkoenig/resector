@@ -47,16 +47,18 @@ function argumentProblem(arg: string | null, root: string): string | null {
 const isInside = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
 
 // What a call is decided by: the rules in order, the splitter, and the project root arguments must stay in.
-export type ApprovalInput = { rules: Rule[]; split: Split; root: string };
+// readable: a directory arguments may name too, but not write to (the Background Process logs).
+export type ApprovalInput = { rules: Rule[]; split: Split; root: string; readable?: string };
 
 // One sub-command: the last matching rule, default ask; arguments outside the project ask whatever the rule
 // (unless denied).
-function check(command: Command, { rules, root }: ApprovalInput): Check {
+function check(command: Command, { rules, root, readable }: ApprovalInput): Check {
   const { text, args, writes } = command;
   const rule = rules.findLast(r => matches(r.pattern, text));
   const decided = { text, action: rule?.action ?? 'ask', why: rule ? `${rule.source} rule "${rule.pattern}"` : 'no rule → default ask', unallowable: false };
   if (decided.action === 'deny') return decided;
-  const problem = [...args, ...writes].map(arg => argumentProblem(arg, root)).find(p => p !== null);
+  const read = (arg: string | null) => (readable && argumentProblem(arg, readable) === null ? null : argumentProblem(arg, root));
+  const problem = [...args.map(read), ...writes.map(arg => argumentProblem(arg, root))].find(p => p !== null);
   return problem ? { text, action: 'ask', why: problem, unallowable: true } : decided;
 }
 

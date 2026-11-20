@@ -89,6 +89,13 @@ test('a websearch call is sent as websearch with its query', () => {
   });
 });
 
+test('a background call is sent back with background: true', () => {
+  const serve: SessionEvent = { type: 'BlockAdded', id: 2, kind: 'Tool Call', origin: 'model', content: 'serve', background: true };
+  expect(renderNative(fold([created, add(1, 'User', 'go'), serve])).messages[1]).toEqual({
+    role: 'assistant', content: '', tool_calls: [{ id: 'call_0', type: 'function', function: { name: 'bash', arguments: '{"command":"serve","background":true}' } }],
+  });
+});
+
 test('an Assistant block after a Tool Call starts a new message', () => {
   const context = fold([created, add(1, 'Tool Call', 'ls'), add(2, 'Assistant', 'done')]);
   expect(renderNative(context).messages).toEqual([

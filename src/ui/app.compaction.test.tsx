@@ -50,7 +50,7 @@ test('the proposal streams at the first source; Enter accepts it as one Note, u 
   await frameMatching(ui, f => f.includes('◇ Compact 2 blocks'));
   fake.reply({ chunks: ['both'] });
   ui.mockInput.pressEnter();
-  frame = await frameMatching(ui, f => /◇ 12 → 6 tok \(−50%\) · Context 70 → 64 \/ 4k\s+┃ session cache cold \(same model\/slot\) · cold from #3 after accept/.test(f));
+  frame = await frameMatching(ui, f => /◇ 12 → 6 tok \(−50%\) · Context 130 → 124 \/ 4k\s+┃ session cache cold \(same model\/slot\) · cold from #3 after accept/.test(f));
   expect(line(frame, /Note/)).toMatch(/◇ proposal · 2 blocks · att…\s+6\b/);
   expect(frame).toMatch(/enter accept\s+x discard\s+i instruction\s+e edit/);
   await press('d');

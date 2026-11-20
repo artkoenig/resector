@@ -31,6 +31,11 @@ export async function start({ resume }: Start) {
         clipboard={createClipboard({ osc52: text => renderer.copyToClipboardOSC52(text), command: copyCommand(process.platform, process.env) })}
         resume={resume}
         onQuit={() => exit(0)}
+        onTerminate={quit => {
+          const signals = ['SIGTERM', 'SIGHUP'] as const;
+          signals.forEach(s => process.on(s, quit));
+          return () => signals.forEach(s => process.off(s, quit));
+        }}
         onFatal={message => exit(1, `resector: ${message}\n`)}
       />
     ),

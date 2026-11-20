@@ -52,7 +52,7 @@ test('outside a git repository the /git: commands are neither offered nor run', 
 test('/git:branch shows the branch, suggests the others, marks those in another worktree and switches to one; the header shows it', async () => {
   const { git, calls } = fakeGit();
   await start({ git });
-  expect(line(ui.captureCharFrame(), /default/)).toMatch(/default · thinking off · ⎇ main +52/);
+  expect(line(ui.captureCharFrame(), /default/)).toMatch(/default · thinking off · ⎇ main +112/);
   await write('/git:branch');
   await frameMatching(ui, f => f.includes('branch main · /git:branch busy feature/x'));
   ui.mockInput.pressTab();
@@ -79,11 +79,11 @@ test('a branch switched by another tool shows in the header', async () => {
 test('a dirty working tree shows a star in the header, and its change outside the Gate follows', async () => {
   const { git, dirtyOutside } = fakeGit();
   await start({ git });
-  expect(line(ui.captureCharFrame(), /default/)).toMatch(/⎇ main +52/);
+  expect(line(ui.captureCharFrame(), /default/)).toMatch(/⎇ main +112/);
   dirtyOutside(true);
   await frameMatching(ui, f => /⎇ main\*/.test(f));
   dirtyOutside(false);
-  await frameMatching(ui, f => /⎇ main +52/.test(f) && !f.includes('⎇ main*'));
+  await frameMatching(ui, f => /⎇ main +112/.test(f) && !f.includes('⎇ main*'));
 });
 
 test('/git:worktree on prepares the worktree, logs the switch and reopens the Gate there', async () => {

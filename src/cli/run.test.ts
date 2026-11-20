@@ -18,7 +18,7 @@ afterEach(() => fake.stop());
 // A project with a config on the fake server, unless config is false; headless: its headless section; permission: its
 // rules; tty: the lines
 // typed at the terminal (the asking goes to <file>.out), none when there is no terminal.
-function project({ config = true, headless = {}, permission, tty }: { config?: boolean; headless?: object; permission?: object; tty?: string[] } = {}) {
+function project({ config = true, headless = {}, permission, tty, bash }: { config?: boolean; headless?: object; permission?: object; tty?: string[]; bash?: object } = {}) {
   fake = startFakeLlamaCpp({ nCtx: 4096 });
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'resector-cli-')));
   const dir = join(root, 'project');
@@ -26,7 +26,7 @@ function project({ config = true, headless = {}, permission, tty }: { config?: b
   const env = { HOME: join(root, 'home'), XDG_CONFIG_HOME: join(root, 'config'), XDG_DATA_HOME: join(root, 'data'), RESECTOR_CONFIG: join(root, 'config.jsonc') };
   const typed = join(root, 'tty');
   if (tty) writeFileSync(typed, tty.map(l => `${l}\n`).join(''));
-  if (config) writeFileSync(env.RESECTOR_CONFIG, JSON.stringify({ profiles: { local: { backend: 'llamacpp', endpoint: fake.url, window: 2048 } }, defaultProfile: 'local', headless, permission }));
+  if (config) writeFileSync(env.RESECTOR_CONFIG, JSON.stringify({ profiles: { local: { backend: 'llamacpp', endpoint: fake.url, window: 2048 } }, defaultProfile: 'local', headless, permission, bash }));
   const sessions = () => {
     const at = projectSessionsDir(configPaths({ home: env.HOME, cwd: dir, env }));
     return (existsSync(at) ? readdirSync(at) : []).filter(f => f.endsWith('.jsonl')).map(f => readFileSync(join(at, f), 'utf8'));
@@ -50,17 +50,23 @@ async function resectorHere(p: ReturnType<typeof project>, args: string[]) {
     color: false,
     tty: () => (p.typed ? openTty(p.typed, `${p.typed}.out`) : null),
     signal: new AbortController().signal,
+    onTerminate: () => {},
   };
   const code = await run(command.run, io);
   return { out, err, code };
 }
 
 // Runs resector as a process with args; stdin: piped input; interrupt: Ctrl-C once the model was asked.
-async function resector(p: ReturnType<typeof project>, args: string[], { stdin, interrupt = false }: { stdin?: string; interrupt?: boolean } = {}) {
+// terminate: SIGTERM once the model was asked that many times.
+async function resector(p: ReturnType<typeof project>, args: string[], { stdin, interrupt = false, terminate }: { stdin?: string; interrupt?: boolean; terminate?: number } = {}) {
   const proc = Bun.spawn(['bun', MAIN, ...args], { cwd: p.dir, env: { ...process.env, ...p.env }, stdin: stdin === undefined ? 'ignore' : new Blob([stdin]), stdout: 'pipe', stderr: 'pipe' });
   if (interrupt) void (async () => {
     while (!fake.chatRequests.length) await Bun.sleep(10);
     proc.kill('SIGINT');
+  })();
+  if (terminate) void (async () => {
+    while (fake.chatRequests.length < terminate) await Bun.sleep(10);
+    proc.kill('SIGTERM');
   })();
   const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
   return { out, err, code };
@@ -188,4 +194,36 @@ test('Ctrl-C aborts the run: exit 130, nothing on stdout', async () => {
   const { out, err, code } = await resector(p, ['-p', 'hi'], { interrupt: true });
   expect({ out, code }).toEqual({ out: '', code: 130 });
   expect(err).toContain('· aborted · 1 turn');
+});
+
+// A Background Process writing its pid, so the test can see whether it still runs.
+const SERVE = { name: 'bash', arguments: JSON.stringify({ command: 'bash serve.sh', background: true }) };
+const withServer = (p: ReturnType<typeof project>) => (writeFileSync(join(p.dir, 'serve.sh'), 'echo $$ > server.pid; echo up; sleep 30\n'), p);
+const serverAlive = (dir: string) => {
+  try {
+    process.kill(-Number(readFileSync(join(dir, 'server.pid'), 'utf8')), 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+test('a Background Process the run started ends with the run; its result went to the model', async () => {
+  const p = withServer(project({ bash: { backgroundWait: 0.3 } }));
+  reply({ calls: [SERVE] });
+  reply({ chunks: ['served'] });
+  expect((await resectorHere(p, ['-p', 'go'])).out).toBe('served\n');
+  expect(JSON.stringify(fake.chatRequests[1])).toContain('[running in the background: pid ');
+  expect(p.sessions()[0]).toContain('"type":"BackgroundStarted"');
+  expect(serverAlive(p.dir)).toBe(false);
+});
+
+test('SIGTERM stops the Background Processes, then exits 143', async () => {
+  const p = withServer(project({ bash: { backgroundWait: 0.3 } }));
+  reply({ calls: [SERVE] });
+  reply({ chunks: ['partial'], hang: true });
+  const { code } = await resector(p, ['-p', 'go'], { terminate: 2 });
+  expect(code).toBe(143);
+  expect(existsSync(join(p.dir, 'server.pid'))).toBe(true);
+  expect(serverAlive(p.dir)).toBe(false);
 });

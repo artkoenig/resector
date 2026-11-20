@@ -38,7 +38,8 @@ export type Backend = {
 
 // Runs a command, streaming its output; aborting the signal kills it (adapters/bash, adapters/search).
 // timeout: seconds after which a run is stopped.
-export type RunOptions = { signal: AbortSignal; onOutput: (text: string) => void };
+// background: a bash call keeps running after the wait (adapters/bash/background); its result says so.
+export type RunOptions = { signal: AbortSignal; onOutput: (text: string) => void; background?: true };
 export type Runner = { timeout: number; run(command: string, options: RunOptions): Promise<RunResult> };
 
 // The user edits a text; resolves to the saved text (adapters/editor).

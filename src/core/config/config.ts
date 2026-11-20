@@ -56,7 +56,12 @@ const ConfigSchema = z.strictObject({
   permission: PermissionSchema.optional().describe('bash command pattern → decision; the last matching rule decides: built-in ("*" allow, arguments outside the project ask), global, project config, session; none → ask'),
   keybindings: z.record(z.string(), z.string()).optional().describe('Action → key'),
   headless: HeadlessSchema.optional().describe('Settings of `resector -p`'),
-  bash: z.strictObject({ timeout: z.number().positive().optional().describe('Seconds (default 120)') }).optional(),
+  bash: z
+    .strictObject({
+      timeout: z.number().positive().optional().describe('Seconds (default 120)'),
+      backgroundWait: z.number().positive().optional().describe('Seconds a Background Process is waited for before its first output is returned (default 5)'),
+    })
+    .optional(),
 });
 
 export const SCHEMA_URL = 'https://raw.githubusercontent.com/artkoenig/resector/main/config.schema.json';

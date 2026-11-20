@@ -1,6 +1,6 @@
 // UI tests: the /sessions view: listing, opening, deleting, renaming.
 import { expect, test } from 'bun:test';
-import { existsSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { frameMatching } from '../../test/frames';
 import type { SessionEvent } from '../core/log/events';
@@ -63,7 +63,11 @@ test('a session open in another instance is neither opened nor deleted', async (
 });
 
 test('d asks before deleting; deleting the current session switches to the newest other one', async () => {
-  const { sessionsDir } = await sessionsView({ ses_a: titled('local', 'keep me'), ses_b: titled('local', 'drop me') });
+  const { sessionsDir, paths } = await sessionsView({ ses_a: titled('local', 'keep me'), ses_b: titled('local', 'drop me') });
+  // Its Background Process logs go with it.
+  const logs = join(paths.projectHome.data, 'background', 'ses_b');
+  mkdirSync(logs, { recursive: true });
+  writeFileSync(join(logs, '42.log'), 'up\n');
   await key('down');
   await key('down');
   await key('d');
@@ -75,6 +79,7 @@ test('d asks before deleting; deleting the current session switches to the newes
   const deleted = await frameMatching(ui, f => f.includes('deleted "drop me"'));
   expect(line(deleted, /1h ago|2h ago/)).toMatch(/keep me/);
   expect(existsSync(join(sessionsDir, 'ses_b.jsonl'))).toBe(false);
+  expect(existsSync(logs)).toBe(false);
   await key('up');
   await key('up');
   await key('d');

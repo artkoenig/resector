@@ -36,6 +36,8 @@ export type Io = {
   tty(): ReturnType<typeof openTty>;
   // Aborted by Ctrl-C.
   signal: AbortSignal;
+  // SIGTERM or SIGHUP: `stop` runs (the Background Processes end), then the process exits.
+  onTerminate(stop: () => Promise<void>): void;
 };
 
 // Ctrl-C acts like Esc; a second one exits at once.
@@ -52,6 +54,9 @@ export function processIo(): Io {
     color: !!process.stderr.isTTY,
     tty: () => openTty(),
     signal: stop.signal,
+    onTerminate: stop => {
+      for (const [signal, code] of [['SIGTERM', 143], ['SIGHUP', 129]] as const) process.on(signal, () => void stop().finally(() => process.exit(code)));
+    },
   };
 }
 
@@ -79,6 +84,7 @@ async function headless({ prompt, flags }: Run, io: Io): Promise<{ outcome: Outc
   const settings = headlessSettings(loaded.config, flags, { policies: workspace.policies.all.map(p => p.name), tools: TOOL_NAMES, repository: workspace.repository });
   if ('usage' in settings) return settings;
   const opened = await workspace.open(loaded, { start: settings });
+  io.onTerminate(opened.release);
   try {
     const show = createShow(settings.show ?? [], io.color);
     const toStderr = (text: string) => void (text && io.stderr(text));
@@ -108,7 +114,7 @@ async function headless({ prompt, flags }: Run, io: Io): Promise<{ outcome: Outc
     });
     return { outcome, id: opened.id };
   } finally {
-    opened.release();
+    await opened.release();
   }
 }
 

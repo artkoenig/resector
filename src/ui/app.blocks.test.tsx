@@ -67,7 +67,7 @@ test('while a changed Context is counted, blocks before the change keep their to
   expect(line(frame, /keep/)!.slice(1)).toBe(before.slice(1));
   expect(line(frame, /System prompt/)).toMatch(/System prompt\s+12\b/);
   release();
-  frame = await frameMatching(ui, f => f.includes('58 / 4k'));
+  frame = await frameMatching(ui, f => f.includes('118 / 4k'));
   expect(line(frame, /keep/)!.slice(1)).toBe(before.slice(1));
 });
 
@@ -78,7 +78,7 @@ test('d strikes the block through until sent; u brings it back as a counter-even
   expect(line(frame, /drop/)).toMatch(/^ {8}User\s+drop\s+removed/);
   const struck = ui.captureSpans().lines.flatMap(l => l.spans).find(s => s.text.includes('drop') && !s.text.includes('removed ·'))!;
   expect(struck.attributes & TextAttributes.STRIKETHROUGH).toBeTruthy();
-  frame = await frameMatching(ui, f => f.includes('58 / 4k'));
+  frame = await frameMatching(ui, f => f.includes('118 / 4k'));
   expect(line(frame, /keep/)).toMatch(/3\s+User\s+keep/);
   await press('u');
   frame = await frameMatching(ui, f => f.includes('undone: remove'));
@@ -127,7 +127,7 @@ test('the header Context bar highlights the selected block', async () => {
   for (const k of ['down', 'down']) await press(k);
   const bar = () => ui.captureSpans().lines[1]!.spans.filter(s => s.text.includes('▀'));
   const white = () => bar().filter(s => Array.from(s.fg.buffer.slice(0, 3)).join() === '238,238,238').map(s => s.text.length);
-  await frameMatching(ui, f => /\d+ \/ 4k/.test(f) && !f.includes('52 / 4k'));
+  await frameMatching(ui, f => /\d+ \/ 4k/.test(f) && !f.includes('112 / 4k'));
   const user = white();
   await press('up');
   await ui.renderOnce();
@@ -173,7 +173,7 @@ test('a server reusing fewer tokens than predicted is reported', async () => {
   await write('more');
   const frame = await frameMatching(ui, f => f.includes('server reused'));
   // BOS + System 12 + Tools 36 + User 8 + <|im_start|> assistant \n hello
-  expect(frame).toContain('answer complete · ⚠ cache: predicted 61 · server reused 3');
+  expect(frame).toContain('answer complete · ⚠ cache: predicted 121 · server reused 3');
   expect(line(frame, /Type/)).toMatch(/Tokens +Cache +Flags/);
 });
 
