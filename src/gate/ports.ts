@@ -1,7 +1,7 @@
 // Ports the Gate runs on and adapters implement: the model server, the runners, $EDITOR, the Session Log, the clipboard,
 // the terminal of a Headless Run.
 import type { Verdict } from '../core/approval/approval';
-import type { SessionEvent, Thinking } from '../core/log/events';
+import type { BackgroundEnd, SessionEvent, Thinking } from '../core/log/events';
 import type { Block } from '../core/log/fold';
 import type { Request } from '../core/render/native';
 import type { TokenSplit } from '../core/tokens/split';
@@ -41,6 +41,9 @@ export type Backend = {
 // background: a bash call keeps running after the wait (adapters/bash/background); its result says so.
 export type RunOptions = { signal: AbortSignal; onOutput: (text: string) => void; background?: true };
 export type Runner = { timeout: number; run(command: string, options: RunOptions): Promise<RunResult> };
+// The Session's Background Processes (adapters/bash/background): onExit tells when one's process group is empty, with
+// how it ended; returns the unsubscribe.
+export type Background = { onExit(listener: (pid: number, end: BackgroundEnd) => void): () => void };
 
 // The user edits a text; resolves to the saved text (adapters/editor).
 export type Editor = (text: string) => Promise<string>;

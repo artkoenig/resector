@@ -3,7 +3,8 @@
 export type Kind = 'System' | 'Tools' | 'User' | 'Thinking' | 'Assistant' | 'Tool Call' | 'Tool Result' | 'Note' | 'Image';
 // file: an @path snapshot or the project instructions; environment: the environment Note;
 // policy: a Note a Context Policy added.
-export type Origin = 'config' | 'user' | 'model' | 'tool' | 'compaction' | 'file' | 'environment' | 'policy' | 'skill';
+// background: the Note telling a Background Process ended.
+export type Origin = 'config' | 'user' | 'model' | 'tool' | 'compaction' | 'file' | 'environment' | 'policy' | 'skill' | 'background';
 // How a bash run ended early: Esc killed it, or it ran into the timeout.
 export type Stopped = 'killed' | 'timeout';
 export type ToolProtocol = 'native';
@@ -15,6 +16,10 @@ export type Thinking = string;
 // Who made a Context operation: `user` or the Context Policy's name (ADR 0001). Information only: replay never reads it;
 // older logs and harness edits carry none.
 type By = { by?: string };
+
+// How a Background Process ended: bash's exit code, or the signal that killed it (`SIGTERM`), or why resector stopped
+// it: `session ended` (released with its Session), `user` (`k`), `orphaned` (left by a crashed instance).
+export type BackgroundEnd = { exit: number } | { signal: string };
 
 export type Usage = { prompt_tokens: number; completion_tokens: number };
 
@@ -28,8 +33,9 @@ export type SessionEvent =
   // Tool Call: content = the bash command, the websearch query or the question's arguments (JSON), `tool` = its tool (absent: bash);
   // Tool Result: `call` = its Tool Call, content = the output (origin user: the answer to a Question).
   // file: the file a Note was read from. Older logs may carry `pin` (ADR 0002): ignored on replay.
-  // background: a bash Tool Call run as a Background Process.
-  | { type: 'BlockAdded'; id: number; kind: Kind; origin: Origin; content: string; tool?: Tool; cutOff?: true; call?: number; stopped?: Stopped; file?: string; background?: true }
+  // background: a bash Tool Call run as a Background Process; exited: the Note telling Tool Call `exited`'s Background
+  // Process ended.
+  | { type: 'BlockAdded'; id: number; kind: Kind; origin: Origin; content: string; tool?: Tool; cutOff?: true; call?: number; stopped?: Stopped; file?: string; background?: true; exited?: number }
   // `@<path>[:a-b]`: a reference row, read only on send (an image file: an Image block) …
   | { type: 'FileReferenced'; id: number; call?: number; file: string }
   // … into a snapshot, never refreshed afterwards; an image into a copy in the Project Home, `image` its name.
@@ -37,6 +43,8 @@ export type SessionEvent =
   | { type: 'ImageRead'; id: number; image: string }
   // Tool Call `call` keeps running as a Background Process: its process group `pid`, its output in `log`.
   | { type: 'BackgroundStarted'; call: number; pid: number; log: string }
+  // … its process group is empty: the leader's exit code, or what ended it (a signal's name, `session ended`).
+  | ({ type: 'BackgroundExited'; call: number } & BackgroundEnd)
   | { type: 'RequestSent'; hash: string; tokens: number }
   // A new Revision of the block's content; the block's first content is Revision 1.
   // harness: the environment Note refreshed or a tool denied by rule taken out of the Tools Block, not undoable.

@@ -17,13 +17,14 @@ import type { SessionStore } from '../adapters/store/sessions';
 import type { Split } from '../core/approval/approval';
 import type { SessionEvent } from '../core/log/events';
 import { fold } from '../core/log/fold';
+import { exitOf } from '../core/notes/background';
 import { environmentText } from '../core/notes/environment';
 import { BUILT_IN, DEFAULT_POLICY } from '../core/policy/built-in';
 import type { Policy } from '../core/policy/policy';
 import type { Settings } from '../core/config/headless';
 import { checkoutOf, inWorktree, newSession, skillsUpdate, summarize, type SessionRef } from '../core/session/session';
 import type { Skill } from '../core/skills/skills';
-import type { AutoApprove, GateOptions, Git, Policies, Status } from '../gate';
+import type { AutoApprove, Background as Processes, GateOptions, Git, Policies, SessionLog, Status } from '../gate';
 import { errorText } from '../gate/text';
 
 export type WorkspaceOptions = {
@@ -170,7 +171,26 @@ export async function openWorkspace(options: WorkspaceOptions) {
         await background.stopAll();
         opened.release();
       },
-      options: { backend, ...runningIn(loaded, dir, checkout, opened.id, background), log: opened.log, events, notice: withFailed(withWarning(notice, warning)), instruction, compactor: compactor(loaded, profile, opened.id), policies, autoApprove, skills },
+      options: {
+        backend, ...runningIn(loaded, dir, checkout, opened.id, background), log: opened.log, events, notice: withFailed(withWarning(notice, warning)), instruction,
+        compactor: compactor(loaded, profile, opened.id), policies, autoApprove, skills, background: exitsLogged(background, opened.log, () => store.read(opened.id)),
+      },
+    };
+  }
+  // The Gate logs the exits it hears of; without one listening (the Gate replaced on a switch, the sessions view) they
+  // are logged here, so a resumed session still has them.
+  function exitsLogged(registry: Background, log: SessionLog, events: () => SessionEvent[]): Processes {
+    const listeners = new Set<Parameters<Processes['onExit']>[0]>();
+    registry.onExit((pid, end) => {
+      if (listeners.size) return listeners.forEach(l => l(pid, end));
+      const exited = exitOf(events(), pid, end);
+      if (exited) log.append(exited);
+    });
+    return {
+      onExit: listener => {
+        listeners.add(listener);
+        return () => void listeners.delete(listener);
+      },
     };
   }
   // The checkout the session started in, from any worktree of the Project; the current one if that is gone, or for

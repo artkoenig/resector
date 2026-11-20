@@ -6,7 +6,7 @@ import type { ImageFiles, ReadFile } from '../core/notes/files';
 import type { Policy } from '../core/policy/policy';
 import type { Question } from '../core/tools/question';
 import type { Skill } from '../core/skills/skills';
-import type { Backend, Clipboard, Editor, Runner, SessionLog } from './ports';
+import type { Backend, Background, Clipboard, Editor, Runner, SessionLog } from './ports';
 
 // The view's selection and marks, which the Gate acts on and moves (ADR 0003): the rows shown, the selected block,
 // the marked ones. follow moves the selection unless the user reads an older row; release makes it follow again;
@@ -52,6 +52,8 @@ export type GateOptions = {
   git?: Git | null;
   // The skills the model can load with `skill` and the user with /skill.
   skills?: Skill[];
+  // Where bash calls with `background` keep running; absent: none do.
+  background?: Background;
 };
 // Context Policies (ADR 0001): the ones loaded at start, and the active one, which belongs to the app, not the session.
 export type Policies = { all: Policy[]; active: () => Policy | null; set: (policy: Policy | null) => void };

@@ -2,6 +2,7 @@
 import { createSignal } from 'solid-js';
 import * as compaction from '../core/compaction/compaction';
 import * as ops from '../core/context/operations';
+import { createBackgroundSlice } from './background';
 import { createCommands } from './commands';
 import { createCompaction } from './compaction';
 import { createEdits } from './edits';
@@ -31,16 +32,17 @@ function ownAutoApprove(): AutoApprove {
   return { on, set };
 }
 
-export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, skills: available = [], instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, policies = NO_POLICIES, autoApprove = ownAutoApprove(), git = null, ...options }: GateOptions, view: (k: Kernel) => View) {
+export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, skills: available = [], instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, policies = NO_POLICIES, autoApprove = ownAutoApprove(), git = null, background, ...options }: GateOptions, view: (k: Kernel) => View) {
   const k = createKernel({ log, project, backend: options.backend, events: options.events, status: options.notice ?? null });
   const sel = view(k);
   const repo = createGit(k, git, project, approval.root);
   const rules = createRules(k, approval, autoApprove);
   const skills = createSkills(k, available);
+  const processes = createBackgroundSlice(k, background);
   const loop = createToolLoop(k, sel, rules, repo, { runner, searcher, skills, images: project.images, send: () => void sender.api.send() });
   const policy = createPolicy(k, sel, policies, compactor);
   const headless = createHeadless(k, loop, rules, text => input.api.submit(text));
-  const sender = createSend(k, sel, { loop, policy, git: repo, project, policies, mayRequest: headless.mayRequest });
+  const sender = createSend(k, sel, { loop, policy, git: repo, project, policies, mayRequest: headless.mayRequest, background: processes });
   const compacting = createCompaction(k, sel, { editor, instruction, compactor });
   const edits = createEdits(k, sel, loop, { editor, clipboard, project });
   const settings = createSettings(k, rules, loop, autoApprove);

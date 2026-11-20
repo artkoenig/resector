@@ -8,6 +8,7 @@ import { inlineImages, renderNative } from '../core/render/native';
 import { openingBlocks } from '../core/session/session';
 import type { ChatResult } from '../core/tools/answer';
 import { errorText, formatTokens, generationRate, speedText } from './text';
+import type { BackgroundSlice } from './background';
 import type { GitSlice } from './git';
 import { same, type Kernel } from './kernel';
 import type { PolicySlice } from './policy';
@@ -22,7 +23,7 @@ function asksForAnswer(blocks: Block[], opening: Set<number>): boolean {
 }
 
 // mayRequest: whether another request may go (a Headless Run's turns).
-export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy: PolicySlice; git: GitSlice; project: Project; policies: Policies; mayRequest: () => boolean }) {
+export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy: PolicySlice; git: GitSlice; project: Project; policies: Policies; mayRequest: () => boolean; background: BackgroundSlice }) {
   const { context, events, nextId, append, setStatus, backend, streaming, setStreaming, split } = k;
   const { follow, setSelected } = sel;
   const { loop } = deps;
@@ -33,7 +34,8 @@ export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy:
     return last < 0 ? null : renderNative(fold(events().slice(0, last + 1)));
   });
 
-  // On send: the references are read into snapshots, a missing file aborts; the environment is refreshed.
+  // On send: the references are read into snapshots, a missing file aborts; the environment is refreshed, Background
+  // Processes that ended are told.
   function prepare(): boolean {
     const read = readReferences(context(), deps.project.read, deps.project.images);
     if ('error' in read) {
@@ -43,6 +45,7 @@ export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy:
     }
     read.events.forEach(append);
     deps.git.refresh();
+    deps.background.addExitNotes();
     return true;
   }
 

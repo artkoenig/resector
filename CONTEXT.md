@@ -68,7 +68,7 @@ _Avoid_: breakpoint, approval
 The follow-up requests after an answer with Tool Calls: its calls are decided in order, run, and their results sent, until the model answers without calls or the loop is held.
 
 **Background Process**:
-Process a bash Tool Call starts that keeps running after the call's Tool Result. Ends when resector exits or the Session is closed or switched (a Headless Run: when the run ends); never outlives the app: after a crash, it is ended at the next start in the Project.
+Process a bash Tool Call starts that keeps running after the call's Tool Result. Ends when resector exits or the Session is closed or switched (a Headless Run: when the run ends); never outlives the app: after a crash, it is ended at the next start in the Project. It has ended when its process group is empty; the model learns of it from an exit Note before the next request.
 _Avoid_: job, service, daemon
 
 **Hold**:
