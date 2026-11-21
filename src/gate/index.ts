@@ -91,6 +91,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
     ...compacting.api,
     ...edits.api,
     ...headless.api,
+    ...processes.api,
   };
 }
 

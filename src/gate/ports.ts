@@ -42,8 +42,8 @@ export type Backend = {
 export type RunOptions = { signal: AbortSignal; onOutput: (text: string) => void; background?: true };
 export type Runner = { timeout: number; run(command: string, options: RunOptions): Promise<RunResult> };
 // The Session's Background Processes (adapters/bash/background): onExit tells when one's process group is empty, with
-// how it ended; returns the unsubscribe.
-export type Background = { onExit(listener: (pid: number, end: BackgroundEnd) => void): () => void };
+// how it ended; returns the unsubscribe. log: a process's log file as written so far, null when it is gone.
+export type Background = { onExit(listener: (pid: number, end: BackgroundEnd) => void): () => void; log(path: string): string | null };
 
 // The user edits a text; resolves to the saved text (adapters/editor).
 export type Editor = (text: string) => Promise<string>;

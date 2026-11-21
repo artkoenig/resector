@@ -104,6 +104,14 @@ export function createBackground({ dir }: { dir: string }) {
     stopAll,
     // pids of the groups not yet empty.
     running: () => [...running.keys()],
+    // A log as written so far; null when it is gone (the Session deleted).
+    log(path: string): string | null {
+      try {
+        return readFileSync(path, 'utf8');
+      } catch {
+        return null;
+      }
+    },
     // Once per Background Process, when its group is empty; also for a run that ended within its wait.
     onExit(listener: (pid: number, end: BackgroundEnd) => void) {
       listeners.add(listener);

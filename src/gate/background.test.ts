@@ -66,3 +66,20 @@ test('a resumed Session gets a Note for every logged exit without one, whatever 
     'Background Process pid 11 ended: stopped when the session ended',
   ]);
 });
+
+test('the log of a Tool Pair’s Background Process: by its call or result, while it runs and after', async () => {
+  const g = gateWith({ global: { '*': 'allow' } });
+  g.reply({ calls: [background('serve')] }, { content: 'up' });
+  g.gate.submit('go');
+  await settled(g.gate);
+  g.logs.set('/home/background/4242.log', 'listening\n');
+  const log = { path: '/home/background/4242.log', text: 'listening\n', running: true };
+  expect(g.gate.backgroundLog(4)).toEqual(log);
+  expect(g.gate.backgroundLog(5)).toEqual(log);
+  g.exit(4242, { exit: 0 });
+  expect(g.gate.backgroundLog(5)).toEqual({ ...log, running: false });
+  // Not a Background Process's pair; a log that is gone.
+  expect(g.gate.backgroundLog(3)).toBeNull();
+  g.logs.clear();
+  expect(g.gate.backgroundLog(5)).toBeNull();
+});

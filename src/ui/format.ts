@@ -1,4 +1,5 @@
 // Display helpers for the views: flags, fixed-width cells, windows, ages.
+import type { BackgroundEnd } from '../core/log/events';
 import type { Reviewed } from '../gate/review';
 
 // Changes since the last request: new Revision, moved.
@@ -11,6 +12,12 @@ const pendingFlag = (block: Reviewed, next?: number): string => {
   return block.tool === 'question' ? ' ? answer' : ' ? approve';
 };
 
+// A Background Process's ending, short: what the exit Note says at length.
+const ENDED: Record<string, string> = { 'session ended': 'session ended', user: 'stopped', orphaned: 'orphaned' };
+const endOf = (end: BackgroundEnd) => ('exit' in end ? `exited ${end.exit}` : (ENDED[end.signal] ?? end.signal));
+// The Tool Call's Background Process: running, or how it ended.
+const processFlag = ({ process }: Reviewed): string => (!process ? '' : process.running ? ' ▶ running' : ` ■ ${endOf(process.end!)}`);
+
 // Changes since the last request, then persistent status flags.
 // next: the Tool Call to decide on now; later pending calls are queued; dropped: a Thinking
 // block the chat template drops.
@@ -19,6 +26,7 @@ export const flagsOf = (block: Reviewed, next?: number, dropped = false): string
     changesOf(block),
     block.cutOff ? ' ⚠ cut off' : '',
     pendingFlag(block, next),
+    processFlag(block),
     block.stopped ? ` ⚠ ${block.stopped}` : '',
     block.unread ? (block.missing ? ' ⚠ not found' : ' @ read at send') : '',
     dropped ? ' ✂ template' : '',

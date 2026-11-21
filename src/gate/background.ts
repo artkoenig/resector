@@ -21,5 +21,14 @@ export function createBackgroundSlice(k: Kernel, background: Background | undefi
       k.append({ type: 'BlockAdded', id: k.nextId(), kind: 'Note', origin: 'background', content, exited });
   }
 
-  return { addExitNotes };
+  // The log of a Tool Pair's Background Process (`id`: its call or result) as written so far: where it is, whether the
+  // process still runs; null for a pair without one, or once the log is gone.
+  function backgroundLog(id: number): { path: string; text: string; running: boolean } | null {
+    const blocks = k.context().blocks;
+    const call = blocks.find(b => b.id === (blocks.find(r => r.id === id)?.call ?? id));
+    const text = call?.process && background?.log(call.process.log);
+    return typeof text === 'string' ? { path: call!.process!.log, text, running: call!.process!.running } : null;
+  }
+
+  return { addExitNotes, api: { backgroundLog } };
 }

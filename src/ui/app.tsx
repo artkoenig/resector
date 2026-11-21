@@ -18,6 +18,9 @@ import { createSuggestions, Suggestions } from './suggestions';
 import { BlockTable, createRows, isSelected, type Row, SPINNER } from './table';
 import { ACCENT, BG, FAINT, KIND_COLOR, MUTED, PANEL_BG, TEXT, TONE } from './theme';
 
+// How often a running Background Process's log is read for the preview (ms).
+const LOG_POLL = 250;
+
 export function App(props: ScreenOptions & { onQuit: () => void }) {
   const gate = createScreen(props);
   const renderer = useRenderer();
@@ -29,6 +32,13 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   onCleanup(() => clearInterval(timer));
 
   const rows = createRows(gate, tick);
+  // A running Background Process's log, read again and again while its Tool Result is selected: the preview shows it live.
+  const [polled, setPolled] = createSignal(0);
+  const poll = setInterval(() => {
+    const row = selectedRow();
+    if (row?.kind === 'Tool Result' && !row.live && gate.backgroundLog(row.id)?.running) setPolled(polled() + 1);
+  }, LOG_POLL);
+  onCleanup(() => clearInterval(poll));
 
   // The project's files, listed when the input opens: @path completion.
   const [files, setFiles] = createSignal<string[]>([]);
@@ -68,7 +78,9 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   const scrollPreview = (lines: number) => preview?.scrollBy(lines);
   // A page keeps one line of the last: the band shows previewHeight() less the kind line.
   const previewPage = () => Math.max(1, previewHeight() - 2);
-  createEffect(on(gate.selected, () => preview?.scrollTo(0)));
+  // A running Background Process's log follows its end, as tail -f does, until scrolled up.
+  const tailing = () => !!selectedRow() && !!logOf(selectedRow()!)?.running;
+  createEffect(on(gate.selected, () => (tailing() ? preview?.scrollTo(preview.scrollHeight) : preview?.scrollTo(0))));
 
   // Compaction: writing the instruction, then the Gate locked on the proposal.
   // A memo: `on(phase)` must fire on a phase change only, not on every update of the Compaction.
@@ -190,9 +202,11 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   );
   // Live rows stream and have no block yet.
   const blockOf = (row: Row) => (row.live ? undefined : gate.reviewed().find(b => b.id === row.id));
+  // A Tool Result's Background Process log; null for any other row.
+  const logOf = (row: Row) => (polled(), row.kind === 'Tool Result' && !row.live ? gate.backgroundLog(row.id) : null);
   const shown = (row: Row): Shown => {
     const block = blockOf(row);
-    return { kind: row.kind, content: row.content, tool: block?.tool, file: block?.file, live: row.live };
+    return { kind: row.kind, content: logOf(row)?.text.replace(/\n$/, '') ?? row.content, tool: block?.tool, file: block?.file, live: row.live };
   };
   const selectedRow = () => rows().find(r => isSelected(gate, r));
   // Copy on select: the text selected with the mouse goes to the clipboard on release.
@@ -232,7 +246,7 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
                   </strong>
                   <span style={{ fg: MUTED }}>{`  #${row().n}${row().heading ? ` · ${row().heading}` : row().live ? '' : ` · ${row().tokens} tokens`}`}</span>
                 </text>
-                <scrollbox ref={preview} flexGrow={1}>
+                <scrollbox ref={preview} flexGrow={1} stickyScroll={tailing()} stickyStart="bottom">
                   <Show when={row().dropped}>
                     <text fg={TONE.warn}>✂ dropped by the chat template – sent, but 0 tokens reach the model</text>
                   </Show>
@@ -240,6 +254,9 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
                     {(verdict: () => Verdict) => <Checks verdict={verdict()} />}
                   </Show>
                   <ReferenceHint block={blockOf(row())} />
+                  <Show when={logOf(row())}>
+                    {(log: () => { path: string; running: boolean }) => <text fg={MUTED}>{`log ${log().path} · ${log().running ? 'running' : 'ended'}`}</text>}
+                  </Show>
                   <Preview shown={shown(row())} />
                 </scrollbox>
               </Band>
