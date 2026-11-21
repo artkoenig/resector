@@ -8,6 +8,7 @@ import { startFakeLlamaCpp } from '../../test/fake-llamacpp';
 import { frameMatching } from '../../test/frames';
 import { BASH_TOOLS, withTools } from '../../test/requests';
 import { connectLlamaCpp } from '../adapters/backend/llamacpp';
+import { createBackground } from '../adapters/bash/background';
 import { createRunner } from '../adapters/bash/runner';
 import { createSplit } from '../adapters/bash/split';
 import { createSessionLog } from '../adapters/store/session-log';
@@ -28,6 +29,8 @@ export let ui: Awaited<ReturnType<typeof testRender>>;
 export const project = realpathSync(mkdtempSync(join(tmpdir(), 'resector-project-')));
 
 let split: Split;
+// Stops the test's Background Processes, if it started any.
+let stopBackground = async () => {};
 
 // The tests decide approval as a strict config does: a global "*" ask over the built-in "*" allow, read-only commands
 // allowed; the test's own global rules come after.
@@ -41,9 +44,10 @@ export function useHarness() {
   beforeAll(async () => {
     split = await createSplit();
   });
-  afterEach(() => {
+  afterEach(async () => {
     ui.renderer.destroy();
     fake.stop();
+    await stopBackground();
   });
 }
 
@@ -57,9 +61,10 @@ export const fixture: { editor: (text: string) => Promise<string>; environment: 
 
 // `tools`: the Tools Block (default bash only, so token counts stay put). `users`: User blocks already in the Session Log, not yet sent; `global`, `project`: permission rules of the config.
 // `calls`: pending Tool Calls after them, as at a resume (a string: a bash command). `template`: the chat template the server reports.
+// `background`: bash calls with `background` run as real Background Processes, waited for this many seconds.
 // `window`: the server's context size; `exact`: false counts like an inexact tokenizer (Ollama, LM Studio).
-export type Start = { tools?: string; template?: string; window?: number; exact?: boolean; notes?: SessionNotes; timeout?: number; compactor?: GateOptions['compactor']; policies?: Policy[]; users?: string[]; calls?: (string | { tool: Tool; content: string })[]; global?: Permissions; project?: Permissions; git?: GateOptions['git']; hidden?: string[] | 'default' };
-export async function start({ tools = BASH_TOOLS, template, window = 4096, exact = true, notes, timeout = 120, compactor, policies = [], users = [], calls = [], global, project: own, git, hidden = [] }: Start = {}) {
+export type Start = { tools?: string; template?: string; window?: number; exact?: boolean; notes?: SessionNotes; timeout?: number; compactor?: GateOptions['compactor']; policies?: Policy[]; users?: string[]; calls?: (string | { tool: Tool; content: string })[]; global?: Permissions; project?: Permissions; git?: GateOptions['git']; hidden?: string[] | 'default'; background?: number };
+export async function start({ tools = BASH_TOOLS, template, window = 4096, exact = true, notes, timeout = 120, compactor, policies = [], users = [], calls = [], global, project: own, git, hidden = [], background: wait }: Start = {}) {
   fixture.editor = async text => text;
   copied = [];
   fixture.environment = notes?.environment ?? '';
@@ -67,7 +72,9 @@ export async function start({ tools = BASH_TOOLS, template, window = 4096, exact
   fake = startFakeLlamaCpp({ nCtx: window, template });
   const backend = { ...(await connectLlamaCpp(fake.url)), exact };
   const log = createSessionLog(mkdtempSync(join(tmpdir(), 'resector-')), 'ses_test');
-  const runner = createRunner({ cwd: project, timeout });
+  const registry = wait === undefined ? undefined : createBackground({ dir: mkdtempSync(join(tmpdir(), 'resector-background-')) });
+  stopBackground = async () => registry?.stopAll();
+  const runner = createRunner({ cwd: project, timeout, ...(registry && { background: { registry, wait: wait! } }) });
   // websearch without ddgr: the query is echoed back as its result.
   const searcher = { timeout: 30, run: async (query: string) => ({ output: `results for ${query}\n`, exit: 0, stopped: null }) };
   const first = newSession('default', '', notes).length;
@@ -82,7 +89,7 @@ export async function start({ tools = BASH_TOOLS, template, window = 4096, exact
   const files = { read: projectFiles(project), images: projectImages(project, join(project, '..', `${basename(project)}-images`)), list: () => listProjectFiles(project), environment: () => fixture.environment, open: async (path: string) => void openedFiles.push(path) };
   const [active, setActive] = createSignal<Policy | null>(null);
   ui = await testRender(
-    () => <App backend={backend} runner={runner} searcher={searcher} approval={approval} editor={text => fixture.editor(text)} project={files} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} policies={{ all: policies, active, set: setActive }} openSessions={() => opened.push('sessions')} git={git} hidden={hidden === 'default' ? undefined : hidden} onQuit={() => {}} />,
+    () => <App backend={backend} runner={runner} searcher={searcher} approval={approval} editor={text => fixture.editor(text)} project={files} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} policies={{ all: policies, active, set: setActive }} openSessions={() => opened.push('sessions')} git={git} background={registry} hidden={hidden === 'default' ? undefined : hidden} onQuit={() => {}} />,
     { width: 80, height: 20 },
   );
   const size = ` / ${formatTokens(window)}`;

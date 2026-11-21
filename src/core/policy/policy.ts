@@ -21,7 +21,7 @@ export function viewOf(context: Context, counted: { blocks: number[]; total: num
   const blocks = context.blocks;
   const view = ({ id, kind, origin, content, pending, process }: Block, i: number): PolicyBlock => ({
     id, kind, origin, content, tokens: counted.blocks[i]!, pair: pairOf(blocks, id).find(other => other !== id) ?? null, pending: pending === true,
-    background: process ? { ...process } : null,
+    background: process ? { pid: process.pid, log: process.log, running: process.running } : null,
   });
   return { ...situation, used: counted.total, blocks: blocks.map(view) };
 }

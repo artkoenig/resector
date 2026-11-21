@@ -98,3 +98,13 @@ test('stopAll with nothing running returns at once; the log dir is made only whe
   expect(Date.now() - started).toBeLessThan(100);
   expect(existsSync(other)).toBe(false);
 });
+
+test('log reads a log as written so far; null once it is gone', async () => {
+  const r = registry();
+  const result = await r.start('echo one; sleep 0.4; echo two; sleep 5', { cwd, wait: 0.2, signal: new AbortController().signal });
+  const log = result.background!.log;
+  expect(r.log(log)).toBe('one\n');
+  await Bun.sleep(400);
+  expect(r.log(log)).toBe('one\ntwo\n');
+  expect(r.log(join(dir, 'gone.log'))).toBeNull();
+});

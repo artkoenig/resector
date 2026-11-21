@@ -1,5 +1,5 @@
 import { isImage } from '../notes/images';
-import type { Kind, Origin, SessionEvent, Stopped, Thinking, Tool, ToolProtocol } from './events';
+import type { BackgroundEnd, Kind, Origin, SessionEvent, Stopped, Thinking, Tool, ToolProtocol } from './events';
 
 export type Block = {
   id: number;
@@ -10,8 +10,8 @@ export type Block = {
   // Tool Call only: its tool, absent for bash; background: run as a Background Process.
   tool?: Tool;
   background?: true;
-  // Tool Call only, once started: its Background Process (process group, log) and whether it still runs.
-  process?: { pid: number; log: string; running: boolean };
+  // Tool Call only, once started: its Background Process (process group, log), whether it still runs, how it ended.
+  process?: { pid: number; log: string; running: boolean; end?: BackgroundEnd };
   // Both blocks of a Tool Pair whose Background Process runs: no Context operation touches them.
   running?: true;
   // Tool Result only: its Tool Call, and how the run stopped early.
@@ -95,7 +95,11 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   },
   BackgroundStarted: (state, e) => void (entry(state, e.call).process = { pid: e.pid, log: e.log, running: true }),
   // Logged only for a started process.
-  BackgroundExited: (state, e) => void (entry(state, e.call).process!.running = false),
+  BackgroundExited: (state, { type: _, call, ...end }) => {
+    const started = entry(state, call).process!;
+    started.running = false;
+    started.end = end as BackgroundEnd;
+  },
   ImageRead: (state, e) => {
     const { unread: _, ...read } = entry(state, e.id);
     state.entries.set(e.id, { ...read, image: e.image });

@@ -88,16 +88,19 @@ export function scriptedRunner({ timeout = 120, slow = [] as string[], hang = []
   return { runner: { timeout, run }, ran };
 }
 
-// Background Processes the test ends: exit(pid, end) tells the Gate one's process group is empty.
+// Background Processes the test ends: exit(pid, end) tells the Gate one's process group is empty; logs: their log
+// files by path.
 export function scriptedBackground() {
   const listeners = new Set<(pid: number, end: BackgroundEnd) => void>();
+  const logs = new Map<string, string>();
   const background: Background = {
+    log: path => logs.get(path) ?? null,
     onExit: listener => {
       listeners.add(listener);
       return () => void listeners.delete(listener);
     },
   };
-  return { background, exit: (pid: number, end: BackgroundEnd) => listeners.forEach(l => l(pid, end)) };
+  return { background, logs, exit: (pid: number, end: BackgroundEnd) => listeners.forEach(l => l(pid, end)) };
 }
 
 // users: User blocks in the Session Log, not yet sent; calls: pending Tool Calls after them, as at a resume; logged:
@@ -124,7 +127,7 @@ export function gateWith(setup: GateSetup = {}) {
   const { users = [], calls = [], tools = BASH_TOOLS, global, project, policies = [], compactor, files = {}, editor = async text => text, skills } = setup;
   const { backend, sent, reply } = scriptedBackend(setup);
   const { runner, ran } = scriptedRunner(setup.runner);
-  const { background, exit } = scriptedBackground();
+  const { background, logs, exit } = scriptedBackground();
   const opening = withTools(newSession('default', 'You are an agent.'), tools);
   const first = opening.length;
   const events: SessionEvent[] = [
@@ -158,7 +161,7 @@ export function gateWith(setup: GateSetup = {}) {
   }, k => (selection = minimalView(k, id => focused.push(id)))));
   const select = (id: number) => selection.setSelected(id);
   const mark = (...ids: number[]) => selection.setMarked(new Set(ids));
-  return { gate, sent, reply, ran, focused, events: logged, select, mark, exit };
+  return { gate, sent, reply, ran, focused, events: logged, select, mark, exit, logs };
 }
 
 // Until the Gate is idle: no answer streaming, no call running, no policy or Compaction under way.

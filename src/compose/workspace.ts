@@ -187,6 +187,7 @@ export async function openWorkspace(options: WorkspaceOptions) {
       if (exited) log.append(exited);
     });
     return {
+      log: registry.log,
       onExit: listener => {
         listeners.add(listener);
         return () => void listeners.delete(listener);
