@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createSignal } from 'solid-js';
 import { connect } from '../adapters/backend/connect';
-import { createBackground, type Background } from '../adapters/bash/background';
+import { createBackground, reapOrphans, type Background } from '../adapters/bash/background';
 import { createRunner } from '../adapters/bash/runner';
 import { createSplit } from '../adapters/bash/split';
 import { loadConfig, type ConfigPaths } from '../adapters/fs/config';
@@ -79,6 +79,14 @@ export async function openWorkspace(options: WorkspaceOptions) {
   const worktrees = join(paths.projectHome.data, 'worktrees');
   // The logs of a session's Background Processes.
   const backgroundLogs = (id: string) => join(paths.projectHome.data, 'background', id);
+  // Background Processes that outlived a resector (crash, SIGKILL), of sessions no live instance holds: killed, and
+  // logged as ended for every one recorded, so none stays running in its Session Log.
+  for (const id of store.orphaned()) {
+    for (const pid of reapOrphans(store.backgroundRecord(id))) {
+      const exited = store.has(id) && exitOf(store.read(id), pid, { signal: 'orphaned' });
+      if (exited) store.append(id, exited);
+    }
+  }
   // The project as seen from where a session runs: its checkout or its worktree.
   const projectAt = (dir: string, checkout = here) => ({
     read: projectFiles(dir),
@@ -164,7 +172,7 @@ export async function openWorkspace(options: WorkspaceOptions) {
     const { dir, checkout, warning } = sessionDir(events, opened.id);
     const instruction = () => loaded.compactionInstruction();
     // One per opened session, also across a worktree's reopen.
-    const background = createBackground({ dir: backgroundLogs(opened.id) });
+    const background = createBackground({ dir: backgroundLogs(opened.id), record: store.backgroundRecord(opened.id) });
     return {
       id: opened.id,
       release: async () => {
@@ -257,8 +265,15 @@ export async function openWorkspace(options: WorkspaceOptions) {
       const removed = repository ? removeWorktree(here, worktrees, id, force) : null;
       return removed?.kept ? [`branch ${removed.branch} kept – not merged`] : [];
     },
-    // A deleted session's Background Process logs.
-    removeBackgroundLogs: (id: string) => rmSync(backgroundLogs(id), { recursive: true, force: true }),
+    // Refused for a session open in another instance. Background Processes it still has (left by a crash since the
+    // start) are killed first; their logs go with it.
+    deleteSession(id: string) {
+      if (!store.locked(id)) {
+        reapOrphans(store.backgroundRecord(id));
+        rmSync(backgroundLogs(id), { recursive: true, force: true });
+      }
+      store.delete(id);
+    },
     worktreeDirty: (id: string) => repository && worktreeDirty(worktrees, id),
     // Where a listed session started, when that is another checkout of the Project: its branch and directory.
     origin(events: SessionEvent[]): string | null {

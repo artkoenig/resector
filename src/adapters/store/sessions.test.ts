@@ -101,3 +101,21 @@ test('a fixture export is the Session Log of the last or a given session', () =>
   expect(() => store.exportLog('ses_x')).toThrow('no session ses_x');
   expect(() => openSessionStore(dir()).exportLog(true)).toThrow('no session in this project');
 });
+
+test('orphaned lists the sessions with a background record that no live instance holds; delete removes the record', () => {
+  const root = mkdtempSync(join(tmpdir(), 'resector-sessions-'));
+  const store = openSessionStore(root);
+  const sleeper = Bun.spawn(['sleep', '30']);
+  try {
+    for (const id of ['ses_a', 'ses_b', 'ses_c']) writeFileSync(join(root, `${id}.jsonl`), '');
+    writeFileSync(store.backgroundRecord('ses_a'), '[]');
+    writeFileSync(store.backgroundRecord('ses_b'), '[]');
+    writeFileSync(join(root, 'ses_b.lock'), String(sleeper.pid));
+    expect(store.orphaned()).toEqual(['ses_a']);
+    store.delete('ses_a');
+    expect(existsSync(join(root, 'ses_a.background'))).toBe(false);
+    expect(store.orphaned()).toEqual([]);
+  } finally {
+    sleeper.kill();
+  }
+});

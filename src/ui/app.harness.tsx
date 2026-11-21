@@ -72,7 +72,8 @@ export async function start({ tools = BASH_TOOLS, template, window = 4096, exact
   fake = startFakeLlamaCpp({ nCtx: window, template });
   const backend = { ...(await connectLlamaCpp(fake.url)), exact };
   const log = createSessionLog(mkdtempSync(join(tmpdir(), 'resector-')), 'ses_test');
-  const registry = wait === undefined ? undefined : createBackground({ dir: mkdtempSync(join(tmpdir(), 'resector-background-')) });
+  const logs = mkdtempSync(join(tmpdir(), 'resector-background-'));
+  const registry = wait === undefined ? undefined : createBackground({ dir: logs, record: join(logs, 'ses.background') });
   stopBackground = async () => registry?.stopAll();
   const runner = createRunner({ cwd: project, timeout, ...(registry && { background: { registry, wait: wait! } }) });
   // websearch without ddgr: the query is echoed back as its result.

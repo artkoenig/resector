@@ -1,14 +1,16 @@
 import { afterEach, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, realpathSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createBackground } from './background';
+import { createBackground, reapOrphans, startTime } from './background';
 
 const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'resector-bg-')));
 const dir = join(cwd, 'logs');
 const registries: ReturnType<typeof createBackground>[] = [];
+const record = join(cwd, 'ses.background');
 const registry = () => {
-  const r = createBackground({ dir });
+  const r = createBackground({ dir, record });
   registries.push(r);
   return r;
 };
@@ -94,7 +96,7 @@ test('stopAll ends every Background Process with SIGTERM, SIGKILL for those igno
 test('stopAll with nothing running returns at once; the log dir is made only when needed', async () => {
   const other = join(cwd, 'none');
   const started = Date.now();
-  await createBackground({ dir: other }).stopAll();
+  await createBackground({ dir: other, record }).stopAll();
   expect(Date.now() - started).toBeLessThan(100);
   expect(existsSync(other)).toBe(false);
 });
@@ -137,4 +139,73 @@ test('a Background Process the user stopped stays the user’s when the session 
   void r.stop(pid);
   await r.stopAll();
   expect(ends).toEqual([{ signal: 'user' }]);
+});
+
+test('the record lists the running Background Processes; it is gone when none runs', async () => {
+  const r = registry();
+  const signal = new AbortController().signal;
+  const one = (await r.start('sleep 30', { cwd, wait: 0.1, signal })).background!.pid;
+  const two = (await r.start('sleep 30', { cwd, wait: 0.1, signal })).background!.pid;
+  expect(JSON.parse(readFileSync(record, 'utf8'))).toEqual([{ pid: one, started: startTime(one) }, { pid: two, started: startTime(two) }]);
+  expect(startTime(one)).toBeString();
+  process.kill(-one, 'SIGKILL');
+  while (r.running().length > 1) await Bun.sleep(20);
+  expect(JSON.parse(readFileSync(record, 'utf8'))).toEqual([{ pid: two, started: startTime(two) }]);
+  await r.stopAll();
+  expect(existsSync(record)).toBe(false);
+});
+
+// A process group as a crashed resector left it.
+const orphan = () => {
+  const child = spawn('bash', ['-c', 'sleep 30 & wait'], { detached: true, stdio: 'ignore' });
+  child.unref();
+  return child.pid!;
+};
+const gone = async (pid: number) => {
+  while (alive(pid)) await Bun.sleep(20);
+};
+
+test('reaping kills the groups a record lists and drops the record', async () => {
+  const pid = orphan();
+  writeFileSync(record, JSON.stringify([{ pid, started: startTime(pid) }]));
+  expect(reapOrphans(record)).toEqual([pid]);
+  await gone(pid);
+  expect(existsSync(record)).toBe(false);
+});
+
+test('reaping reports a group already gone', async () => {
+  const pid = orphan();
+  const started = startTime(pid);
+  process.kill(-pid, 'SIGKILL');
+  await gone(pid);
+  writeFileSync(record, JSON.stringify([{ pid, started }]));
+  expect(reapOrphans(record)).toEqual([pid]);
+});
+
+test('reaping leaves a process alone that reuses the pid, and still reports the record', async () => {
+  const pid = orphan();
+  try {
+    writeFileSync(record, JSON.stringify([{ pid, started: 'Mon Jan  1 00:00:00 2024' }]));
+    expect(reapOrphans(record)).toEqual([pid]);
+    await Bun.sleep(100);
+    expect(alive(pid)).toBe(true);
+    expect(existsSync(record)).toBe(false);
+  } finally {
+    process.kill(-pid, 'SIGKILL');
+  }
+});
+
+test('reaping the members left of a group whose leader is gone', async () => {
+  const child = spawn('bash', ['-c', 'sleep 30 & exit 0'], { detached: true, stdio: 'ignore' });
+  const pid = child.pid!;
+  const started = startTime(pid);
+  await new Promise(resolve => child.on('exit', resolve));
+  expect(alive(pid)).toBe(true);
+  writeFileSync(record, JSON.stringify([{ pid, started }]));
+  expect(reapOrphans(record)).toEqual([pid]);
+  await gone(pid);
+});
+
+test('reaping without a record does nothing', () => {
+  expect(reapOrphans(join(cwd, 'none.background'))).toEqual([]);
 });
