@@ -1,8 +1,8 @@
 // Background Processes of one opened Session: bash calls started with `background: true`, their output in a log file,
 // running in their own process group until it is empty (bash may exit long before the server it forked), stop or stopAll.
-import { spawn } from 'node:child_process';
-import { closeSync, mkdirSync, openSync, readFileSync, renameSync } from 'node:fs';
-import { join } from 'node:path';
+import { spawn, spawnSync } from 'node:child_process';
+import { closeSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import type { BackgroundEnd } from '../../core/log/events';
 import type { RunResult } from '../../core/tools/call';
 
@@ -15,6 +15,8 @@ const GRACE = 2000;
 type Stopper = 'user' | 'session ended';
 type Entry = { exit: number | null; signal: string | null; leaderDone: boolean; stopped: Stopper | null; gone: Promise<void> };
 export type Background = ReturnType<typeof createBackground>;
+// A running Background Process in the Session's record: its group, and when its leader started (the pid-reuse guard).
+type Recorded = { pid: number; started: string | null };
 
 const groupAlive = (pid: number) => {
   try {
@@ -32,9 +34,41 @@ const signalGroup = (pid: number, signal: NodeJS.Signals) => {
 
 const endOf = (e: Entry): BackgroundEnd => (e.stopped ? { signal: e.stopped } : e.exit !== null ? { exit: e.exit } : { signal: e.signal ?? 'SIGKILL' });
 
-// dir: where the logs go (`<pid>.log`), made at the first start.
-export function createBackground({ dir }: { dir: string }) {
+// When process `pid` started, as `ps` tells it (to the second); null when there is none.
+export function startTime(pid: number): string | null {
+  const ps = spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' } });
+  return ps.stdout?.trim() || null;
+}
+
+// A record as written by a resector that did not stop its Background Processes (crash, SIGKILL): kills the groups it
+// lists and drops it. A pid whose process started at another time was reused: not ours, left alone. While a group has
+// members its id is not reused, so with the leader gone the kill reaches only ours.
+// Returns every pid listed, also of groups already gone: none of them runs any more.
+export function reapOrphans(record: string): number[] {
+  let listed: Recorded[];
+  try {
+    listed = JSON.parse(readFileSync(record, 'utf8'));
+  } catch {
+    listed = [];
+  }
+  for (const { pid, started } of listed) {
+    const now = startTime(pid);
+    if (now === null || now === started) signalGroup(pid, 'SIGKILL');
+  }
+  rmSync(record, { force: true });
+  return listed.map(r => r.pid);
+}
+
+// dir: where the logs go (`<pid>.log`), made at the first start; record: the file listing what runs, for the next
+// start to reap after a crash.
+export function createBackground({ dir, record }: { dir: string; record: string }) {
   const running = new Map<number, Entry>();
+  const recorded = new Map<number, Recorded>();
+  const writeRecord = () => {
+    if (!recorded.size) return rmSync(record, { force: true });
+    mkdirSync(dirname(record), { recursive: true });
+    writeFileSync(record, JSON.stringify([...recorded.values()]));
+  };
   const listeners = new Set<(pid: number, end: BackgroundEnd) => void>();
   let next = 0;
 
@@ -61,11 +95,15 @@ export function createBackground({ dir }: { dir: string }) {
         if (!entry.leaderDone || groupAlive(pid)) return;
         clearInterval(timer);
         running.delete(pid);
+        recorded.delete(pid);
+        writeRecord();
         listeners.forEach(l => l(pid, endOf(entry)));
         resolve();
       }, POLL);
     });
     running.set(pid, entry);
+    recorded.set(pid, { pid, started: startTime(pid) });
+    writeRecord();
     const output = () => readFileSync(log, 'utf8');
     return new Promise(resolve => {
       const done = (result: RunResult) => {

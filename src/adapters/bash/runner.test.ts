@@ -55,7 +55,7 @@ test('a command leaving a process running returns when bash exits; the leftover 
 });
 
 test('a call with background runs in the registry: still running after the wait, it returns its pid and log', async () => {
-  const registry = createBackground({ dir: join(cwd, 'logs') });
+  const registry = createBackground({ dir: join(cwd, 'logs'), record: join(cwd, 'ses.background') });
   const runner = createRunner({ cwd, timeout: 120, background: { registry, wait: 0.2 } });
   const signal = new AbortController().signal;
   const result = await runner.run('echo up; sleep 30', { signal, onOutput: () => {}, background: true });

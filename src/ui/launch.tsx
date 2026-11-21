@@ -73,8 +73,7 @@ export function Launch(props: LaunchOptions) {
     const switched = id === current();
     if (switched) await open(load(), { which: props.store.list().find(s => !s.locked && s.id !== id)?.id });
     const kept = workspace.removeWorktree(id, force);
-    workspace.removeBackgroundLogs(id);
-    props.store.delete(id);
+    workspace.deleteSession(id);
     return [`deleted "${title}"`, ...(switched ? [`switched to "${titleOf(current())}"`] : []), ...kept].join(' · ');
   }
   const rename = (id: string, title: string) => {

@@ -1,5 +1,6 @@
 // Session store: the project's Session Logs in one directory, `<id>.jsonl` plus `<id>.lock`
-// holding the pid of the process that has the session open.
+// holding the pid of the process that has the session open, and `<id>.background`, the record of its running
+// Background Processes (written by adapters/bash/background).
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { decodeLog, encodeEvent } from '../../core/log/codec';
@@ -27,6 +28,7 @@ function alive(pid: number): boolean {
 export function openSessionStore(dir: string, { id = newId } = {}) {
   const logPath = (id: string) => join(dir, `${id}.jsonl`);
   const lockPath = (id: string) => join(dir, `${id}.lock`);
+  const recordPath = (id: string) => join(dir, `${id}.background`);
   const read = (id: string): SessionEvent[] => decodeLog(readFileSync(logPath(id), 'utf8'));
 
   // Locked = held by another live process; a lock of a dead process is stale.
@@ -94,6 +96,18 @@ export function openSessionStore(dir: string, { id = newId } = {}) {
       refuseLocked(id);
       rmSync(logPath(id), { force: true });
       rmSync(lockPath(id), { force: true });
+      rmSync(recordPath(id), { force: true });
+    },
+    has: (id: string) => existsSync(logPath(id)),
+    locked: lockedByOther,
+    backgroundRecord: recordPath,
+    // The sessions with a record no live instance holds: their Background Processes outlived a crash.
+    orphaned(): string[] {
+      if (!existsSync(dir)) return [];
+      return readdirSync(dir)
+        .filter(f => f.endsWith('.background'))
+        .map(f => f.slice(0, -'.background'.length))
+        .filter(id => !lockedByOther(id));
     },
   };
   return store;

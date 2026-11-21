@@ -1,9 +1,11 @@
 // Opening sessions without a view: what is logged, the policy they start with, where they run.
 import { afterEach, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { startFakeLlamaCpp } from '../../test/fake-llamacpp';
+import { startTime } from '../adapters/bash/background';
 import { configPaths } from '../adapters/fs/config';
 import { projectSessionsDir } from '../adapters/store/session-log';
 import { openSessionStore } from '../adapters/store/sessions';
@@ -28,8 +30,10 @@ const config = (url: string, extra = '') => `{
   "defaultProfile": "local" ${extra}
 }`;
 
-// A workspace on a fresh project and config. sessions: logs already written; git: a repository with one commit.
-async function workspace({ extra = '', sessions = {}, git = false }: { extra?: string; sessions?: Record<string, SessionEvent[]>; git?: boolean } = {}) {
+// A workspace on a fresh project and config. sessions: logs already written; files: other files of the session store;
+// git: a repository with one commit.
+type Setup = { extra?: string; sessions?: Record<string, SessionEvent[]>; files?: Record<string, string>; git?: boolean };
+async function workspace({ extra = '', sessions = {}, files = {}, git = false }: Setup = {}) {
   fake = startFakeLlamaCpp({ nCtx: 4096, model: 'qwen3-8b.gguf' });
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'resector-compose-')));
   const project = join(root, 'project');
@@ -42,6 +46,7 @@ async function workspace({ extra = '', sessions = {}, git = false }: { extra?: s
   put(paths.global, config(fake.url, extra));
   const sessionsDir = projectSessionsDir(paths);
   for (const [id, events] of Object.entries(sessions)) put(join(sessionsDir, `${id}.jsonl`), events.map(e => JSON.stringify(e) + '\n').join(''));
+  for (const [name, text] of Object.entries(files)) put(join(sessionsDir, name), text);
   const store = openSessionStore(sessionsDir, { id: () => 'ses_new' });
   const ws = await openWorkspace({ paths, store, cwd: project, openFile: async () => {}, onReopen: () => {} });
   const open = async (how?: OpenWith) => {
@@ -50,7 +55,7 @@ async function workspace({ extra = '', sessions = {}, git = false }: { extra?: s
     return opened;
   };
   const log = (id: string) => readFileSync(join(sessionsDir, `${id}.jsonl`), 'utf8').trim().split('\n').map(l => JSON.parse(l) as SessionEvent);
-  return { ws, open, log, project, paths };
+  return { ws, open, log, project, paths, sessionsDir };
 }
 
 test('a new session is logged and starts with the default policy on', async () => {
@@ -113,4 +118,82 @@ test('releasing a session logs its Background Processes as ended with it, also w
   options.log.append({ type: 'BackgroundStarted', call: 9, ...result.background! });
   await release();
   expect(log(id).at(-1)).toEqual({ type: 'BackgroundExited', call: 9, signal: 'session ended' });
+});
+
+// A process group as a crashed resector left it, with its record.
+function orphan() {
+  const child = spawn('bash', ['-c', 'sleep 30 & wait'], { detached: true, stdio: 'ignore' });
+  child.unref();
+  const pid = child.pid!;
+  return { pid, record: JSON.stringify([{ pid, started: startTime(pid) }]), kill: () => process.kill(-pid, 'SIGKILL') };
+}
+const groupAlive = (pid: number) => {
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+const started = (pid: number): SessionEvent[] => [...chat('local'), { type: 'BackgroundStarted', call: 9, pid, log: '/logs/x.log' }];
+
+test('at start, a Background Process left by a crashed resector is killed and logged as orphaned', async () => {
+  const left = orphan();
+  const { log, sessionsDir } = await workspace({ sessions: { ses_old: started(left.pid) }, files: { 'ses_old.background': left.record } });
+  while (groupAlive(left.pid)) await Bun.sleep(20);
+  expect(log('ses_old').at(-1)).toEqual({ type: 'BackgroundExited', call: 9, signal: 'orphaned' });
+  expect(existsSync(join(sessionsDir, 'ses_old.background'))).toBe(false);
+});
+
+test('at start, a recorded Background Process already gone is logged as orphaned too', async () => {
+  const dead = Bun.spawnSync(['true']).pid;
+  const { log } = await workspace({ sessions: { ses_old: started(dead) }, files: { 'ses_old.background': JSON.stringify([{ pid: dead, started: 'then' }]) } });
+  expect(log('ses_old').at(-1)).toEqual({ type: 'BackgroundExited', call: 9, signal: 'orphaned' });
+});
+
+test('at start, the Background Processes of a session open in another instance are left running', async () => {
+  const left = orphan();
+  try {
+    const files = { 'ses_old.background': left.record, 'ses_old.lock': String(process.ppid) };
+    const { log, sessionsDir } = await workspace({ sessions: { ses_old: started(left.pid) }, files });
+    await Bun.sleep(100);
+    expect(groupAlive(left.pid)).toBe(true);
+    expect(log('ses_old').at(-1)).toMatchObject({ type: 'BackgroundStarted' });
+    expect(existsSync(join(sessionsDir, 'ses_old.background'))).toBe(true);
+  } finally {
+    left.kill();
+  }
+});
+
+test('deleting a session kills the Background Processes it still has, and removes its record and logs', async () => {
+  const { ws, paths, sessionsDir } = await workspace({ sessions: { ses_old: chat('local') } });
+  const left = orphan();
+  const logs = join(paths.projectHome.data, 'background', 'ses_old');
+  put(join(logs, `${left.pid}.log`), 'up\n');
+  put(join(sessionsDir, 'ses_old.background'), left.record);
+  ws.deleteSession('ses_old');
+  while (groupAlive(left.pid)) await Bun.sleep(20);
+  expect([existsSync(join(sessionsDir, 'ses_old.jsonl')), existsSync(join(sessionsDir, 'ses_old.background')), existsSync(logs)]).toEqual([false, false, false]);
+});
+
+test('a session open in another instance is not deleted, its Background Processes keep running', async () => {
+  const left = orphan();
+  try {
+    const files = { 'ses_old.background': left.record, 'ses_old.lock': String(process.ppid) };
+    const { ws } = await workspace({ sessions: { ses_old: started(left.pid) }, files });
+    expect(() => ws.deleteSession('ses_old')).toThrow('open in another resector instance');
+    await Bun.sleep(100);
+    expect(groupAlive(left.pid)).toBe(true);
+  } finally {
+    left.kill();
+  }
+});
+
+test('a running Background Process is in its session\'s record until the session is released', async () => {
+  const { open, sessionsDir } = await workspace({ extra: ', "bash": { "backgroundWait": 0.2 }' });
+  const { id, options, release } = await open();
+  const result = await options.runner.run('sleep 30', { signal: new AbortController().signal, onOutput: () => {}, background: true });
+  expect(JSON.parse(readFileSync(join(sessionsDir, `${id}.background`), 'utf8'))).toMatchObject([{ pid: result.background!.pid }]);
+  await release();
+  expect(existsSync(join(sessionsDir, `${id}.background`))).toBe(false);
 });
