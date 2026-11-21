@@ -35,7 +35,7 @@ async function choose(downs: number) {
 test('a Question opens the dock: the Recommended Option on top, marked and preselected; Enter answers and sends (#33)', async () => {
   const { events } = await questioned(RUNTIME);
   const frame = ui.captureCharFrame();
-  expect((fake.chatRequests[0] as Sent).tools!.map(t => t.function.name)).toEqual(['bash', 'question', 'skill']);
+  expect((fake.chatRequests[0] as Sent).tools!.map(t => t.function.name)).toEqual(['bash', 'websearch', 'question', 'skill', 'image']);
   expect(line(frame, /Tool Call/)).toMatch(/4\s+Tool Call\s+question Which runtime shou….*\? answer/);
   expect(frame).not.toContain('? approve');
   expect(frame).toContain('Which runtime should we use?');
@@ -264,13 +264,13 @@ test('the answer is a normal Context Block: e makes a new Revision; d removes th
 // Question: switch off via Permission Rules (#36) ------------------------------------------------------------
 test('a deny rule for question takes it out of the Tools Block; a call anyway is "denied by rule", no dock (#36)', async () => {
   const { events } = await start({ tools: TOOLS, global: { question: 'allow' }, project: { question: 'deny' } });
-  expect(events().at(-1)).toEqual({ type: 'Edit', id: 2, revision: 2, content: toolsWith(['bash', 'skill']), harness: true });
-  await frameMatching(ui, f => /Tools\s+bash, skill/.test(f) && f.includes('212 / 4k'));
+  expect(events().at(-1)).toEqual({ type: 'Edit', id: 2, revision: 2, content: toolsWith(['bash', 'websearch', 'skill', 'image']), harness: true });
+  await frameMatching(ui, f => /Tools\s+bash, websearch, skill/.test(f) && f.includes('308 / 4k'));
   fake.reply({ chunks: [], calls: [questionCall(RUNTIME)] });
   await write('go');
   const frame = await frameMatching(ui, f => f.includes('⚠ denied by rule: question'));
   expect(frame).not.toContain('own answer');
-  expect((fake.chatRequests[0] as Sent).tools!.map(t => t.function.name)).toEqual(['bash', 'skill']);
+  expect((fake.chatRequests[0] as Sent).tools!.map(t => t.function.name)).toEqual(['bash', 'websearch', 'skill', 'image']);
   expect(events().filter(e => e.kind === 'Tool Result')).toEqual([
     { type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: 'denied by rule', call: 4 },
   ]);

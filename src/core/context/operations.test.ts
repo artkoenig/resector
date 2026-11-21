@@ -114,7 +114,7 @@ test('/tools switches a tool in the Tools Block as its next Revision; unknown to
   const on = { type: 'BlockAdded', id: 5, kind: 'Tools', origin: 'config', content: TOOLS } as const;
   const events = session(on);
   const [context] = at(events, 5);
-  expect(toggleTool(events, context, 'websearch', [])).toEqual({ event: { type: 'Edit', id: 5, revision: 2, content: expect.stringContaining('"websearch"') } });
+  expect(toggleTool(events, context, 'websearch', [])).toEqual({ event: { type: 'Edit', id: 5, revision: 2, content: toolsWithout('websearch') } });
   expect(toggleTool(events, context, 'python', [])).toEqual({ error: 'unknown tool python – bash websearch question skill image' });
   expect(toggleTool(session(), fold(session()), 'websearch', [])).toEqual({ error: 'no Tools Block' });
 });
@@ -134,7 +134,8 @@ test('the harness takes denied tools out of the Tools Block, not undoable; nothi
   const events = session({ type: 'BlockAdded', id: 5, kind: 'Tools', origin: 'config', content: TOOLS });
   expect(withoutDenied(events, fold(events), ['question'])).toEqual({ type: 'Edit', id: 5, revision: 2, content: toolsWithout('question'), harness: true });
   expect(withoutDenied(events, fold(events), [])).toBeNull();
-  expect(withoutDenied(events, fold(events), ['websearch'])).toBeNull();
+  const off = session({ type: 'BlockAdded', id: 5, kind: 'Tools', origin: 'config', content: toolsWithout('websearch') });
+  expect(withoutDenied(off, fold(off), ['websearch'])).toBeNull();
   expect(withoutDenied(session(), fold(session()), ['question'])).toBeNull();
 });
 

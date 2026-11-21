@@ -49,31 +49,6 @@ const SKILL = {
   parameters: { type: 'object', properties: { name: { type: 'string', description: "the name of the skill to load" } }, required: ['name'] },
 };
 
-test('a new Tools Block offers bash, question and skill', () => {
-  expect(JSON.parse(TOOLS)).toEqual([BASH, QUESTION_TOOL, SKILL]);
-  expect(QUESTION_DEFINITION.description).toContain('always a recommendation');
-  expect(QUESTION_DEFINITION.description).toContain('never add an "Other" option');
-  expect(toolNames(TOOLS)).toBe('bash, question, skill');
-  expect(toolNames('[{"name":"a"},{"name":"b"}]')).toBe('a, b');
-  expect(toolNames('[]')).toBe('no tools');
-});
-
-test('/tools switches a tool off and on again; an unknown one is refused', () => {
-  const off = toggleTool(TOOLS, 'bash') as { content: string };
-  expect(toolNames(off.content)).toBe('question, skill');
-  expect(toggleTool(off.content, 'bash')).toEqual({ content: TOOLS });
-  expect(toggleTool(TOOLS, 'python')).toEqual({ error: 'unknown tool python – bash websearch question skill image' });
-  expect(toggleTool(TOOLS, 'toString')).toEqual({ error: 'unknown tool toString – bash websearch question skill image' });
-});
-
-test('/tools websearch switches websearch on after bash, with one query parameter; off again, bash stays', () => {
-  const on = toggleTool(TOOLS, 'websearch') as { content: string };
-  expect(JSON.parse(on.content)).toEqual([BASH, SEARCH, QUESTION_TOOL, SKILL]);
-  expect(toolNames(on.content)).toBe('bash, websearch, question, skill');
-  expect(toggleTool('[]', 'websearch')).toEqual({ content: JSON.stringify([JSON.parse(on.content)[1]], null, 2) });
-  expect(toggleTool(on.content, 'websearch')).toEqual({ content: TOOLS });
-});
-
 const IMAGE = {
   name: 'image',
   description:
@@ -82,7 +57,32 @@ const IMAGE = {
   parameters: { type: 'object', properties: { path: { type: 'string', description: 'the image file, relative to the project root' } }, required: ['path'] },
 };
 
-test('/tools image switches image on, with one path parameter; it is off in a new Tools Block', () => {
-  const on = toggleTool(TOOLS, 'image') as { content: string };
-  expect(JSON.parse(on.content)).toEqual([BASH, QUESTION_TOOL, SKILL, IMAGE]);
+test('a new Tools Block offers every tool: bash, websearch, question, skill and image', () => {
+  expect(JSON.parse(TOOLS)).toEqual([BASH, SEARCH, QUESTION_TOOL, SKILL, IMAGE]);
+  expect(QUESTION_DEFINITION.description).toContain('always a recommendation');
+  expect(QUESTION_DEFINITION.description).toContain('never add an "Other" option');
+  expect(toolNames(TOOLS)).toBe('bash, websearch, question, skill, image');
+  expect(toolNames('[{"name":"a"},{"name":"b"}]')).toBe('a, b');
+  expect(toolNames('[]')).toBe('no tools');
+});
+
+test('/tools switches a tool off and on again; an unknown one is refused', () => {
+  const off = toggleTool(TOOLS, 'bash') as { content: string };
+  expect(toolNames(off.content)).toBe('websearch, question, skill, image');
+  expect(toggleTool(off.content, 'bash')).toEqual({ content: TOOLS });
+  expect(toggleTool(TOOLS, 'python')).toEqual({ error: 'unknown tool python – bash websearch question skill image' });
+  expect(toggleTool(TOOLS, 'toString')).toEqual({ error: 'unknown tool toString – bash websearch question skill image' });
+});
+
+test('/tools websearch switches websearch off; on again it sits after bash, with one query parameter', () => {
+  const off = toggleTool(TOOLS, 'websearch') as { content: string };
+  expect(JSON.parse(off.content)).toEqual([BASH, QUESTION_TOOL, SKILL, IMAGE]);
+  expect(toggleTool(off.content, 'websearch')).toEqual({ content: TOOLS });
+  expect(toggleTool('[]', 'websearch')).toEqual({ content: JSON.stringify([JSON.parse(TOOLS)[1]], null, 2) });
+});
+
+test('/tools image switches image off; on again it sits last, with one path parameter', () => {
+  const off = toggleTool(TOOLS, 'image') as { content: string };
+  expect(JSON.parse(off.content)).toEqual([BASH, SEARCH, QUESTION_TOOL, SKILL]);
+  expect(toggleTool(off.content, 'image')).toEqual({ content: TOOLS });
 });
