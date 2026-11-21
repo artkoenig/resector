@@ -108,3 +108,33 @@ test('log reads a log as written so far; null once it is gone', async () => {
   expect(r.log(log)).toBe('one\ntwo\n');
   expect(r.log(join(dir, 'gone.log'))).toBeNull();
 });
+
+test('stop ends one Background Process as the user’s doing: SIGTERM, SIGKILL when it ignores that; the others keep running', async () => {
+  const r = registry();
+  const signal = new AbortController().signal;
+  const other = (await r.start('sleep 30', { cwd, wait: 0.1, signal })).background!.pid;
+  const polite = (await r.start('sleep 30', { cwd, wait: 0.1, signal })).background!.pid;
+  const stubborn = (await r.start("trap '' TERM; echo trapped; while :; do sleep 0.05; done", { cwd, wait: 0.2, signal })).background!.pid;
+  const ends: [number, unknown][] = [];
+  r.onExit((pid, end) => ends.push([pid, end]));
+  const started = Date.now();
+  await r.stop(polite);
+  expect(Date.now() - started).toBeLessThan(1000);
+  await r.stop(stubborn);
+  expect(Date.now() - started).toBeGreaterThan(1500);
+  expect(ends).toEqual([[polite, { signal: 'user' }], [stubborn, { signal: 'user' }]]);
+  expect([alive(polite), alive(stubborn), alive(other)]).toEqual([false, false, true]);
+  expect(r.running()).toEqual([other]);
+  // Nothing runs under that pid any more.
+  await r.stop(polite);
+});
+
+test('a Background Process the user stopped stays the user’s when the session ends within the grace period', async () => {
+  const r = registry();
+  const pid = (await r.start("trap '' TERM; while :; do sleep 0.05; done", { cwd, wait: 0.2, signal: new AbortController().signal })).background!.pid;
+  const ends: unknown[] = [];
+  r.onExit((_, end) => ends.push(end));
+  void r.stop(pid);
+  await r.stopAll();
+  expect(ends).toEqual([{ signal: 'user' }]);
+});

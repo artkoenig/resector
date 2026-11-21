@@ -38,7 +38,7 @@ export function createGate({ log, openSessions, runner, searcher, approval, edit
   const repo = createGit(k, git, project, approval.root);
   const rules = createRules(k, approval, autoApprove);
   const skills = createSkills(k, available);
-  const processes = createBackgroundSlice(k, background);
+  const processes = createBackgroundSlice(k, sel, background);
   const loop = createToolLoop(k, sel, rules, repo, { runner, searcher, skills, images: project.images, send: () => void sender.api.send() });
   const policy = createPolicy(k, sel, policies, compactor);
   const headless = createHeadless(k, loop, rules, text => input.api.submit(text));

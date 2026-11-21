@@ -50,6 +50,7 @@ export const CONTEXT_KEYS: Binding[] = [
   { key: 'pageup', run: (_, ui) => ui.scrollPreview(-ui.previewPage()), busy: true },
   { key: 'pagedown', run: (_, ui) => ui.scrollPreview(ui.previewPage()), busy: true },
   { key: 'e', run: gate => gate.edit(), hint: 'edit', single: true },
+  { key: 'k', run: gate => gate.killBackground(), hint: 'kill', single: true, busy: true, when: gate => gate.killable() },
   { key: 'd', run: gate => gate.remove(), hint: 'remove', marked: 'remove' },
   { key: 'space', run: gate => gate.toggleMark(), hint: 'mark', marked: 'mark' },
   { key: 'c', run: gate => gate.startCompaction(), hint: 'compact', marked: 'compact' },

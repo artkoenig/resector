@@ -1,5 +1,5 @@
 // Background Processes of one opened Session: bash calls started with `background: true`, their output in a log file,
-// running in their own process group until it is empty (bash may exit long before the server it forked) or stopAll.
+// running in their own process group until it is empty (bash may exit long before the server it forked), stop or stopAll.
 import { spawn } from 'node:child_process';
 import { closeSync, mkdirSync, openSync, readFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
@@ -11,8 +11,9 @@ const POLL = 100;
 // SIGTERM, then SIGKILL after this (ms).
 const GRACE = 2000;
 
-// signal: what killed the leader; stopped: ended by stopAll.
-type Entry = { exit: number | null; signal: string | null; leaderDone: boolean; stopped: boolean; gone: Promise<void> };
+// signal: what killed the leader; stopped: who ended it, the user (stop) or the session's end (stopAll).
+type Stopper = 'user' | 'session ended';
+type Entry = { exit: number | null; signal: string | null; leaderDone: boolean; stopped: Stopper | null; gone: Promise<void> };
 export type Background = ReturnType<typeof createBackground>;
 
 const groupAlive = (pid: number) => {
@@ -29,7 +30,7 @@ const signalGroup = (pid: number, signal: NodeJS.Signals) => {
   } catch {}
 };
 
-const endOf = (e: Entry): BackgroundEnd => (e.stopped ? { signal: 'session ended' } : e.exit !== null ? { exit: e.exit } : { signal: e.signal ?? 'SIGKILL' });
+const endOf = (e: Entry): BackgroundEnd => (e.stopped ? { signal: e.stopped } : e.exit !== null ? { exit: e.exit } : { signal: e.signal ?? 'SIGKILL' });
 
 // dir: where the logs go (`<pid>.log`), made at the first start.
 export function createBackground({ dir }: { dir: string }) {
@@ -49,7 +50,7 @@ export function createBackground({ dir }: { dir: string }) {
     const pid = child.pid!;
     const log = join(dir, `${pid}.log`);
     renameSync(pending, log);
-    const entry: Entry = { exit: null, signal: null, leaderDone: false, stopped: false, gone: Promise.resolve() };
+    const entry: Entry = { exit: null, signal: null, leaderDone: false, stopped: null, gone: Promise.resolve() };
     child.on('exit', (code, signal) => {
       entry.exit = code;
       entry.signal = signal;
@@ -83,12 +84,11 @@ export function createBackground({ dir }: { dir: string }) {
     });
   }
 
-  // SIGTERM to every group, SIGKILL to what is left after the grace period.
-  async function stopAll(): Promise<void> {
-    const entries = [...running];
+  // SIGTERM to every group, SIGKILL to what is left after the grace period. Who stopped one first stays its ending.
+  async function end(entries: [number, Entry][], by: Stopper): Promise<void> {
     if (!entries.length) return;
     entries.forEach(([pid, e]) => {
-      e.stopped = true;
+      e.stopped ??= by;
       signalGroup(pid, 'SIGTERM');
     });
     const all = Promise.all(entries.map(([, e]) => e.gone));
@@ -101,7 +101,9 @@ export function createBackground({ dir }: { dir: string }) {
 
   return {
     start,
-    stopAll,
+    // The user stops one; nothing when none runs under `pid`.
+    stop: (pid: number) => end([...running].filter(([p]) => p === pid), 'user'),
+    stopAll: () => end([...running], 'session ended'),
     // pids of the groups not yet empty.
     running: () => [...running.keys()],
     // A log as written so far; null when it is gone (the Session deleted).
