@@ -33,7 +33,9 @@ const MODE_KEYS: Partial<Record<KeyMode, Hint[]>> = {
 // Streaming, running or a policy running: the first Esc stops the loop after the step, the second aborts it.
 function busyKeys(gate: Screen): Hint[] | null {
   const step = gate.running() ? 'kill' : gate.streaming() || gate.policing() ? 'abort' : null;
-  return step && [['esc', gate.stopping() ? step : 'stop after'], ...LOOK_KEYS];
+  // A running Background Process is killed while busy too.
+  const kill: Hint[] = gate.killable() && !gate.marked().size ? [['k', 'kill']] : [];
+  return step && [['esc', gate.stopping() ? step : 'stop after'], ...kill, ...LOOK_KEYS];
 }
 function modeKeys(gate: Screen, mode: KeyMode): Hint[] {
   const own = MODE_KEYS[mode] ?? busyKeys(gate);

@@ -33,3 +33,29 @@ test('the preview of its Tool Result shows the log, live while it runs', async (
   // It follows the log's end.
   await frameMatching(ui, f => /^┃ one\s/m.test(f) && /^┃ two\s/m.test(f));
 });
+
+test('k on the row of a running Background Process kills it; the hint shows only there', async () => {
+  const frame = await started('sleep 30');
+  // On the answer: nothing to kill.
+  expect(frame).not.toContain('k kill');
+  await press('up');
+  await press('up');
+  await frameMatching(ui, f => /^┃ Tool Call/m.test(f) && f.includes('k kill'));
+  await press('k');
+  const ended = await frameMatching(ui, f => /Tool Call.*■ stopped/.test(f));
+  expect(ended).not.toContain('k kill');
+});
+
+test('k kills it while another call runs', async () => {
+  await start({ global: { '*': 'allow' }, background: 0.3 });
+  fake.reply({ chunks: [], calls: [background('sleep 30')] });
+  fake.reply({ chunks: [], calls: [{ name: 'bash', arguments: JSON.stringify({ command: 'sleep 3' }) }] });
+  fake.reply({ chunks: ['done'] });
+  await write('go');
+  // The selection follows the running call's result; from there up to the Background Process's call.
+  await frameMatching(ui, f => /^┃\s+7\s+Tool Result/m.test(f) && f.includes('esc stop after'));
+  for (let i = 0; i < 3; i++) await press('up');
+  await frameMatching(ui, f => /^┃ Tool Call/m.test(f) && f.includes('k kill'));
+  await press('k');
+  await frameMatching(ui, f => /Tool Call.*■ stopped/.test(f));
+});

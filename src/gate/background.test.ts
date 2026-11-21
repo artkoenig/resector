@@ -83,3 +83,44 @@ test('the log of a Tool Pair’s Background Process: by its call or result, whil
   g.logs.clear();
   expect(g.gate.backgroundLog(5)).toBeNull();
 });
+
+test('killing the selected Tool Pair’s running Background Process stops it; its exit is logged as the user’s, the Note says so', async () => {
+  const g = gateWith({ global: { '*': 'allow' } });
+  g.reply({ calls: [background('serve')] }, { content: 'up' }, { content: 'ok' });
+  g.gate.submit('go');
+  await settled(g.gate);
+  // Not a Background Process's pair.
+  g.select(3);
+  expect(g.gate.killable()).toBe(false);
+  g.gate.killBackground();
+  expect(g.stopped).toEqual([]);
+  // By its result as by its call.
+  g.select(5);
+  expect(g.gate.killable()).toBe(true);
+  g.select(4);
+  expect(g.gate.killable()).toBe(true);
+  g.gate.killBackground();
+  expect(g.stopped).toEqual([4242]);
+  g.exit(4242, { signal: 'user' });
+  expect(g.events.at(-1)).toEqual({ type: 'BackgroundExited', call: 4, signal: 'user' });
+  // Ended: nothing left to kill.
+  expect(g.gate.killable()).toBe(false);
+  g.gate.killBackground();
+  expect(g.stopped).toEqual([4242]);
+  g.gate.submit('still up?');
+  await settled(g.gate);
+  expect(g.events.filter(e => e.type === 'BlockAdded' && e.origin === 'background').map(e => (e as { content: string }).content.split('\n')[0])).toEqual([
+    'Background Process pid 4242 ended: stopped by the user',
+  ]);
+});
+
+test('a Background Process is killed while another call runs', async () => {
+  const g = gateWith({ global: { '*': 'allow' }, runner: { slow: ['build'] } });
+  g.reply({ calls: [background('serve')] }, { calls: [bash('build')] }, { content: 'done' });
+  g.gate.submit('go');
+  while (!g.gate.running()) await Bun.sleep(1);
+  g.select(4);
+  g.gate.killBackground();
+  expect(g.stopped).toEqual([4242]);
+  await settled(g.gate);
+});
