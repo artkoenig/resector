@@ -1,5 +1,5 @@
 // The one screen: header band · block table · preview · prompt band · footer.
-import { decodePasteBytes, type PasteEvent, type ScrollBoxRenderable, type TextareaRenderable } from '@opentui/core';
+import { decodePasteBytes, type MouseEvent, type PasteEvent, type ScrollBoxRenderable, type TextareaRenderable } from '@opentui/core';
 import { useKeyboard, usePaste, useRenderer, useTerminalDimensions } from '@opentui/solid';
 import { createEffect, createMemo, createSignal, on, onCleanup, Show } from 'solid-js';
 import type { Verdict } from '../core/approval/approval';
@@ -16,7 +16,7 @@ import { Checks, Preview, ReferenceHint, type Shown } from './preview';
 import { CompactionMeta, type Mode, PromptMeta, statusOf } from './prompt';
 import { createSuggestions, Suggestions } from './suggestions';
 import { BlockTable, createRows, isSelected, type Row, SPINNER } from './table';
-import { ACCENT, BG, FAINT, KIND_COLOR, MUTED, PANEL_BG, TEXT, TONE } from './theme';
+import { ACCENT, BG, BORDER, FAINT, KIND_COLOR, MUTED, PANEL_BG, TEXT, TONE } from './theme';
 
 // How often a running Background Process's log is read for the preview (ms).
 const LOG_POLL = 250;
@@ -73,8 +73,23 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   };
   // The preview scrolls on its own; a newly selected block starts at its top.
   let preview: ScrollBoxRenderable | undefined;
-  // About a third of the screen: the kind line, at least 2 lines of content.
-  const previewHeight = () => Math.max(3, Math.floor((size().height - 6) / 3));
+  // About a third of the screen, or the height dragged with the mouse: the kind line, at least 2 lines of content,
+  // at least one block row above.
+  const [draggedHeight, setDraggedHeight] = createSignal<number>();
+  const previewHeight = () => Math.max(3, Math.min(draggedHeight() ?? Math.floor((size().height - 6) / 3), beside() - 1));
+  // Dragging the line above the preview: where the drag began and the height then.
+  const [resizing, setResizing] = createSignal<{ y: number; height: number }>();
+  const [overHandle, setOverHandle] = createSignal(false);
+  const dragging = () => !!resizing();
+  const startResize = (event: MouseEvent) => {
+    setResizing({ y: event.y, height: previewHeight() });
+    event.preventDefault();
+  };
+  const resize = (event: MouseEvent) => {
+    const r = resizing();
+    if (r) setDraggedHeight(Math.max(3, Math.min(r.height + r.y - event.y, beside() - 1)));
+  };
+  const endResize = () => setResizing(undefined);
   const scrollPreview = (lines: number) => preview?.scrollBy(lines);
   // A page keeps one line of the last: the band shows previewHeight() less the kind line.
   const previewPage = () => Math.max(1, previewHeight() - 2);
@@ -211,6 +226,7 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   const selectedRow = () => rows().find(r => isSelected(gate, r));
   // Copy on select: the text selected with the mouse goes to the clipboard on release.
   const copySelection = () => {
+    endResize();
     const text = renderer.getSelection()?.getSelectedText();
     if (!text) return;
     gate.copy(text);
@@ -218,7 +234,7 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   };
 
   return (
-    <box flexDirection="column" width="100%" height="100%" backgroundColor={BG} onMouseUp={copySelection}>
+    <box flexDirection="column" width="100%" height="100%" backgroundColor={BG} onMouseDrag={resize} onMouseUp={copySelection}>
       <Header gate={gate} width={width()} />
       <Show when={gate.hiding()}>
         <FilterLine gate={gate} />
@@ -238,7 +254,10 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
         <Show when={!dockLayout() && selectedRow()}>
           {(row: () => Row) => (
             <>
-              <text flexShrink={0}> </text>
+              {/* The handle to drag: not selectable, as a selection would start instead; shown only while pointed at or dragged. */}
+              <box height={1} flexShrink={0} onMouseDown={startResize} onMouseOver={() => setOverHandle(true)} onMouseOut={() => setOverHandle(false)}>
+                <text selectable={false} fg={BORDER}>{(overHandle() || dragging() ? '▄' : ' ').repeat(width())}</text>
+              </box>
               <Band color={KIND_COLOR[row().kind]} lines={previewHeight()}>
                 <text flexShrink={0}>
                   <strong>

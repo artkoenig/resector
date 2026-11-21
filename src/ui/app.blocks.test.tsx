@@ -330,3 +330,17 @@ test('⌥↑ on a Tool Pair asks; any other key cancels; the same key again turn
     { role: 'assistant', content: 'ok' },
   ]);
 });
+
+test('dragging the line above the preview with the mouse moves the split between table and preview', async () => {
+  await withUsers('first', 'second');
+  let frame = await frameMatching(ui, f => previewed(f) === 'second');
+  const lines = frame.split('\n');
+  const kind = lines.findIndex(l => /┃ User/.test(l));
+  const handle = kind - 1;
+  await ui.mockMouse.drag(10, handle, 10, handle - 2);
+  frame = await frameMatching(ui, f => f.split('\n').findIndex(l => /┃ User/.test(l)) === kind - 2);
+  expect(order(frame)).toEqual(['1 System', '2 bash', '3 first', '4 second']);
+  expect(copied).toEqual([]);
+  await ui.mockMouse.drag(10, handle - 2, 10, handle);
+  await frameMatching(ui, f => f.split('\n').findIndex(l => /┃ User/.test(l)) === kind);
+});
