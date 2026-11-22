@@ -61,6 +61,22 @@ test('a Context as big as the window blocks sending; removing a block makes room
   expect(g.sent[0]!.maxTokens).toBe(10);
 });
 
+test('a removed block is gone once the request is under way, while it is still counted; cancelled then, it is struck through again', async () => {
+  const g = gateWith({ users: ['old', 'new'], countDelay: 20 });
+  g.select(3);
+  g.gate.remove();
+  const removed = () => g.gate.reviewed().find(b => b.id === 3)?.removed;
+  expect(removed()).toBe(true);
+  const sending = g.gate.send();
+  await until(() => g.gate.streaming() !== null);
+  expect(removed()).toBeUndefined();
+  g.gate.abort();
+  g.gate.abort();
+  await sending;
+  expect(g.gate.status()?.text).toBe('send cancelled');
+  expect(removed()).toBe(true);
+});
+
 test('a User message on a full window stays, the status says why, nothing is sent', async () => {
   const g = gateWith({ window: 30, users: ['long'] });
   g.gate.submit('more');

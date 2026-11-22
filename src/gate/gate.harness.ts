@@ -31,16 +31,16 @@ const READ_ONLY = ['ls', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'sed
 const ASK_ALL = (global: Permissions = {}): Permissions =>
   ({ '*': 'ask', ...Object.fromEntries(READ_ONLY.map(c => [`${c} *`, 'allow' as const])), ...global });
 
-// A backend answering the replies in order; each block counts `perBlock` tokens. sent: each chat request with its options.
-
-export function scriptedBackend({ window = 4096, exact = true, perBlock = 10, thinkingModes }: { window?: number; exact?: boolean; perBlock?: number; thinkingModes?: Thinking[] | null } = {}) {
+// A backend answering the replies in order; each block counts `perBlock` tokens, each count takes `countDelay` ms.
+// sent: each chat request with its options.
+export function scriptedBackend({ window = 4096, exact = true, perBlock = 10, countDelay = 0, thinkingModes }: { window?: number; exact?: boolean; perBlock?: number; countDelay?: number; thinkingModes?: Thinking[] | null } = {}) {
   const replies: Reply[] = [];
   const sent: { request: Request; maxTokens?: number }[] = [];
   const backend: Backend = {
     window,
     exact,
     thinkingModes,
-    count: async prefixes => ({ total: prefixes.length * perBlock, blocks: prefixes.map(() => perBlock), template: 0, cached: { tokens: 0, exact: true } }),
+    count: async prefixes => (countDelay && (await Bun.sleep(countDelay)), { total: prefixes.length * perBlock, blocks: prefixes.map(() => perBlock), template: 0, cached: { tokens: 0, exact: true } }),
     chat: async (request, options) => {
       sent.push({ request, maxTokens: options.maxTokens });
       const { hang, delay, error, ...reply } = replies.shift() ?? {};

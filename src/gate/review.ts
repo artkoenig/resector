@@ -2,14 +2,16 @@
 import type { SessionEvent } from '../core/log/events';
 import { fold, undone, type Block, type Context } from '../core/log/fold';
 
-// title: set by Rename. removed: struck through until the next request, then gone. moved, revised: since the last
+// title: set by Rename. removed: struck through until the next request goes, then gone. moved, revised: since the last
 // request (revised: another Revision than sent, `✎n`). missing: an unread reference whose file cannot be read now.
 export type Reviewed = Block & { title: string | null; removed: boolean; moved: boolean; revised: boolean; missing?: string };
 
 // context: fold(events) as the Gate holds it (unread references peeked); missing: why a reference cannot be read.
-export function review(events: SessionEvent[], context: Context, missing: ReadonlyMap<number, string> = new Map()): Reviewed[] {
+// sending: a request is under way but not yet logged (counted first): it shows as sent, so no struck rows below the
+// answer streaming in.
+export function review(events: SessionEvent[], context: Context, missing: ReadonlyMap<number, string> = new Map(), sending = false): Reviewed[] {
   const skip = undone(events);
-  const since = events.findLastIndex(e => e.type === 'RequestSent') + 1;
+  const since = sending ? events.length : events.findLastIndex(e => e.type === 'RequestSent') + 1;
   const unsent = (i: number) => i >= since && !skip.has(i);
   // Replayed without the removals since the last request, the removed blocks stay in their place.
   const removals = new Set(events.flatMap((e, i) => (e.type === 'Remove' && unsent(i) ? [i] : [])));
