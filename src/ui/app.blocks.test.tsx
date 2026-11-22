@@ -303,20 +303,21 @@ test('text in the block table is not selectable: dragging over it copies nothing
 test('the mouse pointer is a text cursor over the preview, a resize cursor on the split handle, the arrow elsewhere', async () => {
   await start();
   const pointers: string[] = [];
-  const set = ui.renderer.setMousePointer.bind(ui.renderer);
-  ui.renderer.setMousePointer = style => (pointers.push(style), set(style));
+  const out = ui.renderer as unknown as { writeOut(data: string): boolean };
+  const write = out.writeOut.bind(out);
+  out.writeOut = data => (pointers.push(...[...data.matchAll(/\x1b\]22;([^\x1b]*)/g)].map(m => m[1]!)), write(data));
   const lines = (await frameMatching(ui, f => f.includes('You are an agent.'))).split('\n');
   const text = lines.findIndex(l => l.includes('You are an agent.'));
   const handle = lines.findIndex(l => /┃ System/.test(l)) - 1;
   await ui.mockMouse.moveTo(4, text);
   await ui.flush();
-  expect(pointers.at(-1)).toBe('text');
+  expect(pointers.at(-1)).toBe('xterm');
   await ui.mockMouse.moveTo(10, lines.findIndex(l => l.includes('System prompt')));
   await ui.flush();
-  expect(pointers.at(-1)).toBe('default');
+  expect(pointers.at(-1)).toBe('left_ptr');
   await ui.mockMouse.moveTo(10, handle);
   await ui.flush();
-  expect(pointers.at(-1)).toBe('row-resize');
+  expect(pointers.at(-1)).toBe('sb_v_double_arrow');
 });
 
 test('d removes a Tool Pair as a whole; Space marks it as a whole', async () => {
