@@ -376,3 +376,11 @@ test('dragging the line above the preview with the mouse moves the split between
   await ui.mockMouse.drag(10, handle - 2, 10, handle);
   await frameMatching(ui, f => f.split('\n').findIndex(l => /┃ User/.test(l)) === kind);
 });
+
+test('a mermaid block in an answer shows as a diagram in the preview', async () => {
+  await start();
+  fake.reply({ chunks: ['flow:\n```mermaid\ngraph LR\n  A[Start] --> B[Done]\n```\n'] });
+  await write('draw it');
+  const frame = await frameMatching(ui, f => f.includes('answer complete') && f.includes('┌───────┐   ┌──────┐'));
+  expect(frame).not.toContain('graph LR');
+});
