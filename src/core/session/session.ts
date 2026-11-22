@@ -42,7 +42,7 @@ export function newSession(profile: string, systemPrompt: string, { environment,
 export function skillsUpdate(events: SessionEvent[], skills: Skill[]): SessionEvent | null {
   const context = fold(events);
   // A loaded skill's Note names its skill; the Skills note does not.
-  const listed = context.blocks.findLast(b => b.kind === 'Note' && b.origin === 'skill' && b.skill === undefined);
+  const listed = context.blocks.findLast(b => b.origin === 'skill' && b.skill === undefined);
   const content = skillsNote(skills);
   if (!content || listed?.content === content) return null;
   return { type: 'BlockAdded', id: context.nextId, kind: 'Note', origin: 'skill', content };
