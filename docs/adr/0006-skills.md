@@ -11,8 +11,8 @@ start (origin `skill`). To use a skill it calls the `skill` tool with the skill'
 and adds its body to the Context as a Note (origin `skill`, `file` set to the SKILL.md path). The `skill` tool is
 always allowed, like `websearch` — loading a skill needs no approval.
 
-A resumed Session reads them again, since the files may have changed: when they no longer match its last Skills note it
-gets a new one at the end of the Context, which keeps the cached prefix. The Tools Block is left alone, so a Session
+A resumed Session reads them again, since the files may have changed: when they no longer match the last Skills note still in its
+Context (or that was removed or compacted away) it gets a new one at the end of the Context, which keeps the cached prefix. The Tools Block is left alone, so a Session
 from before skills needs `/tools` to offer the `skill` tool.
 
 The user can load a skill too, with `/skill <name>`. A skill's frontmatter may declare `requires`: those skills load

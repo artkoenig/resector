@@ -37,13 +37,15 @@ export function newSession(profile: string, systemPrompt: string, { environment,
   return events;
 }
 
-// A resumed session's new Skills note, when the skills on disk differ from what its last one lists (or it has none).
+// A resumed session's new Skills note, when the skills on disk differ from what its last one in the Context lists
+// (or it has none, e.g. removed or compacted away: the model would not know the skills otherwise).
 export function skillsUpdate(events: SessionEvent[], skills: Skill[]): SessionEvent | null {
-  // Only BlockAdded has an origin.
-  const listed = events.findLast(e => (e as Partial<BlockAdded>).origin === 'skill') as BlockAdded | undefined;
+  const context = fold(events);
+  // A loaded skill's Note names its skill; the Skills note does not.
+  const listed = context.blocks.findLast(b => b.kind === 'Note' && b.origin === 'skill' && b.skill === undefined);
   const content = skillsNote(skills);
   if (!content || listed?.content === content) return null;
-  return { type: 'BlockAdded', id: fold(events).nextId, kind: 'Note', origin: 'skill', content };
+  return { type: 'BlockAdded', id: context.nextId, kind: 'Note', origin: 'skill', content };
 }
 
 // The blocks a session starts with (System prompt, Tools Block, environment Note, project instructions): those
