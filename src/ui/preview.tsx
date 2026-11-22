@@ -7,6 +7,7 @@ import { quoted, sessionRules, type Action, type Verdict } from '../core/approva
 import type { Kind, Tool } from '../core/log/events';
 import type { Reviewed } from '../gate/review';
 import { parseReference } from '../core/notes/files';
+import { drawMermaid } from './mermaid';
 import { ACCENT, BORDER, FAINT, KIND_COLOR, MUTED, TEXT, TONE } from './theme';
 
 // OpenTUI ships JavaScript, TypeScript, Markdown and Zig; bash comes from the grammar the approval already uses.
@@ -105,7 +106,7 @@ function Content(props: { content: string; filetype: string | undefined; live: b
   return (
     <Switch fallback={<text fg={MUTED}>{props.content}</text>}>
       <Match when={!props.live && props.filetype === 'markdown'}>
-        <markdown content={props.content} syntaxStyle={syntax()} fg={MUTED} conceal tableOptions={{ widthMode: 'content', borderColor: BORDER }} />
+        <markdown content={drawMermaid(props.content)} syntaxStyle={syntax()} fg={MUTED} conceal tableOptions={{ widthMode: 'content', borderColor: BORDER }} />
       </Match>
       <Match when={!props.live && props.filetype}>
         {(ft: () => string) => <code content={props.content} filetype={ft()} syntaxStyle={syntax()} fg={MUTED} wrapMode="word" />}
