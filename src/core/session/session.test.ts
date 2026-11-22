@@ -92,3 +92,12 @@ test('a resumed session gets a new Skills note only when the skills changed or i
   expect(skillsUpdate(later, [skill('old')])).toBeNull();
   expect(events.at(-1)).toMatchObject({ kind: 'Note', origin: 'skill' });
 });
+
+test('a resumed session whose Skills note was removed gets a new one', () => {
+  const skill = (description: string): Skill => ({ name: 'a', description, file: '~/s/a/SKILL.md', body: '', requires: [], files: [] });
+  const events: SessionEvent[] = [...newSession('p', 'system', { skills: [skill('old')] }), { type: 'Remove', id: 3, by: 'user' }];
+  expect(skillsUpdate(events, [skill('old')])).toEqual({ type: 'BlockAdded', id: 4, kind: 'Note', origin: 'skill', content: skillsNote([skill('old')]) });
+  // A loaded skill's Note is not a Skills note.
+  const loaded: SessionEvent[] = [...events, { type: 'SkillLoaded', id: 4, name: 'a', file: '~/s/a/SKILL.md', content: skillsNote([skill('old')]) }];
+  expect(skillsUpdate(loaded, [skill('old')])).toMatchObject({ id: 5, origin: 'skill' });
+});
