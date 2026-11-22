@@ -1,5 +1,5 @@
 // The one screen: header band · block table · preview · prompt band · footer.
-import { decodePasteBytes, type MouseEvent, type MousePointerStyle, type PasteEvent, type Renderable, type ScrollBoxRenderable, type TextareaRenderable } from '@opentui/core';
+import { decodePasteBytes, type MouseEvent, type PasteEvent, type Renderable, type ScrollBoxRenderable, type TextareaRenderable } from '@opentui/core';
 import { useKeyboard, usePaste, useRenderer, useTerminalDimensions } from '@opentui/solid';
 import { createEffect, createMemo, createSignal, on, onCleanup, Show } from 'solid-js';
 import type { Verdict } from '../core/approval/approval';
@@ -12,6 +12,7 @@ import { FilterLine, Header } from './header';
 import { dockMode, type KeyMode, keysOf } from './hints';
 import { createKeys, modifierOf } from './keys';
 import { Band, ErrorBand, errorBandLines, Footer, footerLines, inputLinesOf, PromptBand, promptLines } from './parts';
+import { type Pointer, setPointer } from './pointer';
 import { Checks, Preview, ReferenceHint, type Shown } from './preview';
 import { CompactionMeta, type Mode, PromptMeta, statusOf } from './prompt';
 import { createSuggestions, Suggestions } from './suggestions';
@@ -96,9 +97,9 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
     for (let r = target; r; r = r.parent) if (r === container) return true;
     return false;
   };
-  const pointer = (): MousePointerStyle => (dragging() || overHandle() ? 'row-resize' : overPreview() ? 'text' : 'default');
-  createEffect(() => renderer.setMousePointer(pointer()));
-  onCleanup(() => renderer.setMousePointer('default'));
+  const pointer = (): Pointer => (dragging() || overHandle() ? 'row-resize' : overPreview() ? 'text' : 'arrow');
+  createEffect(() => setPointer(renderer, pointer()));
+  onCleanup(() => setPointer(renderer));
   const scrollPreview = (lines: number) => preview?.scrollBy(lines);
   // A page keeps one line of the last: the band shows previewHeight() less the kind line.
   const previewPage = () => Math.max(1, previewHeight() - 2);
