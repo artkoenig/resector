@@ -38,6 +38,13 @@ test('a removed block is struck through in its place until the next request, the
   expect(ids([...removed, sent])).toEqual([1, 3]);
 });
 
+test('while a request is under way, before it is logged, it counts as sent: removed blocks are gone, nothing flagged', () => {
+  const changed = session(3, { type: 'Remove', id: 2 }, { type: 'Move', id: 4, after: 1 }, edit(3, 2, 'u3!'));
+  const sending = review(changed, fold(changed), new Map(), true);
+  expect(sending.map(b => b.id)).toEqual([1, 4, 3]);
+  expect(sending.some(b => b.removed || b.moved || b.revised)).toBe(false);
+});
+
 test('a removed Tool Pair is struck through as a whole; its call no longer awaits approval', () => {
   const events = session(1, call(3, 'ls'), result(4, 3), { type: 'Remove', id: 4 });
   expect([3, 4].map(id => block(events, id))).toMatchObject([{ removed: true, pending: false }, { removed: true }]);

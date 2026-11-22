@@ -44,8 +44,11 @@ export function createKernel(options: { log: SessionLog; backend: Backend; event
   });
   const context = () => peeked().context;
   const sent = () => context().blocks;
-  // The Context as the Gate shows it: removed blocks struck through, changes since the last request flagged.
-  const reviewed = createMemo(() => review(events(), context(), peeked().missing));
+  // The Context as the Gate shows it: removed blocks struck through, changes since the last request flagged; a request
+  // under way counts as sent.
+  // Not recomputed for every streamed token.
+  const sending = createMemo(() => streaming() !== null);
+  const reviewed = createMemo(() => review(events(), context(), peeked().missing, sending()));
   // An unchanged request (e.g. after a rename) keeps the memo value, so nothing is recounted.
   const prefixes = createMemo(() => renderPrefixes(context()), [], { equals: same });
   const request = () => prefixes().at(-1)!;
