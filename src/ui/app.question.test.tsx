@@ -71,6 +71,22 @@ test('the wheel over the block table shows the preview of older rows while the Q
   expect(fake.chatRequests).toHaveLength(1);
 });
 
+test('back on the Question row while reading older rows, the dock shows again, not the call as JSON', async () => {
+  await questioned(RUNTIME);
+  const y = ui.captureCharFrame().split('\n').findIndex(l => /\d+\s+User\s/.test(l));
+  await ui.mockMouse.scroll(10, y, 'up');
+  await frameMatching(ui, f => f.includes('any key goes back to the question'));
+  await press('down');
+  let frame = await frameMatching(ui, f => f.includes('own answer'));
+  expect(line(frame, /› Bun/)).toMatch(/› Bun .*recommended/);
+  expect(frame).not.toContain('"questions"');
+  await ui.mockMouse.scroll(10, y, 'up');
+  await frameMatching(ui, f => f.includes('any key goes back to the question'));
+  await ui.mockMouse.scroll(10, y, 'down');
+  frame = await frameMatching(ui, f => f.includes('own answer'));
+  expect(frame).not.toContain('"questions"');
+});
+
 test('↑↓ move, Enter picks; own answer takes free text (#33)', async () => {
   await questioned(RUNTIME);
   fake.reply({ chunks: ['ok'] });

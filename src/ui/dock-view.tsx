@@ -36,6 +36,8 @@ export function createDockControl(gate: Screen, ui: Ui) {
       },
     ),
   );
+  // Back on the Question's row (↑↓ or the wheel), reading ends: the dock shows again, not the call's JSON.
+  createEffect(on(gate.selected, id => id === peekFrom() && setPeekFrom(null), { defer: true }));
   // A step in the dock; a lone single-choice Question is sent with its first answer.
   function step(next: DockState, send = dock.direct(next)) {
     if (send) return gate.answer(dock.answers(next));
