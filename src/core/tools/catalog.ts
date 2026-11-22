@@ -41,9 +41,8 @@ export const TOOL_NAMES = CATALOG.map(t => t.name);
 
 // Tools Block content, protocol-neutral: name, description, JSON schema of the arguments.
 const toolsContent = (tools: ToolDefinition[]) => JSON.stringify(tools, null, 2);
-// A new session's Tools Block: bash, question and skill; websearch (it needs ddgr) and image (it needs a vision model)
-// are switched on with /tools.
-export const TOOLS = toolsContent(CATALOG.filter(t => t.name !== 'websearch' && t.name !== 'image'));
+// A new session's Tools Block: every tool; /tools switches one off (websearch needs ddgr, image a vision model).
+export const TOOLS = toolsContent(CATALOG);
 
 // The names of the tools in Tools Block content.
 export const toolsIn = (tools: string): string[] => (JSON.parse(tools) as { name: string }[]).map(t => t.name);
