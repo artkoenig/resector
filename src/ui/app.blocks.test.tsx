@@ -275,17 +275,48 @@ test('an editor that fails leaves the block unchanged', async () => {
   expect(events().some(e => e.type === 'Edit')).toBe(false);
 });
 
-test('text selected with the mouse is copied to the clipboard on release', async () => {
+test('text selected with the mouse in the preview is copied to the clipboard on release', async () => {
   await start();
   const frame = await frameMatching(ui, f => f.includes('You are an agent.'));
-  const y = frame.split('\n').findIndex(l => l.includes('You are an agent.'));
-  const x = frame.split('\n')[y]!.indexOf('You');
+  const lines = frame.split('\n');
+  const y = lines.findLastIndex(l => l.includes('You are an agent.'));
+  const x = lines[y]!.indexOf('You');
   await ui.mockMouse.drag(x, y, x + 6, y);
   await frameMatching(ui, f => /copied 7 chars/.test(f));
   expect(copied).toEqual(['You are']);
   await ui.mockMouse.click(x, y);
   await ui.flush();
   expect(copied).toEqual(['You are']);
+});
+
+test('text in the block table is not selectable: dragging over it copies nothing', async () => {
+  await start();
+  const frame = await frameMatching(ui, f => f.includes('System prompt'));
+  const lines = frame.split('\n');
+  const y = lines.findIndex(l => l.includes('System prompt'));
+  const x = lines[y]!.indexOf('System prompt');
+  await ui.mockMouse.drag(x, y, x + 6, y);
+  await ui.flush();
+  expect(copied).toEqual([]);
+});
+
+test('the mouse pointer is a text cursor over the preview, a resize cursor on the split handle, the arrow elsewhere', async () => {
+  await start();
+  const pointers: string[] = [];
+  const set = ui.renderer.setMousePointer.bind(ui.renderer);
+  ui.renderer.setMousePointer = style => (pointers.push(style), set(style));
+  const lines = (await frameMatching(ui, f => f.includes('You are an agent.'))).split('\n');
+  const text = lines.findIndex(l => l.includes('You are an agent.'));
+  const handle = lines.findIndex(l => /┃ System/.test(l)) - 1;
+  await ui.mockMouse.moveTo(4, text);
+  await ui.flush();
+  expect(pointers.at(-1)).toBe('text');
+  await ui.mockMouse.moveTo(10, lines.findIndex(l => l.includes('System prompt')));
+  await ui.flush();
+  expect(pointers.at(-1)).toBe('default');
+  await ui.mockMouse.moveTo(10, handle);
+  await ui.flush();
+  expect(pointers.at(-1)).toBe('row-resize');
 });
 
 test('d removes a Tool Pair as a whole; Space marks it as a whole', async () => {

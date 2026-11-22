@@ -213,13 +213,13 @@ export function Dock(props: { layout: DockLayout }) {
     <>
       <For each={props.layout.lines}>
         {line => (
-          <text flexShrink={0} bg={line.selected ? SELECTED_BG : undefined}>
+          <text selectable={false} flexShrink={0} bg={line.selected ? SELECTED_BG : undefined}>
             <For each={line.segs}>{seg => <span style={{ fg: seg.fg, bg: (seg as Seg & { selected?: boolean }).selected ? SELECTED_BG : undefined }}>{seg.text}</span>}</For>
           </text>
         )}
       </For>
       <Show when={more()}>
-        <text flexShrink={0} fg={ACCENT}>
+        <text selectable={false} flexShrink={0} fg={ACCENT}>
           {more()}
         </text>
       </Show>

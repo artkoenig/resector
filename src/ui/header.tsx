@@ -41,7 +41,7 @@ export function Header(props: { gate: Screen; width: number }) {
       }
       rightWidth={used().length + window().length + drift().length + over().length}
       below={
-        <text>
+        <text selectable={false}>
           <span>{'  '}</span>
           <For each={contextBar(props.gate, Math.max(0, props.width - 4))}>{c => <span style={{ fg: c.color }}>{c.char}</span>}</For>
         </text>
@@ -55,7 +55,7 @@ export function FilterLine(props: { gate: Screen }) {
   const share = () => props.gate.filterShare();
   const tokens = () => (share().total === null ? '…' : `${formatTokens(share().tokens!)}/${formatTokens(share().total!)}`);
   return (
-    <text flexShrink={0}>
+    <text selectable={false} flexShrink={0}>
       <span style={{ fg: ACCENT }}>{`  hidden: ${props.gate.hidden().map(f => f.name).join(' ')}`}</span>
       <span style={{ fg: MUTED }}>{` · ${share().blocks}/${share().all} blocks · ${tokens()} tokens`}</span>
     </text>

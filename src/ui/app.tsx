@@ -1,5 +1,5 @@
 // The one screen: header band · block table · preview · prompt band · footer.
-import { decodePasteBytes, type MouseEvent, type PasteEvent, type ScrollBoxRenderable, type TextareaRenderable } from '@opentui/core';
+import { decodePasteBytes, type MouseEvent, type MousePointerStyle, type PasteEvent, type Renderable, type ScrollBoxRenderable, type TextareaRenderable } from '@opentui/core';
 import { useKeyboard, usePaste, useRenderer, useTerminalDimensions } from '@opentui/solid';
 import { createEffect, createMemo, createSignal, on, onCleanup, Show } from 'solid-js';
 import type { Verdict } from '../core/approval/approval';
@@ -90,6 +90,15 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
     if (r) setDraggedHeight(Math.max(3, Math.min(r.height + r.y - event.y, beside() - 1)));
   };
   const endResize = () => setResizing(undefined);
+  // The mouse pointer says what a press does there: select text in the preview, move the split on its handle.
+  const [overPreview, setOverPreview] = createSignal(false);
+  const within = (target: Renderable | null, container?: Renderable) => {
+    for (let r = target; r; r = r.parent) if (r === container) return true;
+    return false;
+  };
+  const pointer = (): MousePointerStyle => (dragging() || overHandle() ? 'row-resize' : overPreview() ? 'text' : 'default');
+  createEffect(() => renderer.setMousePointer(pointer()));
+  onCleanup(() => renderer.setMousePointer('default'));
   const scrollPreview = (lines: number) => preview?.scrollBy(lines);
   // A page keeps one line of the last: the band shows previewHeight() less the kind line.
   const previewPage = () => Math.max(1, previewHeight() - 2);
@@ -234,7 +243,7 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   };
 
   return (
-    <box flexDirection="column" width="100%" height="100%" backgroundColor={BG} onMouseDrag={resize} onMouseUp={copySelection}>
+    <box flexDirection="column" width="100%" height="100%" backgroundColor={BG} onMouseDrag={resize} onMouseUp={copySelection} onMouseMove={event => setOverPreview(within(event.target, preview))}>
       <Header gate={gate} width={width()} />
       <Show when={gate.hiding()}>
         <FilterLine gate={gate} />
@@ -244,7 +253,7 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
         <Show when={dockLayout()}>
           {(layout: () => DockLayout) => (
             <>
-              <text flexShrink={0}> </text>
+              <text selectable={false} flexShrink={0}> </text>
               <Band color={ACCENT} lines={dockLines()}>
                 <Dock layout={layout()} />
               </Band>
@@ -286,12 +295,12 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
       <Show when={error()}>
         {(text: () => string) => (
           <>
-            <text flexShrink={0}> </text>
+            <text selectable={false} flexShrink={0}> </text>
             <ErrorBand text={text()} width={width()} />
           </>
         )}
       </Show>
-      <text flexShrink={0}> </text>
+      <text selectable={false} flexShrink={0}> </text>
       <Suggestions suggestions={suggest.shown()} chosen={suggest.shownChosen()} />
       <PromptBand
         inputLines={inputLines()}
@@ -303,17 +312,17 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
         }
       >
         <Show when={answering()} fallback={
-          <Show when={writing()} fallback={<text fg={idle().fg}>{idle().text}</text>}>
+          <Show when={writing()} fallback={<text selectable={false} fg={idle().fg}>{idle().text}</text>}>
             <box flexDirection="row" flexGrow={1}>
               <Show when={phase() === 'instruction'}>
-                <text fg={ACCENT} flexShrink={0}>{'instruction > '}</text>
+                <text selectable={false} fg={ACCENT} flexShrink={0}>{'instruction > '}</text>
               </Show>
               {draftArea(phase() === 'instruction' ? gate.defaultInstruction() : undefined)}
             </box>
           </Show>
         }>
           <box flexDirection="row" flexGrow={1}>
-            <text fg={ACCENT} flexShrink={0}>{'answer > '}</text>
+            <text selectable={false} fg={ACCENT} flexShrink={0}>{'answer > '}</text>
             {draftInput()}
           </box>
         </Show>

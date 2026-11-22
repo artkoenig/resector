@@ -43,11 +43,11 @@ export function Footer(props: { status: Status | null; hints: readonly Hint[]; w
       when={shown().length}
       fallback={
         <box flexShrink={0} paddingLeft={2} paddingRight={2}>
-          <text fg={fg()}>{text()}</text>
+          <text selectable={false} fg={fg()}>{text()}</text>
         </box>
       }
     >
-      <text flexShrink={0}>
+      <text selectable={false} flexShrink={0}>
         <span style={{ fg: fg() }}>{`  ${text()}`}</span>
         <span>{gap()}</span>
         <Hints hints={shown()} />
@@ -61,7 +61,7 @@ export function HeaderBand(props: { title: JSX.Element; titleWidth: number; righ
   const gap = () => ' '.repeat(Math.max(1, props.width - 2 - 'resector'.length - 2 - props.titleWidth - (props.rightWidth ?? 0) - 2));
   return (
     <box flexDirection="column" flexShrink={0} backgroundColor={PANEL_BG}>
-      <text>
+      <text selectable={false}>
         <span>{'  '}</span>
         <strong>
           <span style={{ fg: ACCENT }}>resector</span>
@@ -72,7 +72,7 @@ export function HeaderBand(props: { title: JSX.Element; titleWidth: number; righ
         {props.right}
         <span>{'  '}</span>
       </text>
-      {props.below ?? <text> </text>}
+      {props.below ?? <text selectable={false}> </text>}
     </box>
   );
 }
@@ -81,7 +81,7 @@ export function HeaderBand(props: { title: JSX.Element; titleWidth: number; righ
 export function Band(props: { color: string; lines: number; children: JSX.Element }) {
   return (
     <box flexDirection="row" flexShrink={0} height={props.lines} backgroundColor={PANEL_BG}>
-      <text fg={props.color} flexShrink={0}>
+      <text selectable={false} fg={props.color} flexShrink={0}>
         {Array.from({ length: props.lines }, () => '┃ ').join('\n')}
       </text>
       <box flexDirection="column" flexGrow={1}>
@@ -98,7 +98,7 @@ export function PromptBand(props: { children: JSX.Element; meta?: JSX.Element; i
       <box flexDirection="row" height={props.inputLines}>
         {props.children}
       </box>
-      <text>{props.meta}</text>
+      <text selectable={false}>{props.meta}</text>
     </Band>
   );
 }
@@ -124,12 +124,12 @@ export function ErrorBand(props: { text: string; width: number }) {
   const parts = () => errorParts(props.text, props.width);
   return (
     <Band color={TONE.error} lines={1 + parts().body.length}>
-      <text>
+      <text selectable={false}>
         <strong>
           <span style={{ fg: TONE.error }}>{`✗ ${parts().head}`}</span>
         </strong>
       </text>
-      <For each={parts().body}>{line => <text fg={TEXT}>{line}</text>}</For>
+      <For each={parts().body}>{line => <text selectable={false} fg={TEXT}>{line}</text>}</For>
     </Band>
   );
 }

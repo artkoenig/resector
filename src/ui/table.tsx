@@ -63,14 +63,15 @@ export function BlockTable(props: { gate: Screen; rows: Row[]; visible: Row[]; w
   };
   return (
     <>
-      <text fg={MUTED} flexShrink={0}>{`     #  ${'Type'.padEnd(11)}  ${cell('Content', titleWidth())}  Tokens  Cache  Flags`}</text>
+      <text selectable={false} fg={MUTED} flexShrink={0}>{`     #  ${'Type'.padEnd(11)}  ${cell('Content', titleWidth())}  Tokens  Cache  Flags`}</text>
       <box flexDirection="column" flexGrow={1} overflow="hidden" onMouseScroll={wheel}>
+        {/* Rows change while the model works: text is selected only in the preview. */}
         <For each={props.visible}>
           {row => {
             const selected = () => isSelected(gate, row);
             const fg = () => columnFg(row, selected());
             return (
-              <text flexShrink={0} bg={selected() ? SELECTED_BG : undefined} fg={fg().text}>
+              <text selectable={false} flexShrink={0} bg={selected() ? SELECTED_BG : undefined} fg={fg().text}>
                 <span style={{ fg: ACCENT }}>{`${selected() ? '┃' : ' '} ${gate.marked().has(row.id) ? '●' : ' '}`}</span>
                 <span style={{ fg: fg().muted }}>{`${right(row.n, 3)}  `}</span>
                 <span style={{ fg: fg().kind, strikethrough: row.removed }}>{row.kind.padEnd(11)}</span>
@@ -85,9 +86,9 @@ export function BlockTable(props: { gate: Screen; rows: Row[]; visible: Row[]; w
           }}
         </For>
         <Show when={gate.hiding() && props.rows.every(r => r.removed)}>
-          <text fg={MUTED} flexShrink={0}>{'        no blocks shown'}</text>
+          <text selectable={false} fg={MUTED} flexShrink={0}>{'        no blocks shown'}</text>
         </Show>
-        <text fg={MUTED} flexShrink={0}>
+        <text selectable={false} fg={MUTED} flexShrink={0}>
           {`        ${'Template'.padEnd(11)}  ${cell('BOS · generation prompt', titleWidth())}  ${right(gate.split() ? String(gate.split()!.template) : '…', 6)}`}
         </text>
       </box>

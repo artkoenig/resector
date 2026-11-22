@@ -91,7 +91,7 @@ export function Suggestions(props: { suggestions: Suggestion[]; chosen: number }
   return (
     <For each={props.suggestions}>
       {(s, i) => (
-        <text flexShrink={0} bg={i() === props.chosen ? SELECTED_BG : undefined}>
+        <text selectable={false} flexShrink={0} bg={i() === props.chosen ? SELECTED_BG : undefined}>
           <span style={{ fg: i() === props.chosen ? ACCENT : TEXT }}>{`  ${s.label.padEnd(22)} `}</span>
           <span style={{ fg: MUTED }}>{s.description}</span>
         </text>
