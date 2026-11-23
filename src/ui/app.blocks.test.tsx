@@ -384,3 +384,14 @@ test('a mermaid block in an answer shows as a diagram in the preview', async () 
   const frame = await frameMatching(ui, f => f.includes('answer complete') && f.includes('┌───────┐   ┌──────┐'));
   expect(frame).not.toContain('graph LR');
 });
+
+test('a title with a wide emoji keeps the Tokens column aligned', async () => {
+  await withUsers('✅ done', 'plain');
+  const frame = await frameMatching(ui, f => f.includes('plain'));
+  // Columns in terminal cells: ✅ takes two.
+  const column = (re: RegExp) => {
+    const text = line(frame, re) ?? '';
+    return Bun.stringWidth(text.slice(0, text.search(/\d+\s+○/)));
+  };
+  expect(column(/✅/)).toBe(column(/plain/));
+});

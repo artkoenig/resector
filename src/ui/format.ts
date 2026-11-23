@@ -34,10 +34,23 @@ export const flagsOf = (block: Reviewed, next?: number, dropped = false): string
     .join('')
     .trim();
 
-export const cell = (s: string, width: number): string =>
-  s.length > width ? s.slice(0, Math.max(0, width - 1)) + '…' : s.padEnd(width);
+// Widths in terminal cells, not UTF-16 units: an emoji like ✅ takes two cells.
+const graphemes = new Intl.Segmenter();
+export function cell(s: string, width: number): string {
+  const size = Bun.stringWidth(s);
+  if (size <= width) return s + ' '.repeat(width - size);
+  let cut = '';
+  let used = 0;
+  for (const { segment } of graphemes.segment(s)) {
+    const w = Bun.stringWidth(segment);
+    if (used + w > width - 1) break;
+    cut += segment;
+    used += w;
+  }
+  return cut + '…' + ' '.repeat(Math.max(0, width - 1 - used));
+}
 
-export const right = (s: string, width: number): string => s.padStart(width);
+export const right = (s: string, width: number): string => ' '.repeat(Math.max(0, width - Bun.stringWidth(s))) + s;
 
 // The items that fit in `capacity` lines: a window keeping item `at` in the middle where possible.
 export function around<T>(items: readonly T[], at: number, capacity: number): T[] {
