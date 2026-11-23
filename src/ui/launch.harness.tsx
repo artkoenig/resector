@@ -104,10 +104,12 @@ export async function launch(setup: Setup = {}) {
   return { paths, fatal, log, store, quit, root, project, other, sessionsDir, terminate: () => terminate() };
 }
 
+// Auto-approve off, so calls are asked for and the 80 cells of the header leave room for the folder and branch.
 export const profileConfig = (url: string, extra = '') => `{
   // test profile
   "profiles": { "local": { "backend": "llamacpp", "endpoint": "${url}", "window": 2048 ${extra} } },
   "defaultProfile": "local",
+  "autoApprove": false,
 }`;
 
 export const chat = (profile: string): SessionEvent[] => [

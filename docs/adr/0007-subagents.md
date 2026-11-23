@@ -12,8 +12,9 @@ comes at once: `[Subagent started: pid … · log … · stop: kill -- -<pid>]`,
 are any. The parent's run goes on.
 
 A `subagent` call is `ask` by default; a Permission Rule can allow it. The child runs with Auto-approve, so the start
-is the one place the user agrees: they see the prompt and the `worktree` argument. A Headless Run without a terminal
-therefore starts Subagents only with a rule or `--auto-approve`.
+is the one place the user agrees: they see the prompt and the `worktree` argument. Under Auto-approve, which is on
+unless the config or `--no-auto-approve` switches it off, the start runs unasked like any other `ask`. A Headless Run
+without a terminal and without Auto-approve starts Subagents only with a rule.
 
 New Sessions have the tool in their Tools Block; `/tools` switches it. Existing Sessions get it through `/tools`.
 

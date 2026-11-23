@@ -2,7 +2,7 @@
 // what exists.
 import type { Config, Headless } from './config';
 
-// Flags of `resector -p`: the headless section's keys, and Auto-approve, which is a flag only.
+// Flags of `resector -p`: the headless section's keys, and Auto-approve, which the config sets for the TUI too.
 export type Flags = Headless & { autoApprove?: boolean };
 export type Settings = Headless & { autoApprove: boolean };
 // What exists: Context Policies loaded, tools in the catalog, whether the run is in a git repository.
@@ -10,7 +10,7 @@ export type Known = { policies: string[]; tools: string[]; repository: boolean }
 
 // Unknown names are a usage error listing the valid ones; so is a worktree where none can be made.
 export function headlessSettings(config: Config, flags: Flags, known: Known): Settings | { usage: string } {
-  const settings: Settings = { ...config.headless, ...defined(flags), autoApprove: flags.autoApprove ?? false };
+  const settings: Settings = { ...config.headless, ...defined(flags), autoApprove: flags.autoApprove ?? config.autoApprove };
   const usage = [
     unknown(['profile', 'profiles'], [settings.profile], Object.keys(config.profiles)),
     unknown(['policy', 'policies'], [settings.policy], [...known.policies, 'off']),

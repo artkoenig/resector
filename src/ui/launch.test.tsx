@@ -265,6 +265,11 @@ test('the active policy belongs to the app: it stays when switching sessions and
   expect(JSON.stringify(log())).not.toContain('shout');
 });
 
+test('auto-approve is on at start unless the config switches it off', async () => {
+  await launch({ config: url => profileConfig(url).replace('"autoApprove": false,', '') });
+  expect(await frameMatching(ui, f => f.includes('/ 2k'))).toMatch(/local · thinking off · policy summary-reset · auto-approve/);
+});
+
 test('auto-approve belongs to the app: it stays when switching sessions and is not logged', async () => {
   const { log } = await launch({ config: url => profileConfig(url), sessions: { ses_a: titled('local', 'fix the build') } });
   await frameMatching(ui, f => f.includes('/ 2k'));

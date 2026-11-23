@@ -3,13 +3,19 @@ import { readConfig } from './config';
 import { headlessSettings } from './headless';
 
 const known = { policies: ['summary-reset', 'mine'], tools: ['bash', 'question', 'websearch'], repository: true };
-const config = (headless: object) =>
-  readConfig([{ source: 'global', text: JSON.stringify({ profiles: { a: { backend: 'llamacpp' }, b: { backend: 'ollama' } }, defaultProfile: 'a', headless }) }]).config;
+const config = (headless: object, rest: object = {}) =>
+  readConfig([{ source: 'global', text: JSON.stringify({ profiles: { a: { backend: 'llamacpp' }, b: { backend: 'ollama' } }, defaultProfile: 'a', headless, ...rest }) }]).config;
 
 test('flags override the headless section, which overrides nothing else', () => {
-  const settings = headlessSettings(config({ profile: 'b', policy: 'mine', tools: ['bash'], maxTurns: 5, worktree: true }), { policy: 'off', tools: [], autoApprove: true }, known);
+  const settings = headlessSettings(config({ profile: 'b', policy: 'mine', tools: ['bash'], maxTurns: 5, worktree: true }), { policy: 'off', tools: [] }, known);
   expect(settings).toEqual({ profile: 'b', policy: 'off', tools: [], maxTurns: 5, worktree: true, autoApprove: true });
-  expect(headlessSettings(config({}), {}, known)).toEqual({ autoApprove: false });
+});
+
+test('Auto-approve is on unless the config switches it off; the flag overrides the config', () => {
+  expect(headlessSettings(config({}), {}, known)).toEqual({ autoApprove: true });
+  expect(headlessSettings(config({}, { autoApprove: false }), {}, known)).toEqual({ autoApprove: false });
+  expect(headlessSettings(config({}, { autoApprove: false }), { autoApprove: true }, known)).toEqual({ autoApprove: true });
+  expect(headlessSettings(config({}), { autoApprove: false }, known)).toEqual({ autoApprove: false });
 });
 
 test('an unknown profile, policy or tool is a usage error naming the valid ones', () => {

@@ -85,6 +85,16 @@ test('a new session starts with what it is opened with: profile, policy, thinkin
   expect(options.approval.root).toBe(join(paths.projectHome.data, 'worktrees', id));
 });
 
+test('Auto-approve starts as configured, on by default; switched since, it stays when another session is opened', async () => {
+  const { open } = await workspace();
+  const { options } = await open();
+  expect(options.autoApprove!.on()).toBe(true);
+  options.autoApprove!.set(false);
+  expect((await open()).options.autoApprove!.on()).toBe(false);
+  const off = await workspace({ extra: ', "autoApprove": false' });
+  expect((await off.open()).options.autoApprove!.on()).toBe(false);
+});
+
 const chat = (profile: string, checkout?: string): SessionEvent[] => [
   ...newSession(profile, 'You are terse.', checkout ? { checkout } : undefined),
   { type: 'BlockAdded', id: 3, kind: 'User', origin: 'user', content: 'hi there' },

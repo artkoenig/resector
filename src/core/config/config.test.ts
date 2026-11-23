@@ -100,6 +100,7 @@ test('permission rules, keybindings and the bash timeout are read from config', 
   ]);
   expect(config).toEqual({
     profiles: {},
+    autoApprove: true,
     permission: { 'git push *': 'ask', 'rm *': 'deny' },
     keybindings: { send: 'ctrl+s' },
     bash: { timeout: 60 },
@@ -153,7 +154,7 @@ test('the first-start config holds the chosen model as the default Model Profile
   expect(name('my.gguf-v2.gguf')).toBe('my.gguf-v2');
 });
 
-test('the headless section is merged from global and project config; permission and autoApprove are not in it', () => {
+test('the headless section is merged from global and project config; permission and autoApprove are not in it, they are shared with the TUI', () => {
   const { config } = readConfig([
     { source: 'global', text: '{ "headless": { "policy": "off", "tools": ["bash"], "maxTurns": 10 } }' },
     { source: 'project', text: '{ "headless": { "tools": [], "show": ["tools"], "worktree": true } }', project: true },

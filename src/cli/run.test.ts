@@ -160,11 +160,11 @@ test('without --show stderr is the closing status line only', async () => {
   expect((await resectorHere(p, ['-p', 'go'])).err).toMatch(/^· answer · 1 turn · \S+ tokens\n$/);
 });
 
-test('a call the rules ask for is asked at the terminal, not on stderr, and runs on y', async () => {
+test('without Auto-approve a call the rules ask for is asked at the terminal, not on stderr, and runs on y', async () => {
   const asked = project({ permission: { 'touch *': 'ask' }, tty: ['y'] });
   reply({ calls: [{ name: 'bash', arguments: JSON.stringify({ command: 'touch made' }) }] });
   reply({ chunks: ['done'] });
-  const { out, err } = await resectorHere(asked, ['-p', 'go']);
+  const { out, err } = await resectorHere(asked, ['-p', 'go', '--no-auto-approve']);
   expect(out).toBe('done\n');
   expect(err).not.toContain('approve');
   expect(readFileSync(`${asked.typed}.out`, 'utf8')).toStartWith('? approve touch made\n  ? touch made (');
@@ -179,11 +179,11 @@ test('a call inside the project runs without asking, also without a terminal', a
   expect(existsSync(join(unattended.dir, 'made'))).toBe(true);
 });
 
-test('without a terminal a call the rules ask for is not run; the run goes on', async () => {
+test('without Auto-approve and a terminal a call the rules ask for is not run; the run goes on', async () => {
   const unattended = project({ permission: { 'touch *': 'ask' } });
   reply({ calls: [{ name: 'bash', arguments: JSON.stringify({ command: 'touch made' }) }] });
   reply({ chunks: ['done'] });
-  expect((await resectorHere(unattended, ['-p', 'go'])).out).toBe('done\n');
+  expect((await resectorHere(unattended, ['-p', 'go', '--no-auto-approve'])).out).toBe('done\n');
   expect(existsSync(join(unattended.dir, 'made'))).toBe(false);
   expect(unattended.sessions()[0]).toContain('no user to approve');
 });

@@ -58,13 +58,15 @@ const SEARCH_TIMEOUT = 30;
 export type OpenWith = { which?: SessionRef; started?: boolean; start?: StartWith };
 
 // Loads the Context Policies once; the active policy and Auto-approve belong to the app, they stay when switching
-// sessions.
+// sessions. Auto-approve starts as configured.
 export async function openWorkspace(options: WorkspaceOptions) {
   const { paths, store } = options;
   const [active, setActive] = createSignal<Policy | null>(null);
   const loadedPolicies = await loadPolicies(paths.policies, BUILT_IN);
   const policies: Policies = { all: loadedPolicies.policies, active, set: setActive };
   const [autoOn, setAutoOn] = createSignal(false);
+  // Set from the config with the first session opened; after that /auto decides.
+  let autoConfigured = false;
   const autoApprove: AutoApprove = { on: autoOn, set: setAutoOn };
   // Policies that failed to load, reported once in the first status line.
   let failed = loadedPolicies.failed;
@@ -119,7 +121,6 @@ export async function openWorkspace(options: WorkspaceOptions) {
     if (start?.thinking !== undefined) events.push({ type: 'ThinkingSet', thinking: start.thinking });
     if (start?.worktree) events.push({ type: 'WorktreeSet', on: true });
     events.forEach(opened.log.append);
-    if (start) setAutoOn(start.autoApprove);
     // A new session starts with the configured policy on; when switched to, a resumed one keeps the app's.
     const missing = switchOnDefault(loaded, start?.policy);
     const notice = missing ? { text: `new session · ${missing}`, tone: 'warn' as const } : { text: 'new session', tone: 'ok' as const };
@@ -160,6 +161,8 @@ export async function openWorkspace(options: WorkspaceOptions) {
   // A new one is dropped again if its backend fails.
   async function open(loaded: Loaded, { which, started = false, start }: OpenWith = {}): Promise<Opened> {
     split ??= await createSplit();
+    if (start || !autoConfigured) setAutoOn(start?.autoApprove ?? loaded.config.autoApprove);
+    autoConfigured = true;
     // From the checkout's top level, also when started in a subdirectory.
     const skills = discoverSkills(topLevel(here), paths.home);
     const { opened, events, notice } = which ? resume(loaded, which, started, skills) : create(loaded, start, skills);

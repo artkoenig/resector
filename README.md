@@ -137,9 +137,9 @@ Context Policy, Permission Rules and Session Log work as in the TUI. Every run i
 | `--show <thinking,tools,notes,policy\|all>` | nothing: stderr gets the closing line only |
 | `--max-turns <n>` | 50 requests to the model |
 | `-w, --worktree` | off: run in its own git worktree |
-| `--auto-approve` | off: run every call the rules leave at `ask`, unasked |
+| `--auto-approve`, `--no-auto-approve` | `autoApprove`: run every call the rules leave at `ask`, unasked; or ask for it |
 
-The `headless` section of the [config](#configuration) (global, then project) sets the same; flags win. `permission` stays shared with the TUI; `--auto-approve` is a flag only.
+The `headless` section of the [config](#configuration) (global, then project) sets the same; flags win. `permission` and `autoApprove` stay shared with the TUI.
 
 ```jsonc
 {
@@ -166,7 +166,7 @@ $ bun test src/core/tokens/split.test.ts
 | `2` | usage error: bad flag, unknown profile, policy or tool, `-w` outside a git repository |
 | `130` | Ctrl-C (a second one exits at once) |
 
-**Asking.** A call the rules leave at `ask`, or a Question, is asked at the terminal itself (`/dev/tty`), so it shows even with stderr redirected: `y` / `a` / `n` for a call; for a Question a number, your own answer, empty for the recommended one, `-` to skip; Ctrl-D rejects the call or declines the Question. Without a terminal (CI, cron) a Question is declined and such a call is not run (`no user to approve`); the run goes on. So unattended, only calls whose arguments stay inside the project run: `deny` what it must never do.
+**Asking.** With `--no-auto-approve` (or `"autoApprove": false`) a call the rules leave at `ask` is asked for. Such a call, or a Question, is asked at the terminal itself (`/dev/tty`), so it shows even with stderr redirected: `y` / `a` / `n` for a call; for a Question a number, your own answer, empty for the recommended one, `-` to skip; Ctrl-D rejects the call or declines the Question. Without a terminal (CI, cron) a Question is declined and such a call is not run (`no user to approve`); the run goes on. So unattended without Auto-approve, only calls whose arguments stay inside the project run. With it, everything not denied runs: `deny` what it must never do.
 
 ## Configuration
 
@@ -184,11 +184,14 @@ $ bun test src/core/tokens/split.test.ts
   },
   "defaultProfile": "qwen",
   "defaultPolicy": "summary-reset",       // default; "off" for none
+  "autoApprove": true,                    // default; false asks for what the rules leave at "ask"
   "permission": { "npm test *": "allow", "rm *": "ask", "git push *": "deny" }
 }
 ```
 
 `permission`: the last matching rule decides, in this order: built-in, global config, project config, rules you add with `a` for the session; none matching asks. The built-in rule `"*": "allow"` runs every command without asking as long as its arguments stay inside the project; an argument outside it (`/etc/x`, `../x`, `~`) or not literal (`$VAR`, `$(…)`) asks whatever the rule. `"*": "ask"` asks for everything again. Project rules can loosen global ones (`allow` what the global config asks for) as well as tighten them.
+
+`autoApprove`: resector starts with Auto-approve on, in the TUI and in `resector -p`: a call the rules leave at `ask` runs without asking, `deny` still applies. `false` starts with it off; `/auto` switches it while the app runs.
 
 `compaction.md` / `system.md` in the Project Home, else next to the global config, replace the shipped instructions. Slash commands: `tab`, then `/`.
 
