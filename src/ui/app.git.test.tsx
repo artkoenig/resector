@@ -52,7 +52,7 @@ test('outside a git repository the /git: commands are neither offered nor run', 
 test('/git:branch shows the branch, suggests the others, marks those in another worktree and switches to one; the header shows it', async () => {
   const { git, calls } = fakeGit();
   await start({ git });
-  expect(line(ui.captureCharFrame(), /default/)).toMatch(/default · thinking off · ⎇ main +112/);
+  expect(line(ui.captureCharFrame(), /default/)).toMatch(/default · thinking off · project ⎇ main +112/);
   await write('/git:branch');
   await frameMatching(ui, f => f.includes('branch main · /git:branch busy feature/x'));
   ui.mockInput.pressTab();
@@ -63,7 +63,7 @@ test('/git:branch shows the branch, suggests the others, marks those in another 
   expect(line(frame, /main +current/)).toBeDefined();
   expect(line(frame, /busy/)).toMatch(/busy +in worktree ses_other/);
   ui.mockInput.pressEnter();
-  await frameMatching(ui, f => f.includes('switched to branch feature/x') && /thinking off · ⎇ feature\/x/.test(f));
+  await frameMatching(ui, f => f.includes('switched to branch feature/x') && /thinking off · project ⎇ feature\/x/.test(f));
   expect(calls).toEqual(['switch feature/x']);
   await write('/git:branch dirty');
   await frameMatching(ui, f => f.includes('your local changes would be overwritten'));
@@ -73,7 +73,7 @@ test('a branch switched by another tool shows in the header', async () => {
   const { git, switchOutside } = fakeGit();
   await start({ git });
   switchOutside('feature/x');
-  await frameMatching(ui, f => /thinking off · ⎇ feature\/x/.test(f));
+  await frameMatching(ui, f => /thinking off · project ⎇ feature\/x/.test(f));
 });
 
 test('a dirty working tree shows a star in the header, and its change outside the Gate follows', async () => {
@@ -86,11 +86,19 @@ test('a dirty working tree shows a star in the header, and its change outside th
   await frameMatching(ui, f => /⎇ main +112/.test(f) && !f.includes('⎇ main*'));
 });
 
+test('a branch too long for the header is cut with …, the tokens stay on the right', async () => {
+  const { git, switchOutside } = fakeGit();
+  await start({ git });
+  switchOutside('claude/show-current-folder-name-and-color-the-branch');
+  const frame = await frameMatching(ui, f => f.includes('⎇ claude/'));
+  expect(line(frame, /default/)).toMatch(/default · thinking off · project ⎇ claude\/show-current-f… 112 \/ 4k  $/);
+});
+
 test('/git:worktree on prepares the worktree, logs the switch and reopens the Gate there', async () => {
   const { git, calls } = fakeGit();
   const { events } = await start({ git });
   await write('/git:worktree');
-  await frameMatching(ui, f => f.includes('worktree off · runs in') && f.includes('/git:worktree on'));
+  await frameMatching(ui, f => f.includes('worktree off · runs in') && f.replace(/\s+/g, '').includes('/git:worktreeon'));
   await write('/git:worktree maybe');
   await frameMatching(ui, f => f.includes('unknown value maybe') && f.includes('/git:worktree on off'));
   await write('/git:worktree on');

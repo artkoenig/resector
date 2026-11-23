@@ -281,11 +281,11 @@ test('auto-approve belongs to the app: it stays when switching sessions and is n
 test('/git:worktree on runs the session in its own worktree in the Project Home on its own branch; off back in the project, the worktree kept', async () => {
   const { log, paths, project } = await launch({ config: url => profileConfig(url).replace('"defaultProfile"', '"defaultPolicy": "off", "defaultProfile"'), git: true });
   await frameMatching(ui, f => f.includes('/ 2k'));
-  expect(line(ui.captureCharFrame(), /local/)).toMatch(/local · thinking off · ⎇ main /);
+  expect(line(ui.captureCharFrame(), /local/)).toMatch(/local · thinking off · project ⎇ main /);
   await command('/git:worktree on');
   const worktree = join(paths.projectHome.data, 'worktrees/ses_test');
   const frame = await frameMatching(ui, f => f.includes('worktree on – session runs in'));
-  expect(line(frame, /local/)).toMatch(/local · thinking off · ⎇ resector\/ses_test · worktree/);
+  expect(line(frame, /local/)).toMatch(/local · thinking off · ses_test ⎇ resector\/ses_… · worktree … \/ 2k/);
   expect(existsSync(join(worktree, 'a.txt'))).toBe(true);
   expect(existsSync(join(project, '.resector'))).toBe(false);
   expect(existsSync(join(project, '.gitignore'))).toBe(false);
@@ -295,7 +295,7 @@ test('/git:worktree on runs the session in its own worktree in the Project Home 
   expect(note).toContain(`cwd: ${worktree}\n`);
   expect(note).toContain('git branch: resector/ses_test (Session Worktree, not the session\'s checkout)');
   await command('/git:worktree off');
-  expect(line(await frameMatching(ui, f => f.includes('worktree off – session runs in')), /local/)).toMatch(/local · thinking off · ⎇ main /);
+  expect(line(await frameMatching(ui, f => f.includes('worktree off – session runs in')), /local/)).toMatch(/local · thinking off · project ⎇ main /);
   expect(existsSync(join(worktree, 'a.txt'))).toBe(true);
   // Deleted by hand, the worktree is created anew despite its stale entry.
   rmSync(worktree, { recursive: true });

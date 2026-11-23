@@ -28,7 +28,7 @@ test('/policy suggests the policies with their description, switches one on and 
   expect(frame).not.toMatch(/off +no policy/);
   ui.mockInput.pressEnter();
   frame = await frameMatching(ui, f => f.includes('policy trail on – edits the Context before every request'));
-  expect(line(frame, /default/)).toMatch(/default · thinking off · policy trail +112/);
+  expect(line(frame, /default/)).toMatch(/default · thinking off · policy trail · project +112/);
   ui.mockInput.pressTab();
   await ui.flush();
   await ui.mockInput.typeText('/policy ');
@@ -42,7 +42,7 @@ test('/policy suggests the policies with their description, switches one on and 
   await frameMatching(ui, f => f.includes('unknown policy nope') && f.includes('off trail tidy'));
   await write('/policy off');
   frame = await frameMatching(ui, f => f.includes('policy off'));
-  expect(line(frame, /default/)).toMatch(/default · thinking off +112/);
+  expect(line(frame, /default/)).toMatch(/default · thinking off · project +112/);
 });
 
 test('an operation the rules refuse stops the Gate and names it', async () => {
