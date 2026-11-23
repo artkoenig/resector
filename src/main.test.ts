@@ -4,7 +4,7 @@ import { main } from './main';
 
 const USAGE =
   'usage: resector [-c [id]] | resector -p <prompt> [options] | resector --export-fixture [id] | resector --version\n' +
-  'options with -p: -m <profile> --policy <name|off> --thinking <off|on|level> --tools <list|none> --show <list|all> --max-turns <n> -w --auto-approve\n';
+  'options with -p: -m <profile> --policy <name|off> --thinking <off|on|level> --tools <list|none> --show <list|all> --max-turns <n> -w --[no-]auto-approve\n';
 
 test('--version prints the package version', () => {
   expect(main(['--version'])).toEqual({ code: 0, out: `resector ${pkg.version}\n` });
@@ -48,7 +48,7 @@ test('-p runs a prompt without the TUI; with -c or a stray argument it is a usag
   expect(main(['-p'])).toEqual({ code: 2, out: USAGE });
 });
 
-test('the flags of -p are passed on; none without -p, a bad value is a usage error', () => {
+test('the flags of -p are passed on; none without -p, a bad value or Auto-approve both on and off is a usage error', () => {
   const args = ['-m', 'big', '--policy', 'off', '--thinking', 'high', '--tools', 'bash,websearch', '--show', 'tools,notes', '--max-turns', '7', '-w', '--auto-approve'];
   expect(main(['-p', 'hi', ...args])).toEqual({
     run: { prompt: 'hi', flags: { profile: 'big', policy: 'off', thinking: 'high', tools: ['bash', 'websearch'], show: ['tools', 'notes'], maxTurns: 7, worktree: true, autoApprove: true } },
@@ -56,6 +56,7 @@ test('the flags of -p are passed on; none without -p, a bad value is a usage err
   expect(main(['-p', 'hi', '--tools', 'none', '--show', 'all', '--model', 'big', '--worktree'])).toEqual({
     run: { prompt: 'hi', flags: { tools: [], show: ['thinking', 'tools', 'notes', 'policy'], profile: 'big', worktree: true } },
   });
-  for (const bad of [['--max-turns', '0'], ['--max-turns', 'many'], ['--show', 'tools,colors']]) expect(main(['-p', 'hi', ...bad])).toEqual({ code: 2, out: USAGE });
-  for (const alone of [['-m', 'big'], ['--auto-approve'], ['-w'], ['-c', '--tools', 'none']]) expect(main(alone)).toEqual({ code: 2, out: USAGE });
+  expect(main(['-p', 'hi', '--no-auto-approve'])).toEqual({ run: { prompt: 'hi', flags: { autoApprove: false } } });
+  for (const bad of [['--max-turns', '0'], ['--max-turns', 'many'], ['--show', 'tools,colors'], ['--auto-approve', '--no-auto-approve']]) expect(main(['-p', 'hi', ...bad])).toEqual({ code: 2, out: USAGE });
+  for (const alone of [['-m', 'big'], ['--auto-approve'], ['--no-auto-approve'], ['-w'], ['-c', '--tools', 'none']]) expect(main(alone)).toEqual({ code: 2, out: USAGE });
 });

@@ -111,6 +111,11 @@
         ]
       }
     },
+    "autoApprove": {
+      "default": true,
+      "description": "Auto-approve at start, in the TUI and in `resector -p`: Tool Calls the rules leave at `ask` run without asking, `deny` still applies (default true); `/auto` and `--[no-]auto-approve` switch it",
+      "type": "boolean"
+    },
     "keybindings": {
       "description": "Action → key",
       "type": "object",

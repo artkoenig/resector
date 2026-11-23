@@ -16,7 +16,7 @@ type ExportLog = (ref: SessionRef) => string;
 
 const USAGE =
   'usage: resector [-c [id]] | resector -p <prompt> [options] | resector --export-fixture [id] | resector --version\n' +
-  'options with -p: -m <profile> --policy <name|off> --thinking <off|on|level> --tools <list|none> --show <list|all> --max-turns <n> -w --auto-approve\n';
+  'options with -p: -m <profile> --policy <name|off> --thinking <off|on|level> --tools <list|none> --show <list|all> --max-turns <n> -w --[no-]auto-approve\n';
 // The flags of a Headless Run: allowed only with -p.
 const RUN_OPTIONS = {
   model: { type: 'string', short: 'm' },
@@ -27,6 +27,7 @@ const RUN_OPTIONS = {
   'max-turns': { type: 'string' },
   worktree: { type: 'boolean', short: 'w' },
   'auto-approve': { type: 'boolean' },
+  'no-auto-approve': { type: 'boolean' },
 } as const;
 const OPTIONS = { version: { type: 'boolean' }, continue: { type: 'boolean', short: 'c' }, 'export-fixture': { type: 'boolean' }, prompt: { type: 'string', short: 'p' }, ...RUN_OPTIONS } as const;
 type Values = ReturnType<typeof parseArgs<{ args: string[]; allowPositionals: true; options: typeof OPTIONS }>>['values'];
@@ -58,7 +59,8 @@ function runCommand(prompt: string, values: Values, id?: string): Result | { run
   return flags ? { run: { prompt, flags } } : USAGE_ERROR;
 }
 
-// The flags as the headless config section names them, checked like it; null for a bad value.
+// The flags as the headless config section names them, checked like it; null for a bad value, or for Auto-approve
+// both on and off.
 function runFlags(values: Values): Flags | null {
   const list = (v: string) => v.split(',').map(s => s.trim()).filter(Boolean);
   const parsed = HeadlessSchema.safeParse({
@@ -70,7 +72,15 @@ function runFlags(values: Values): Flags | null {
     maxTurns: values['max-turns'] === undefined ? undefined : Number(values['max-turns']),
     worktree: values.worktree,
   });
-  return parsed.success ? { ...parsed.data, autoApprove: values['auto-approve'] } : null;
+  const auto = autoApproveFlag(values);
+  return parsed.success && auto ? { ...parsed.data, ...auto } : null;
+}
+
+// Auto-approve as the flags switch it, left to the config when neither is given; null for both.
+function autoApproveFlag(values: Values): Pick<Flags, 'autoApprove'> | null {
+  const [on, off] = [values['auto-approve'], values['no-auto-approve']];
+  if (on && off) return null;
+  return { autoApprove: on ? true : off ? false : undefined };
 }
 
 if (import.meta.main) {

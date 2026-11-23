@@ -4,7 +4,7 @@
 
 Everything else stays as in the TUI. The Context Policy, the Permission Rules, Auto-approve and the Session Log work unchanged. Every Headless Run is a new Session, logged and resumable in the TUI (`/sessions`). There is no `-c`, no `--no-session` and no headless-only permission preset.
 
-A person runs it, so the run asks that person. A Question or a Tool Call that the Permission Rules leave at `ask` is asked and answered at `/dev/tty` through a new port, since stdin may carry the prompt and stderr may go to a file. Without a terminal the Question is declined and `ask` turns into `deny` with the result text "no user to approve". The run goes on either way. Without config of its own, a run without a terminal can therefore only run what the rules allow, which by default means read-only commands.
+A person runs it, so the run asks that person. A Question or a Tool Call that the Permission Rules leave at `ask` is asked and answered at `/dev/tty` through a new port, since stdin may carry the prompt and stderr may go to a file. Without a terminal the Question is declined and `ask` turns into `deny` with the result text "no user to approve". The run goes on either way. Without Auto-approve, a run without a terminal can therefore only run what the rules allow.
 
 The wiring that is not UI moves out of `ui/launch.tsx` into `src/compose/`: loading config and policies, opening or resuming a Session, the Session Worktree, the runner, the compactor and the lock. Both `ui/` and the new root `src/cli/run.ts` import it; `compose` never imports `ui`. The minimal `View` (rows = blocks sent, follow moves the selection) moves from `gate.harness.ts` into `gate/` for both the CLI and the tests.
 
@@ -18,10 +18,10 @@ The wiring that is not UI moves out of `ui/launch.tsx` into `src/compose/`: load
   - `--show <thinking,tools,notes,policy|all>`
   - `--max-turns <n>` (default 50)
   - `-w, --worktree`
-  - `--auto-approve`
+  - `--auto-approve`, `--no-auto-approve`
 
   There are no `--allow`/`--deny` flags.
-- **Config.** A `headless` section in `config.jsonc`, global and per project, takes `profile`, `policy`, `thinking`, `tools`, `show`, `maxTurns` and `worktree`. Precedence: global → project → `headless` → flags. `permission` stays shared with the TUI; `autoApprove` exists only as a flag. Without any config the run fails with a hint.
+- **Config.** A `headless` section in `config.jsonc`, global and per project, takes `profile`, `policy`, `thinking`, `tools`, `show`, `maxTurns` and `worktree`. Precedence: global → project → `headless` → flags. `permission` and `autoApprove` are top-level keys shared with the TUI; Auto-approve is on unless `autoApprove` is `false`, and the flags override it. Without any config the run fails with a hint.
 - **Output.** stdout gets only the last answer, once the run has ended, because text before Tool Calls is final only after them. stderr gets the `--show` kinds as one prefixed line per event:
   - `∴` Thinking, streamed
   - `$` Tool Call

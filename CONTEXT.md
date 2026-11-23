@@ -114,7 +114,7 @@ Permission Rule with action `allow` the user adds while approving a Tool Call, v
 _Avoid_: allow for session
 
 **Auto-approve**:
-Switch under which every Tool Call the Permission Rules would `ask` for runs without asking; `deny` still applies. Like the Context Policy it belongs to the running app, not to a Session.
+Switch under which every Tool Call the Permission Rules would `ask` for runs without asking; `deny` still applies. Like the Context Policy it belongs to the running app, not to a Session. On at start unless the config (`autoApprove`) or a Headless Run's flag switches it off.
 _Avoid_: yolo, trust mode
 
 **Question**:

@@ -34,7 +34,8 @@ const ProfileSchema = z.strictObject({
 // What a Headless Run shows on stderr besides the closing line (--show).
 export const SHOWN = ['thinking', 'tools', 'notes', 'policy'] as const;
 export type Shown = (typeof SHOWN)[number];
-// What a Headless Run (`resector -p`) starts with; its flags override it. Permission rules stay shared with the TUI.
+// What a Headless Run (`resector -p`) starts with; its flags override it. Permission rules and Auto-approve stay
+// shared with the TUI.
 export const HeadlessSchema = z.strictObject({
   profile: z.string().optional().describe('Model Profile; default: defaultProfile'),
   policy: z.string().optional().describe('Context Policy, `off` for none; default: defaultPolicy'),
@@ -54,6 +55,7 @@ const ConfigSchema = z.strictObject({
   defaultProfile: z.string().optional().describe('Model Profile for new sessions'),
   defaultPolicy: z.string().optional().describe('Context Policy switched on for new sessions (default summary-reset, `off` for none); /policy switches it'),
   permission: PermissionSchema.optional().describe('bash command pattern → decision; the last matching rule decides: built-in ("*" allow, arguments outside the project ask), global, project config, session; none → ask'),
+  autoApprove: z.boolean().default(true).describe('Auto-approve at start, in the TUI and in `resector -p`: Tool Calls the rules leave at `ask` run without asking, `deny` still applies (default true); `/auto` and `--[no-]auto-approve` switch it'),
   keybindings: z.record(z.string(), z.string()).optional().describe('Action → key'),
   headless: HeadlessSchema.optional().describe('Settings of `resector -p`'),
   bash: z
