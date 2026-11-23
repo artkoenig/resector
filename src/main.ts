@@ -72,9 +72,15 @@ function runFlags(values: Values): Flags | null {
     maxTurns: values['max-turns'] === undefined ? undefined : Number(values['max-turns']),
     worktree: values.worktree,
   });
-  if (values['auto-approve'] && values['no-auto-approve']) return null;
-  const autoApprove = values['auto-approve'] ? true : values['no-auto-approve'] ? false : undefined;
-  return parsed.success ? { ...parsed.data, autoApprove } : null;
+  const auto = autoApproveFlag(values);
+  return parsed.success && auto ? { ...parsed.data, ...auto } : null;
+}
+
+// Auto-approve as the flags switch it, left to the config when neither is given; null for both.
+function autoApproveFlag(values: Values): Pick<Flags, 'autoApprove'> | null {
+  const [on, off] = [values['auto-approve'], values['no-auto-approve']];
+  if (on && off) return null;
+  return { autoApprove: on ? true : off ? false : undefined };
 }
 
 if (import.meta.main) {
