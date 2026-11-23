@@ -50,6 +50,17 @@ export function cell(s: string, width: number): string {
   return cut + '…' + ' '.repeat(Math.max(0, width - 1 - used));
 }
 
+// Names cut with … to fit `room` cells together, the longest first; each keeps at least its first cell.
+export function fitting(names: readonly string[], room: number): string[] {
+  const widths = names.map(n => Bun.stringWidth(n));
+  while (widths.reduce((a, b) => a + b, 0) > room) {
+    const longest = widths.indexOf(Math.max(...widths));
+    if (widths[longest]! <= 2) break;
+    widths[longest]!--;
+  }
+  return names.map((n, i) => (Bun.stringWidth(n) <= widths[i]! ? n : cell(n, widths[i]!).trimEnd()));
+}
+
 export const right = (s: string, width: number): string => ' '.repeat(Math.max(0, width - Bun.stringWidth(s))) + s;
 
 // The items that fit in `capacity` lines: a window keeping item `at` in the middle where possible.

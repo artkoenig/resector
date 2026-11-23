@@ -1,6 +1,6 @@
 // UI test harness: renders the App against a fake llama.cpp server, with helpers to type, press and read frames.
 import { afterEach, beforeAll } from 'bun:test';
-import { mkdtempSync, readFileSync, realpathSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { testRender } from '@opentui/solid';
@@ -26,7 +26,9 @@ export let fake: ReturnType<typeof startFakeLlamaCpp>;
 export let ui: Awaited<ReturnType<typeof testRender>>;
 
 // Where bash runs in these tests.
-export const project = realpathSync(mkdtempSync(join(tmpdir(), 'resector-project-')));
+// A fixed folder name: the header shows it.
+export const project = join(realpathSync(mkdtempSync(join(tmpdir(), 'resector-project-'))), 'project');
+mkdirSync(project);
 
 let split: Split;
 // Stops the test's Background Processes, if it started any.

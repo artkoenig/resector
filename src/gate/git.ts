@@ -1,4 +1,5 @@
 // Git at the Gate: the branch where the session runs, the environment Note following it, /git:branch and /git:worktree.
+import { basename } from 'node:path';
 import { createSignal, onCleanup } from 'solid-js';
 import { refreshEnvironment } from '../core/notes/environment';
 import { inWorktree } from '../core/session/session';
@@ -81,8 +82,9 @@ export function createGit(k: Kernel, git: Git | null, project: Project, root: st
   }
 
   return {
-    // What the view shows: the branch, all branches with the other worktree holding one, the worktree on or off.
+    // What the view shows: the folder the session runs in, the branch, all branches with the other worktree holding one, the worktree on or off.
     api: {
+      folder: () => basename(root),
       branch,
       dirty,
       branches: () => {

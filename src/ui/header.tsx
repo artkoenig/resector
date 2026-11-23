@@ -2,6 +2,7 @@
 import { For } from 'solid-js';
 import type { Screen } from './screen';
 import { formatTokens, thinkingLabel } from '../gate/text';
+import { fitting } from './format';
 import { HeaderBand } from './parts';
 import { ACCENT, BORDER, FAINT, KIND_COLOR, MUTED, TEXT, TONE } from './theme';
 
@@ -21,16 +22,32 @@ export function Header(props: { gate: Screen; width: number }) {
   };
   const tone = () => ({ ok: undefined, warn: TONE.warn, over: TONE.error })[budget()?.tone ?? 'ok'];
   const profile = () => props.gate.profile();
-  // The active Context Policy follows the thinking mode (ADR 0001), then auto-approve, then the git branch
-  // and the worktree.
-  const git = () => (props.gate.branch() ? ` · ⎇ ${props.gate.branch()}${props.gate.dirty() ? '*' : ''}` : '') + (props.gate.worktree() ? ' · worktree' : '');
-  const thinking = () =>
-    ` · thinking ${thinkingLabel(props.gate.thinking())}${props.gate.policy() ? ` · policy ${props.gate.policy()}` : ''}${props.gate.autoApprove() ? ' · auto-approve' : ''}${git()}`;
+  // The active Context Policy follows the thinking mode (ADR 0001), then auto-approve, then the folder the session
+  // runs in, the git branch (green when clean) and the worktree.
+  const modes = () =>
+    ` · thinking ${thinkingLabel(props.gate.thinking())}${props.gate.policy() ? ` · policy ${props.gate.policy()}` : ''}${props.gate.autoApprove() ? ' · auto-approve' : ''} · `;
+  const worktree = () => (props.gate.worktree() ? ' · worktree' : '');
+  const marks = () => (props.gate.branch() ? ` ⎇ ${props.gate.dirty() ? '*' : ''}` : '');
+  const rightWidth = () => used().length + window().length + drift().length + over().length;
+  // Too wide for one line: folder and branch are cut so the tokens stay on the right (14 = band margins, app name, gap).
+  const names = () => {
+    const room = props.width - 14 - 1 - rightWidth() - profile().length - modes().length - marks().length - worktree().length;
+    return fitting([props.gate.folder(), props.gate.branch() ?? ''], room);
+  };
+  const folder = () => names()[0]!;
+  const branch = () => (props.gate.branch() ? ` ⎇ ${names()[1]}${props.gate.dirty() ? '*' : ''}` : '');
   return (
     <HeaderBand
       width={props.width}
-      title={<span style={{ fg: MUTED }}>{profile() + thinking()}</span>}
-      titleWidth={profile().length + thinking().length}
+      title={
+        <>
+          <span style={{ fg: MUTED }}>{profile() + modes()}</span>
+          <span style={{ fg: ACCENT }}>{folder()}</span>
+          <span style={{ fg: props.gate.dirty() ? KIND_COLOR.Note : TONE.ok }}>{branch()}</span>
+          <span style={{ fg: MUTED }}>{worktree()}</span>
+        </>
+      }
+      titleWidth={profile().length + modes().length + folder().length + branch().length + worktree().length}
       right={
         <>
           <span style={{ fg: tone() ?? TEXT }}>{used()}</span>
@@ -39,7 +56,7 @@ export function Header(props: { gate: Screen; width: number }) {
           <span style={{ fg: TONE.error }}>{over()}</span>
         </>
       }
-      rightWidth={used().length + window().length + drift().length + over().length}
+      rightWidth={rightWidth()}
       below={
         <text selectable={false}>
           <span>{'  '}</span>

@@ -13,7 +13,7 @@ useHarness();
 test('the Gate shows every Context Block with its exact tokens and the Template row', async () => {
   const { events } = await start();
   const frame = await frameMatching(ui, f => previewed(f) === 'You are an agent.');
-  expect(line(frame, /default/)).toMatch(/^ {2}resector {2}default · thinking off +112 \/ 4k/);
+  expect(line(frame, /default/)).toMatch(/^ {2}resector {2}default · thinking off · project +112 \/ 4k/);
   expect(frame.split('\n')[1]).toMatch(/^ {2}▀+/);
   expect(line(frame, /Type/)).toMatch(/#\s+Type\s+Content\s+Tokens\s+Cache\s+Flags/);
   expect(line(frame, /System prompt/)).toMatch(/1\s+System\s+System prompt\s+12\b/);
