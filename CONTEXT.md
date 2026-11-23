@@ -68,8 +68,12 @@ _Avoid_: breakpoint, approval
 The follow-up requests after an answer with Tool Calls: its calls are decided in order, run, and their results sent, until the model answers without calls or the loop is held.
 
 **Background Process**:
-Process a bash Tool Call starts that keeps running after the call's Tool Result. Ends when resector exits or the Session is closed or switched (a Headless Run: when the run ends); never outlives the app: after a crash, it is ended at the next start in the Project. It has ended when its process group is empty; the model learns of it from an exit Note before the next request.
+Process a bash or `subagent` Tool Call starts that keeps running after the call's Tool Result. Ends when resector exits or the Session is closed or switched (a Headless Run: when the run ends); never outlives the app: after a crash, it is ended at the next start in the Project. It has ended when its process group is empty; an exit Note enters the Context then and goes to the model with the next request; a Session at rest at the Review Gate sends it at once, unless the user ended the process.
 _Avoid_: job, service, daemon
+
+**Subagent**:
+A Headless Run a Session's model starts with the `subagent` tool; a Background Process of that Session. Runs with Auto-approve in a Session of its own, inherits nothing of the parent's Context and starts no Subagents itself. At its end it writes a summary of its work, which the parent gets in the exit Note. Its Session is listed under the parent Session and deleted with it.
+_Avoid_: worker, child agent, task
 
 **Hold**:
 Stop of the Tool Loop at the Review Gate with the results unsent, for the user to review: asked for with Esc, or because a call was not run (rejected, denied) or was stopped (killed, timeout). A Headless Run does not stop at a Hold: the results go back to the model.
