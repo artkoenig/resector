@@ -67,6 +67,12 @@ test('a summary of the model becomes a Note led by the handover in its place; ev
   ]);
 });
 
+test('an Image before the summary goes, whether the user referenced it or a call attached it; one after it stays', () => {
+  const image = (origin: PolicyBlock['origin']): Spec => ['Image', { origin }];
+  const context = blocks('System', 'Tools', intro, image('file'), 'User', image('tool'), ['Assistant', { content: '<summary>s</summary>' }], image('file'));
+  expect(summaryReset({ window: 99, used: 10, blocks: context }).flatMap(op => (op.op === 'remove' ? [op.id] : []))).toEqual([4, 5, 6, 7]);
+});
+
 const running = { background: { pid: 9, log: '/h/9.log', running: true } };
 
 test('a Tool Pair whose Background Process runs survives the reset in place; one whose process ended goes', () => {

@@ -14,7 +14,7 @@ const SUMMARY = /<summary>([\s\S]*)<\/summary>/;
 export const ERROR = instruction.trimEnd();
 // Right after the System and Tools Block, from the first request on: the model knows the rules before it needs them.
 export const INTRO =
-  'How this session works: your context is limited. Once your work since the start (or since the last summary) takes half of the room left, every tool call fails with an error saying the context is full; the command still runs, but its output is withheld. Then write a summary of the session between <summary> and </summary>, as the error describes. Only that summary is kept: everything else (the user\'s messages, your tool calls, their results, your answers) is deleted, and the session continues from the summary alone.';
+  'How this session works: your context is limited. Once your work since the start (or since the last summary) takes half of the room left, every tool call fails with an error saying the context is full; the command still runs, but its output is withheld. Then write a summary of the session between <summary> and </summary>, as the error describes. Only that summary is kept: everything else (the user\'s messages, images, your tool calls, their results, your answers) is deleted, and the session continues from the summary alone.';
 // Before the summary in its Note: the model reads it as a user message, so it is told this is its own work.
 export const HANDOVER =
   'Continuation of the session with the following summary of your own earlier work; everything before it was deleted. Continue from it, do not redo what is done. Trust it: the files are as it describes them, so do not read again what it covers; its Patches are planned against them: apply them as they are, reading first only where its Next steps say so.';
@@ -74,6 +74,6 @@ function errored({ window, used, blocks }: PolicyContext): PolicyOperation[] {
 const isIntro = (b: PolicyBlock) => b.origin === 'policy' && b.content === INTRO;
 const isHandover = (b: PolicyBlock) => b.kind === 'Note' && b.origin === 'policy' && b.content.startsWith(HANDOVER);
 // The System, Tools Block, the intro, the project's Notes, the Skills note and loaded Skills (the summary does not repeat
-// them) and a Tool Call awaiting approval stay; so does a Tool Pair whose Background Process runs, in its place.
+// them) and a Tool Call awaiting approval stay (not an Image, whose origin may be 'file' too); so does a Tool Pair whose Background Process runs, in its place.
 const KEPT = new Set<PolicyBlock['origin']>(['environment', 'file', 'skill']);
-const removable = (b: PolicyBlock) => b.kind !== 'System' && b.kind !== 'Tools' && !b.pending && !KEPT.has(b.origin) && !isIntro(b);
+const removable = (b: PolicyBlock) => b.kind !== 'System' && b.kind !== 'Tools' && !b.pending && (b.kind === 'Image' || !KEPT.has(b.origin)) && !isIntro(b);
