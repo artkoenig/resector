@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
-import { exitNoteText, exitOf, owedExitNotes } from './background';
+import { endedBy, exitNoteText, exitOf, owedExitNotes } from './background';
 
 const call = (id: number, content: string): SessionEvent => ({ type: 'BlockAdded', id, kind: 'Tool Call', origin: 'model', content, background: true });
 const started = (c: number, pid: number): SessionEvent => ({ type: 'BackgroundStarted', call: c, pid, log: `/logs/${pid}.log` });
@@ -45,4 +45,13 @@ test('the Note says why it ended', () => {
     'Background Process pid 1 ended: stopped by the user',
     'Background Process pid 1 ended: killed after resector stopped unexpectedly',
   ]);
+});
+
+test('endedBy: whether resector ended the process for that reason', () => {
+  expect(endedBy({ signal: 'user' }, 'user')).toBe(true);
+  expect(endedBy({ signal: 'session ended' }, 'user')).toBe(false);
+  expect(endedBy({ signal: 'session ended' }, 'session ended')).toBe(true);
+  expect(endedBy({ exit: 0 }, 'user')).toBe(false);
+  // An end without a signal names none, not even undefined.
+  expect(endedBy({ exit: 0 }, undefined as never)).toBe(false);
 });
