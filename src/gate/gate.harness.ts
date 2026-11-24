@@ -163,7 +163,7 @@ export function gateWith(setup: GateSetup = {}) {
   }, k => (selection = minimalView(k, id => focused.push(id)))));
   const select = (id: number) => selection.setSelected(id);
   const mark = (...ids: number[]) => selection.setMarked(new Set(ids));
-  return { gate, sent, reply, ran, focused, events: logged, select, mark, exit, logs, stopped };
+  return { gate, sent, reply, ran, focused, events: logged, select, selected: () => selection.selected(), mark, exit, logs, stopped };
 }
 
 // Until the Gate is idle: no answer streaming, no call running, no policy or Compaction under way.

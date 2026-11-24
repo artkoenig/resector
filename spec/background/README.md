@@ -1,6 +1,6 @@
 # Background Processes — Quint model (#122)
 
-`backgroundProcess.qnt` models a bash Tool Call's Background Process across the OS, the Session Log, the Context, the per-Session record and app crashes. Decisions modelled: #124, #125, #128, #129, #130, #140.
+`backgroundProcess.qnt` models a bash Tool Call's Background Process across the OS, the Session Log, the Context, the per-Session record and app crashes. Decisions modelled: #124, #125, #128, #129, #130, #140, ADR 0007 (the exit Note goes into the Context at the process's end).
 
 ## Run
 
@@ -37,6 +37,7 @@ Each fix removes exactly one group of violations (instances `onlyGroupExit`, `on
 
 - Two live resector instances in one Project (lock held by another instance).
 - Timing: start wait (`bash.backgroundWait`), SIGTERM→SIGKILL grace (one step), pid reuse while resector runs.
+- The request a Session at rest sends for an exit Note (#180).
 - Log file content, live preview, TUI flag rendering, Kind Filters, Headless Run vs TUI differences (same lifecycle).
 - Context Policy internals: every remove/compact/edit/move is one `removePair` guarded by `untouchable`.
 - Plain `&` without `background` (#133): a foreground concern of the runner.

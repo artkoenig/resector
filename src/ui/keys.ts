@@ -62,7 +62,9 @@ const BY_KEY = new Map(CONTEXT_KEYS.map(b => [b.key, b]));
 
 export function createKeys(gate: Screen, ui: Ui) {
   const { scrollPreview, previewPage } = ui;
+  // A request may start by itself while the user writes: the draft waits for its end.
   const submit = () => {
+    if (gate.busy()) return;
     gate.submit(ui.draft());
     ui.leaveInput();
   };

@@ -72,9 +72,10 @@ One thing changes for every Background Process: its exit Note enters the Context
 next request is prepared, and a Session at rest sends it at once, as if the user had pressed Enter. So a long Session
 goes on without the user when a Subagent reports. One rule covers every case: the send is the ordinary one, so
 whatever stops Enter stops it too (a Tool Call awaiting approval, an open Question, no Budget), and while a request
-or the Tool Loop is under way, or the loop is held, the Note goes with the next request as before. A process the
-user killed sends nothing: they have just stepped in. Before, the Note appeared only with the next request, and an
-idle Session answered Enter with "nothing to send".
+or the Tool Loop is under way, or the loop is held, the Note goes with the next request as before. While an answer, a
+policy or a Compaction is under way the Note enters once that is done; in a Headless Run before its next request. A
+process the user killed sends nothing: they have just stepped in. Before, the Note appeared only with the next
+request, and an idle Session answered Enter with "nothing to send".
 
 We first decided against this request, because at the Review Gate none went out without the user. A Context Policy
 already sends the Context on without a user message, and a Subagent's start is approved by the user; having to press

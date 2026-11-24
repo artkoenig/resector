@@ -5,7 +5,7 @@ module decidedTest {
 
   // Leader exits (`npm run dev` forks the server, bash ends): logged as ended, server still runs.
   run leaderExitLeavesServerRunningTest =
-    init.then(openSession(1)).then(start(1, 1)).then(leaderExits((1, 1))).then(observeExit(1, 1))
+    init.then(openSession(1)).then(start(1, 1)).then(leaderExits((1, 1))).then(observeExit(1, 1, false))
       .expect(not(neverOutlivesApp))
 
   // Group dies while resector is down: reaper drops the record but logs nothing → pair untouchable forever.
@@ -15,7 +15,7 @@ module decidedTest {
 
   // `k`, then switch before the next request: resume notes only `session ended`, the user stop is lost.
   run userStopNoteLostOnSwitchTest =
-    init.then(openSession(1)).then(start(1, 1)).then(userStop(1, 1)).then(closeSession).then(openSession(1))
+    init.then(openSession(1)).then(start(1, 1)).then(userStop(1, 1, false)).then(closeSession).then(openSession(1))
       .expect(not(noLostExitNote))
 }
 
@@ -26,7 +26,7 @@ module fixedTest {
   run leaderExitKeepsRunningTest =
     init.then(openSession(1)).then(start(1, 1)).then(leaderExits((1, 1)))
       .expect(neverOutlivesApp and logRunning(procs.get((1, 1))))
-      .then(groupDies((1, 1))).then(observeExit(1, 1))
+      .then(groupDies((1, 1))).then(observeExit(1, 1, false))
       .expect(allInvariants)
 
   run goneOrphanLoggedOrphanedTest =
@@ -34,7 +34,7 @@ module fixedTest {
       .expect(allInvariants)
 
   run userStopNoteSurvivesSwitchTest =
-    init.then(openSession(1)).then(start(1, 1)).then(userStop(1, 1)).then(closeSession).then(openSession(1))
+    init.then(openSession(1)).then(start(1, 1)).then(userStop(1, 1, false)).then(closeSession).then(openSession(1))
       .then(sendRequest)
       .expect(allInvariants and wUserStopNoted)
 

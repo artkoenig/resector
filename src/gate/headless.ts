@@ -26,6 +26,7 @@ const until = <T>(asked: Promise<T>, signal: AbortSignal) =>
 
 export function createHeadless(k: Kernel, loop: ToolLoop, rules: Rules, submit: (text: string) => void) {
   let current: Run | null = null;
+  let driven = false;
   const requests = (r: Run) => k.events().slice(r.from).filter((e): e is Extract<SessionEvent, { type: 'RequestSent' }> => e.type === 'RequestSent');
 
   // Before each request: none once the run is aborted or has used its turns (noted for its Outcome).
@@ -77,6 +78,7 @@ export function createHeadless(k: Kernel, loop: ToolLoop, rules: Rules, submit: 
   }
 
   async function run({ prompt, maxTurns = MAX_TURNS, signal, terminal = null }: RunInput): Promise<Outcome> {
+    driven = true;
     const stop = new AbortController();
     const r: Run = (current = { from: k.events().length, maxTurns, maxed: false, signal: stop.signal, terminal, waiting: 0 });
     // Like Esc twice: the step is aborted at once.
@@ -95,5 +97,5 @@ export function createHeadless(k: Kernel, loop: ToolLoop, rules: Rules, submit: 
     }
   }
 
-  return { api: { run }, mayRequest };
+  return { api: { run }, mayRequest, driven: () => driven };
 }
