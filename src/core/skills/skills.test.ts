@@ -75,14 +75,14 @@ test('a block scalar description is read from its indented lines', () => {
   expect(literal.description).toBe('one\ntwo');
 });
 
-test('skillContent returns just the body when there are no supplementary files', () => {
+test('skillContent names the skill directory above the body', () => {
   const s: Skill = { name: 'a', description: '', file: '~/s/a/SKILL.md', body: 'main body', requires: [], files: [] };
-  expect(skillContent(s)).toBe('main body');
+  expect(skillContent(s)).toBe('[~/s/a/SKILL.md]\nSkill directory: ~/s/a\n\nmain body');
 });
 
-test('skillContent appends supplementary files under headings', () => {
-  const s: Skill = { name: 'a', description: '', file: '~/s/a/SKILL.md', body: 'main body', requires: [], files: [{ name: 'EXTRA.md', content: 'extra content' }] };
-  expect(skillContent(s)).toBe('main body\n\n---\n\n## EXTRA.md\n\nextra content');
+test('skillContent names the supplementary files it includes and appends each under its path', () => {
+  const s: Skill = { name: 'a', description: '', file: '~/s/a/SKILL.md', body: 'main body', requires: [], files: [{ name: 'EXTRA.md', content: 'extra content' }, { name: 'MORE.md', content: 'more content' }] };
+  expect(skillContent(s)).toBe('[~/s/a/SKILL.md]\nSkill directory: ~/s/a\nIncluded below, do not read again: EXTRA.md, MORE.md\n\nmain body\n\n---\n\n[~/s/a/EXTRA.md]\nextra content\n\n---\n\n[~/s/a/MORE.md]\nmore content');
 });
 
 test('without requires a skill requires nothing and has no files yet', () => {

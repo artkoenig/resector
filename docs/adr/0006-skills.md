@@ -17,7 +17,9 @@ from before skills needs `/tools` to offer the `skill` tool.
 
 The user can load a skill too, with `/skill <name>`. A skill's frontmatter may declare `requires`: those skills load
 with it, directly or not, each once, as Notes of their own; missing ones are ignored. The other `.md` files of a
-skill's folder are part of it and appended to its Note, so the model needs no further call to read them.
+skill's folder are part of it and appended to its Note, so the model needs no further call to read them. The Note starts with
+the skill's directory and the names of the appended files, so the model recognizes them and finds the files in subfolders, which are not
+appended.
 
 Skills are markdown data, not executable code, so keeping them in the project is acceptable (unlike Context
 Policies, ADR 0001).
