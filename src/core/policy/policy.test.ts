@@ -28,6 +28,12 @@ test('the view: a Tool Call run as a Background Process carries its process grou
   expect(view(started, { type: 'BackgroundExited', call: 5, exit: 0 }).find(b => b.id === 5)!.background).toEqual({ pid: 42, log: '/h/5.log', running: false });
 });
 
+test('the view: Project Instructions are to keep, a File Reference is not', () => {
+  const context = fold(session({ type: 'BlockAdded', id: 8, kind: 'Note', origin: 'file', file: 'AGENTS.md', content: 'x' }, { type: 'FileReferenced', id: 9, file: 'a.ts' }));
+  const { blocks } = viewOf(context, { blocks: context.blocks.map(() => 1), total: 9 }, { window: 99 });
+  expect(blocks.filter(b => b.keep).map(b => b.id)).toEqual([8]);
+});
+
 test('an operation of another shape is refused', () => {
   for (const op of [null, 'remove', { op: 'pin', id: 3 }, { op: 'remove', id: '3' }, { op: 'remove', id: 3.5 }, { op: 'edit', id: 3 }, { op: 'move', id: 3 }, { op: 'compact', sources: [3] }, { op: 'note', after: 2 }, { op: 'note', content: 'x' }])
     expect(parse(op)).toEqual({ error: `not an operation: ${JSON.stringify(op)}` });

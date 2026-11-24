@@ -80,12 +80,13 @@ function afterAnswer(state: State, call: number): number {
 // Notes added with these origins: the Environment Note, the Project Instructions, the Skills note. A File Reference has
 // its own event.
 const SESSION_NOTES = new Set<Origin>(['environment', 'file', 'skill']);
+const kept = ({ origin }: Pick<Block, 'origin'>) => (SESSION_NOTES.has(origin) ? { keep: true as const } : {});
 
 const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   BlockAdded: (state, e) => {
     const block = { id: e.id, kind: e.kind, origin: e.origin, content: e.content, cutOff: e.cutOff === true, ...(e.tool && { tool: e.tool }),
       ...(e.call !== undefined && { call: e.call }), ...(e.stopped && { stopped: e.stopped }), ...(e.file && { file: e.file }),
-      ...(e.background && { background: e.background }), ...(e.kind === 'Note' && SESSION_NOTES.has(e.origin) && { keep: true as const }) };
+      ...(e.background && { background: e.background }), ...kept(e) };
     state.entries.set(e.id, { ...block, ...NEW_ENTRY });
     insert(state, e.call === undefined ? state.order.length : afterCalls(state.order.map(id => entry(state, id)), e.call), e.id);
   },
