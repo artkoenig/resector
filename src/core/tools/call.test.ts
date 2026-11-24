@@ -70,6 +70,9 @@ test('a Background Process still running: its last 20 lines, then its pid, log a
     .toBe(`${lines}\n[running in the background: pid 42 · log /h/42.log · stop: kill -- -42]`);
   expect(resultText({ output: '', exit: null, stopped: null, background: { pid: 42, log: '/h/42.log' } }, 120))
     .toBe('[running in the background: pid 42 · log /h/42.log · stop: kill -- -42]');
+  // A Subagent's output is in its log only.
+  expect(resultText({ output: 'a\n', exit: null, stopped: null, background: { pid: 42, log: '/h/42.log' } }, 120, 'subagent'))
+    .toBe('[Subagent started: pid 42 · log /h/42.log · stop: kill -- -42]');
 });
 
 test('how the run ended is read back from the result; a result without that line has none', () => {
@@ -100,4 +103,10 @@ test('a Tool Result reads back as its output and its end', () => {
     expect(output.join('\n')).toBe(r.output.trimEnd());
     expect(end).toBe(r.stopped === 'killed' ? 'killed' : r.stopped === 'timeout' ? 'timeout after 30 s' : `exit ${r.exit}`);
   });
+});
+
+test('a subagent call has a prompt, sent back as it came', () => {
+  expect(parseCall({ name: 'subagent', arguments: '{"prompt":"look"}' }, ['subagent'])).toEqual({ tool: 'subagent', content: 'look' });
+  expect(parseCall({ name: 'subagent', arguments: '{}' }, ['subagent'])).toEqual({ error: 'no prompt string' });
+  expect(callArguments('subagent', 'look')).toBe('{"prompt":"look"}');
 });

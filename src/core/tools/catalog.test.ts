@@ -103,5 +103,5 @@ test('a Subagent is offered every tool asked for, all without any, but never `su
 test('the subagent tool says what its Subagent does not know and that its result comes later', () => {
   const tool = JSON.parse(TOOLS).find((t: { name: string }) => t.name === 'subagent');
   expect(tool.parameters.required).toEqual(['prompt']);
-  for (const said of ['does not know', 'Note', 'sleep']) expect(tool.description).toContain(said);
+  for (const said of ['does not know', 'prompt must hold everything', 'Note', 'sleep', 'stops its subagents']) expect(tool.description).toContain(said);
 });

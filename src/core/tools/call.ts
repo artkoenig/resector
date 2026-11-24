@@ -48,7 +48,7 @@ export const callArguments = (tool: Tool, content: string, background?: true): s
   tool === 'question' ? content : JSON.stringify({ [ARGUMENT[tool]]: content, ...(background && { background }) });
 
 // Tool Result content: the output as is, then a line saying how the run ended. A Subagent's is the line only.
-export function resultText({ output, exit, stopped, leftover, background }: RunResult, timeout: number, tool: Tool = 'bash'): string {
+export function resultText({ output, exit, stopped, leftover, background }: RunResult, timeout: number, tool?: Tool): string {
   if (background) {
     const { pid, log } = background;
     const where = `pid ${pid} · log ${log} · stop: kill -- -${pid}`;

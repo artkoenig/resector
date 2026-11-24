@@ -80,7 +80,6 @@ export async function start({ tools = BASH_TOOLS, template, window = 4096, exact
   const runner = createRunner({ cwd: project, timeout, ...(registry && { background: { registry, wait: wait! } }) });
   // websearch without ddgr: the query is echoed back as its result.
   const searcher = { timeout: 30, run: async (query: string) => ({ output: `results for ${query}\n`, exit: 0, stopped: null }) };
-  const subagents = { timeout: 0, run: async () => ({ output: '', exit: null, stopped: null, background: { pid: 4343, log: join(logs, '4343.log') } }) };
   const first = newSession('default', '', notes).length;
   const initial = [
     ...withTools(newSession('default', 'You are an agent.', notes), tools),
@@ -93,7 +92,7 @@ export async function start({ tools = BASH_TOOLS, template, window = 4096, exact
   const files = { read: projectFiles(project), images: projectImages(project, join(project, '..', `${basename(project)}-images`)), list: () => listProjectFiles(project), environment: () => fixture.environment, open: async (path: string) => void openedFiles.push(path) };
   const [active, setActive] = createSignal<Policy | null>(null);
   ui = await testRender(
-    () => <App backend={backend} runner={runner} searcher={searcher} subagents={subagents} approval={approval} editor={text => fixture.editor(text)} project={files} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} policies={{ all: policies, active, set: setActive }} openSessions={() => opened.push('sessions')} git={git} background={registry} hidden={hidden === 'default' ? undefined : hidden} onQuit={() => {}} />,
+    () => <App backend={backend} runner={runner} searcher={searcher} subagents={{ timeout: 0, run: async () => ({ output: '', exit: null, stopped: null, background: { pid: 4343, log: join(logs, '4343.log') } }) }} approval={approval} editor={text => fixture.editor(text)} project={files} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} policies={{ all: policies, active, set: setActive }} openSessions={() => opened.push('sessions')} git={git} background={registry} hidden={hidden === 'default' ? undefined : hidden} onQuit={() => {}} />,
     { width: 80, height: 20 },
   );
   const size = ` / ${formatTokens(window)}`;
