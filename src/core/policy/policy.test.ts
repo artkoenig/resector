@@ -9,13 +9,13 @@ test('the view: each block sent with its tokens, the other block of its Tool Pai
     window: 4096,
     used: 60,
     blocks: [
-      { id: 1, kind: 'System', origin: 'config', content: 'sys', tokens: 5, pair: null, pending: false, background: null },
-      { id: 2, kind: 'Tools', origin: 'config', content: '[]', tokens: 6, pair: null, pending: false, background: null },
-      { id: 3, kind: 'Thinking', origin: 'model', content: 'hmm', tokens: 7, pair: null, pending: false, background: null },
-      { id: 5, kind: 'Tool Call', origin: 'model', content: 'ls', tokens: 8, pair: 6, pending: false, background: null },
-      { id: 6, kind: 'Tool Result', origin: 'tool', content: 'a b', tokens: 9, pair: 5, pending: false, background: null },
-      { id: 7, kind: 'User', origin: 'user', content: 'go on', tokens: 10, pair: null, pending: false, background: null },
-      { id: 8, kind: 'Tool Call', origin: 'model', content: 'pwd', tokens: 11, pair: null, pending: true, background: null },
+      { id: 1, kind: 'System', origin: 'config', content: 'sys', tokens: 5, pair: null, pending: false, keep: false, background: null },
+      { id: 2, kind: 'Tools', origin: 'config', content: '[]', tokens: 6, pair: null, pending: false, keep: false, background: null },
+      { id: 3, kind: 'Thinking', origin: 'model', content: 'hmm', tokens: 7, pair: null, pending: false, keep: false, background: null },
+      { id: 5, kind: 'Tool Call', origin: 'model', content: 'ls', tokens: 8, pair: 6, pending: false, keep: false, background: null },
+      { id: 6, kind: 'Tool Result', origin: 'tool', content: 'a b', tokens: 9, pair: 5, pending: false, keep: false, background: null },
+      { id: 7, kind: 'User', origin: 'user', content: 'go on', tokens: 10, pair: null, pending: false, keep: false, background: null },
+      { id: 8, kind: 'Tool Call', origin: 'model', content: 'pwd', tokens: 11, pair: null, pending: true, keep: false, background: null },
     ],
   });
 });
