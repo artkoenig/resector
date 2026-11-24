@@ -161,6 +161,14 @@ test('at start, a recorded Background Process already gone is logged as orphaned
   expect(log('ses_old').at(-1)).toEqual({ type: 'BackgroundExited', call: 9, signal: 'orphaned' });
 });
 
+test('the report of a Subagent left by a crashed resector is logged with its end', async () => {
+  const dead = Bun.spawnSync(['true']).pid;
+  const report = { session: 'ses_sub', turns: 2, tokens: 500 };
+  const files = { 'ses_old.background': JSON.stringify([{ pid: dead, started: 'then' }]), [`../background/ses_old/${dead}.report.json`]: JSON.stringify(report) };
+  const { log } = await workspace({ sessions: { ses_old: started(dead) }, files });
+  expect(log('ses_old').at(-1)).toEqual({ type: 'BackgroundExited', call: 9, signal: 'orphaned', report });
+});
+
 test('at start, the Background Processes of a session open in another instance are left running', async () => {
   const left = orphan();
   try {

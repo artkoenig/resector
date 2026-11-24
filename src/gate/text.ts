@@ -6,8 +6,7 @@ import { toolNames } from '../core/tools/catalog';
 import { questionTitle } from '../core/tools/question';
 import type { Speed } from '../core/tools/answer';
 
-export const formatTokens = (t: number): string =>
-  t >= 1024 && t % 1024 === 0 ? `${t / 1024}k` : t >= 1000 ? `${(t / 1000).toFixed(1)}k` : String(t);
+export { formatTokens } from '../core/tokens/format';
 
 // Tokens/s, one decimal below 100.
 const rate = (r: number) => `${r >= 100 ? Math.round(r) : r.toFixed(1)} tok/s`;

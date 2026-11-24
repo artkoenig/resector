@@ -2,7 +2,7 @@
 import { expect, test } from 'bun:test';
 import { TOOLS } from '../core/tools/catalog';
 import type { Policy } from '../core/policy/policy';
-import { bash, gateWith, results } from './gate.harness';
+import { background, bash, gateWith, results } from './gate.harness';
 import type { Terminal } from './ports';
 
 const QUESTION = { question: 'Which one?', header: 'pick', options: [{ label: 'a', description: 'A' }, { label: 'b', description: 'B' }], recommended: 'a' };
@@ -139,4 +139,89 @@ test('a call that cannot be allowed for the session runs once when the terminal 
   g.reply({ calls: [bash('cat /etc/hostname')] }, { content: 'done' });
   expect(await g.gate.run({ prompt: 'go', terminal: t })).toMatchObject({ kind: 'answer', text: 'done', turns: 2 });
   expect(g.ran).toEqual(['cat /etc/hostname']);
+});
+
+const SUMMARY = { prompt: '/sum it up @all' };
+
+test('a summary is asked for after the answer: prompt and answer logged, not counted as a turn', async () => {
+  const g = gateWith();
+  g.reply({ content: 'hello' }, { content: 'said hello' });
+  const asking: number[] = [];
+  const outcome = await g.gate.run({ prompt: 'hi', summary: { ...SUMMARY, asking: () => asking.push(g.sent.length) } });
+  expect(outcome).toEqual({ kind: 'answer', text: 'hello', turns: 1, tokens: expect.any(Number), summary: { text: 'said hello' } });
+  expect(asking).toEqual([1]);
+  expect(g.sent).toHaveLength(2);
+  const logged = g.events.slice(g.events.findIndex(e => e.type === 'BlockAdded' && e.content === SUMMARY.prompt));
+  expect(logged[0]).toMatchObject({ kind: 'User', origin: 'user' });
+  expect(logged).toContainEqual(expect.objectContaining({ kind: 'Assistant', content: 'said hello' }));
+});
+
+test('without it nothing more is sent', async () => {
+  const g = gateWith();
+  g.reply({ content: 'hello' }, { content: 'never' });
+  expect(await g.gate.run({ prompt: 'hi' })).not.toHaveProperty('summary');
+  expect(g.sent).toHaveLength(1);
+});
+
+test('at max turns the summary request still goes; its calls are not run, its text counts', async () => {
+  const g = gateWith({ tools: TOOLS, global: { 'ls *': 'allow' } });
+  g.reply({ calls: [bash('ls a')] }, { content: 'looked', calls: [bash('ls b'), question] }, { content: 'never' });
+  expect(await g.gate.run({ prompt: 'go', maxTurns: 1, summary: SUMMARY })).toMatchObject({ kind: 'max-turns', turns: 1, summary: { text: 'looked' } });
+  expect(g.ran).toEqual(['ls a']);
+  expect(g.sent).toHaveLength(2);
+  expect(resultTexts(g).slice(1)).toEqual(['not run: the run has ended', 'not run: the run has ended']);
+});
+
+test('no policy sends on after the summary', async () => {
+  const onward: Policy = {
+    name: 'onward',
+    run: c => (c.blocks.some(b => b.kind === 'Assistant' && b.content === 'the summary') ? [{ op: 'note', after: c.blocks.at(-1)!.id, content: 'go on' }, { op: 'send' }] : []),
+  };
+  const g = gateWith({ policies: [onward] });
+  g.gate.submit('/policy onward');
+  g.reply({ content: 'hello' }, { content: 'the summary' }, { content: 'never' });
+  expect(await g.gate.run({ prompt: 'hi', summary: SUMMARY })).toMatchObject({ turns: 1, summary: { text: 'the summary' } });
+  expect(g.sent).toHaveLength(2);
+});
+
+test('no summary after an error; one that fails or stays empty says why, the Outcome stays', async () => {
+  const error = gateWith();
+  error.reply({ error: 'gone' }, { content: 'never' });
+  expect(await error.gate.run({ prompt: 'hi', summary: SUMMARY })).toMatchObject({ kind: 'error', text: 'backend error: gone' });
+  expect(error.sent).toHaveLength(1);
+  const failing = gateWith();
+  failing.reply({ content: 'hello' }, { error: 'gone' });
+  expect(await failing.gate.run({ prompt: 'hi', summary: SUMMARY })).toMatchObject({ kind: 'answer', turns: 1, summary: { error: 'backend error: gone' } });
+  const empty = gateWith({ tools: TOOLS });
+  empty.reply({ content: 'hello' }, { calls: [bash('ls')] });
+  expect(await empty.gate.run({ prompt: 'hi', summary: SUMMARY })).toMatchObject({ kind: 'answer', summary: { error: 'the model wrote none' } });
+});
+
+test('aborted during the run or the summary request there is no summary', async () => {
+  const during = gateWith();
+  during.reply({ content: 'part', hang: true }, { content: 'never' });
+  const first = new AbortController();
+  setTimeout(() => first.abort(), 10);
+  expect(await during.gate.run({ prompt: 'hi', signal: first.signal, summary: SUMMARY })).not.toHaveProperty('summary');
+  expect(during.sent).toHaveLength(1);
+  const g = gateWith();
+  g.reply({ content: 'hello' }, { content: 'part', hang: true });
+  const stop = new AbortController();
+  const run = g.gate.run({ prompt: 'hi', signal: stop.signal, summary: { ...SUMMARY, asking: () => setTimeout(() => stop.abort(), 10) } });
+  expect(await run).toEqual({ kind: 'aborted', text: '', turns: 1, tokens: expect.any(Number) });
+});
+
+test('a summary cut off at max_tokens says so', async () => {
+  const g = gateWith();
+  g.reply({ content: 'hello' }, { content: 'said hel', finish: 'length' });
+  expect(await g.gate.run({ prompt: 'hi', summary: SUMMARY })).toMatchObject({ kind: 'answer', summary: { text: 'said hel\n\n[summary cut off at max_tokens]' } });
+});
+
+test('exit Notes of the run\'s own Background Processes come before the summary prompt', async () => {
+  const g = gateWith({ tools: TOOLS, global: { 'serve *': 'allow' } });
+  g.reply({ calls: [background('serve x')] }, { content: 'hello', delay: 30 }, { content: 'the summary' });
+  const asking = () => g.exit(4242, { exit: 0 });
+  expect(await g.gate.run({ prompt: 'hi', summary: { ...SUMMARY, asking } })).toMatchObject({ kind: 'answer', summary: { text: 'the summary' } });
+  const blocks = g.events.filter(e => e.type === 'BlockAdded').slice(-3);
+  expect(blocks).toMatchObject([{ kind: 'Note', origin: 'background' }, { kind: 'User', content: SUMMARY.prompt }, { kind: 'Assistant', content: 'the summary' }]);
 });

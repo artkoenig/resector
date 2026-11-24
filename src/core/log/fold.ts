@@ -95,7 +95,7 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   },
   BackgroundStarted: (state, e) => void (entry(state, e.call).process = { pid: e.pid, log: e.log, running: true }),
   // Logged only for a started process.
-  BackgroundExited: (state, { type: _, call, ...end }) => {
+  BackgroundExited: (state, { type: _, call, report: __, ...end }) => {
     const started = entry(state, call).process!;
     started.running = false;
     started.end = end as BackgroundEnd;

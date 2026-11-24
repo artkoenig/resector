@@ -5,7 +5,7 @@ import { pairOf, type Block, type Context } from '../log/fold';
 import type { SessionEvent } from '../log/events';
 import { fold } from '../log/fold';
 import { TOOLS } from '../tools/catalog';
-import { addNote, approvable, attributed, decline, deny, edit, isFixed, inPair, move, moveAfter, nextCall, reject, remove, removeAll, revise, toggleTool, untouchable, withoutDenied, toNote, toolResult, unattended, undo, type Outcome } from './operations';
+import { addNote, afterRun, approvable, attributed, decline, deny, edit, isFixed, inPair, move, moveAfter, nextCall, reject, remove, removeAll, revise, toggleTool, untouchable, withoutDenied, toNote, toolResult, unattended, undo, type Outcome } from './operations';
 
 const session = (...then: SessionEvent[]): SessionEvent[] => [
   { type: 'SessionCreated', profile: 'default', protocol: 'native' },
@@ -168,6 +168,10 @@ test('without a user to approve, the call is answered with a Tool Result "no use
   expect(unattended(...at(session(call(6)), 6), 7)).toEqual({
     event: { type: 'BlockAdded', id: 7, kind: 'Tool Result', origin: 'tool', content: 'no user to approve', call: 6 },
   });
+});
+
+test('after the run, the call is answered with a Tool Result saying so', () => {
+  expect(afterRun(...at(session(call(6)), 6), 7)).toMatchObject({ event: { kind: 'Tool Result', content: 'not run: the run has ended', call: 6 } });
 });
 
 test('a denied call is answered with a Tool Result "denied by rule"', () => {

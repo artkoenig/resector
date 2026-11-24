@@ -5,6 +5,7 @@ import { closeSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, write
 import { dirname, join } from 'node:path';
 import type { BackgroundEnd } from '../../core/log/events';
 import type { RunResult } from '../../core/tools/call';
+import { dropReport, readReport } from './report';
 
 // How often a process group is checked for members (ms).
 const POLL = 100;
@@ -86,6 +87,7 @@ export function createBackground({ dir, record }: { dir: string; record: string 
     const pid = child.pid!;
     const log = join(dir, `${pid}.log`);
     renameSync(pending, log);
+    dropReport(dir, pid);
     const entry: Entry = { exit: null, signal: null, leaderDone: false, stopped: null, grace, gone: Promise.resolve() };
     child.on('exit', (code, signal) => {
       entry.exit = code;
@@ -99,7 +101,8 @@ export function createBackground({ dir, record }: { dir: string; record: string 
         running.delete(pid);
         recorded.delete(pid);
         writeRecord();
-        listeners.forEach(l => l(pid, endOf(entry)));
+        const end = { ...endOf(entry), ...readReport(dir, pid) };
+        listeners.forEach(l => l(pid, end));
         resolve();
       }, POLL);
     });
@@ -140,6 +143,7 @@ export function createBackground({ dir, record }: { dir: string; record: string 
   }
 
   return {
+    dir,
     start,
     // The user stops one; nothing when none runs under `pid`.
     stop: (pid: number) => end([...running].filter(([p]) => p === pid), 'user'),
