@@ -47,6 +47,13 @@ export const HeadlessSchema = z.strictObject({
 });
 export type Headless = z.infer<typeof HeadlessSchema>;
 
+// What the `subagent` tool starts with; the rest a Subagent takes from the headless section.
+const SubagentSchema = z.strictObject({
+  profile: z.string().optional().describe('Model Profile of the Subagents; default: the Session\'s'),
+  max: z.number().int().positive().optional().describe('Subagents running at once per Session at most (default 2)'),
+  summaryPrompt: z.string().trim().min(1).optional().describe('Asks a Subagent for the summary at its end; default: the built-in prompt'),
+});
+
 const PermissionSchema = z.record(z.string(), z.enum(['allow', 'ask', 'deny']));
 
 const ConfigSchema = z.strictObject({
@@ -58,6 +65,7 @@ const ConfigSchema = z.strictObject({
   autoApprove: z.boolean().default(true).describe('Auto-approve at start, in the TUI and in `resector -p`: Tool Calls the rules leave at `ask` run without asking, `deny` still applies (default true); `/auto` and `--[no-]auto-approve` switch it'),
   keybindings: z.record(z.string(), z.string()).optional().describe('Action → key'),
   headless: HeadlessSchema.optional().describe('Settings of `resector -p`'),
+  subagent: SubagentSchema.optional().describe('Settings of the Subagents the `subagent` tool starts; the others are those of `headless`'),
   bash: z
     .strictObject({
       timeout: z.number().positive().optional().describe('Seconds (default 120)'),

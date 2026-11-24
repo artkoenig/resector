@@ -14,10 +14,19 @@ test('the process of a Subagent gets prompt, profile and flags unchanged, withou
   const started: Parameters<typeof registry.start>[] = [];
   const recording = { ...registry, start: (...args: Parameters<typeof registry.start>) => (started.push(args), registry.start(['true'], args[1])) };
   const prompt = '-fix "it" $(rm x)\n`now`';
-  await createSubagents({ cwd, profile: 'qwen', registry: recording }).run(prompt, { signal: new AbortController().signal, onOutput: () => {} });
+  await createSubagents({ cwd, profile: 'qwen', config: { profiles: {} }, registry: recording }).run(prompt, { signal: new AbortController().signal, onOutput: () => {} });
   const [argv, { cwd: at, wait, env }] = started[0]!;
   expect(argv.slice(2)).toEqual([`--prompt=${prompt}`, '--model=qwen', '--auto-approve', '--show', 'tools']);
   expect({ at, wait, env }).toEqual({ at: cwd, wait: 0, env: { RESECTOR_SUBAGENT: 'start', RESECTOR_SUBAGENT_REPORTS: registry.dir } });
+});
+
+test('the Subagents run on the configured profile', async () => {
+  let argv: string | string[] = [];
+  const recording = { ...registry, start: (...[command, options]: Parameters<typeof registry.start>) => ((argv = command), registry.start(['true'], options)) };
+  const subagents = createSubagents({ cwd, profile: 'qwen', config: { profiles: {}, subagent: { profile: 'other' } }, registry: recording });
+  await subagents.run('go', { signal: new AbortController().signal, onOutput: () => {} });
+  expect(argv).toContain('--model=other');
+  expect(subagents.refused(0)).toBe('subagent.profile: unknown profile other (profiles: )');
 });
 
 test('a process started from its arguments sees them as they are, and the environment added to it', async () => {

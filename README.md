@@ -170,7 +170,19 @@ $ bun test src/core/tokens/split.test.ts
 
 ## Subagents
 
-With the `subagent` tool the model starts a run of its own on a prompt: a [Headless Run](#headless-resector--p) with the Session's model and Auto-approve, as a Background Process ([ADR 0007](docs/adr/0007-subagents.md)). The Session goes on meanwhile; when it has ended, a Note gives the model the summary it wrote of its work (after an error or a kill: what ended it). It asks before starting one unless a rule says `"subagent": "allow"`, or Auto-approve is on; a Subagent starts none itself. `/tools subagent` switches it off.
+With the `subagent` tool the model starts a run of its own on a prompt: a [Headless Run](#headless-resector--p) with the Session's model (or `subagent.profile`) and Auto-approve, as a Background Process ([ADR 0007](docs/adr/0007-subagents.md)). The Session goes on meanwhile; when it has ended, a Note gives the model the summary it wrote of its work (after an error or a kill: what ended it). It asks before starting one unless a rule says `"subagent": "allow"`, or Auto-approve is on; a Subagent starts none itself. `/tools subagent` switches it off.
+
+The `subagent` section of the [config](#configuration) (global, then project); Context Policy, thinking, tools, max turns and worktree come from `headless`:
+
+```jsonc
+{
+  "subagent": {
+    "profile": "small",     // Model Profile; default: the Session's
+    "max": 2,               // at once per Session (default); a call over it fails
+    "summaryPrompt": "…"    // replaces the built-in prompt for the summary at a Subagent's end
+  }
+}
+```
 
 ## Configuration
 

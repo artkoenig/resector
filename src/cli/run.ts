@@ -7,6 +7,7 @@ import { configPaths } from '../adapters/fs/config';
 import { projectSessionStore } from '../adapters/store/sessions';
 import { openTty } from '../adapters/terminal/tty';
 import { openWorkspace } from '../compose/workspace';
+import type { Config } from '../core/config/config';
 import { headlessSettings, SUBAGENT_ENV, type Flags } from '../core/config/headless';
 import type { SessionEvent, SubagentReport } from '../core/log/events';
 import { DEFAULT_SUMMARY_PROMPT } from '../core/notes/subagent';
@@ -129,7 +130,7 @@ async function headless({ prompt, flags }: Run, io: Io, reporter: Reporter): Pro
       createEffect(on(gate.status, status => status && toStderr(show.status(status)), { defer: true }));
       const tty = io.tty();
       try {
-        const outcome = await gate.run({ prompt, signal: AbortSignal.any([io.signal, terminated.signal]), maxTurns: settings.maxTurns, terminal: tty?.terminal, summary: summaryFor(subagent, reporter) });
+        const outcome = await gate.run({ prompt, signal: AbortSignal.any([io.signal, terminated.signal]), maxTurns: settings.maxTurns, terminal: tty?.terminal, summary: summaryFor(subagent, loaded.config, reporter) });
         // Before the release, which may take long enough to be killed.
         reporter.ended(outcome);
         return outcome;
@@ -146,7 +147,8 @@ async function headless({ prompt, flags }: Run, io: Io, reporter: Reporter): Pro
 }
 
 // Only a Subagent is asked for a summary.
-const summaryFor = (subagent: string | undefined, { asking }: Reporter) => (subagent ? { prompt: DEFAULT_SUMMARY_PROMPT, asking } : undefined);
+const summaryFor = (subagent: string | undefined, config: Config, { asking }: Reporter) =>
+  subagent ? { prompt: config.subagent?.summaryPrompt ?? DEFAULT_SUMMARY_PROMPT, asking } : undefined;
 
 type Reporter = ReturnType<typeof createReporter>;
 

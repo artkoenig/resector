@@ -162,3 +162,15 @@ test('the headless section is merged from global and project config; permission 
   expect(config.headless).toEqual({ policy: 'off', tools: [], maxTurns: 10, show: ['tools'], worktree: true });
   expect(() => readConfig([{ source: 'global', text: '{ "headless": { "permission": {}, "autoApprove": true } }' }])).toThrow(/headless: Unrecognized keys: "permission", "autoApprove"/);
 });
+
+test('the subagent section is merged from global and project config', () => {
+  const { config } = readConfig([
+    { source: 'global', text: '{ "subagent": { "profile": "small", "max": 4, "summaryPrompt": "Report." } }' },
+    { source: 'project', text: '{ "subagent": { "max": 1 } }', project: true },
+  ]);
+  expect(config.subagent).toEqual({ profile: 'small', max: 1, summaryPrompt: 'Report.' });
+  expect(readConfig([{ source: 'global', text: '{}' }]).config.subagent).toBeUndefined();
+  expect(() => readConfig([{ source: 'global', text: '{ "subagent": { "max": 0, "summaryPrompt": " \\n", "tools": [] } }' }])).toThrow(
+    /subagent.max: .*>0; subagent.summaryPrompt: .*; subagent: Unrecognized key: "tools"/,
+  );
+});
