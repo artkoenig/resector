@@ -3,7 +3,7 @@
 import { closeSync, openSync, read, writeSync } from 'node:fs';
 import { isatty } from 'node:tty';
 import type { Action, Verdict } from '../../core/approval/approval';
-import type { Block } from '../../core/log/fold';
+import { callText, type Block } from '../../core/log/fold';
 import { palette } from '../../core/palette/palette';
 import { orderedOptions, isRecommended, type Answer, type Question } from '../../core/tools/question';
 import type { Terminal } from '../../gate/ports';
@@ -22,7 +22,7 @@ export function ttyTerminal(io: TtyIo, color: boolean): Terminal {
   const mark: Record<Action, string> = { allow: paint('32')('✓'), ask: yellow('?'), deny: paint('31')('✗') };
 
   async function approve(call: Block, verdict: Verdict, signal: AbortSignal) {
-    io.write(`${yellow('?')} ${bold('approve')} ${call.content}\n`);
+    io.write(`${yellow('?')} ${bold('approve')} ${callText(call)}\n`);
     io.write(verdict.checks.map(c => `  ${mark[c.action]} ${c.text} ${dim(`(${c.why})`)}\n`).join(''));
     for (;;) {
       io.write(`  ${yellow('y')} run once · ${yellow('a')} allow for session · ${yellow('n')} reject › `);

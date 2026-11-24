@@ -50,12 +50,17 @@ const isInside = (path: string, root: string) => path === root || path.startsWit
 // readable: a directory arguments may name too, but not write to (the Background Process logs).
 export type ApprovalInput = { rules: Rule[]; split: Split; root: string; readable?: string };
 
+// What the last matching rule says, default ask.
+function ruled(text: string, rules: Rule[]): Check {
+  const rule = rules.findLast(r => matches(r.pattern, text));
+  return { text, action: rule?.action ?? 'ask', why: rule ? `${rule.source} rule "${rule.pattern}"` : 'no rule → default ask', unallowable: false };
+}
+
 // One sub-command: the last matching rule, default ask; arguments outside the project ask whatever the rule
 // (unless denied).
 function check(command: Command, { rules, root, readable }: ApprovalInput): Check {
   const { text, args, writes } = command;
-  const rule = rules.findLast(r => matches(r.pattern, text));
-  const decided = { text, action: rule?.action ?? 'ask', why: rule ? `${rule.source} rule "${rule.pattern}"` : 'no rule → default ask', unallowable: false };
+  const decided = ruled(text, rules);
   if (decided.action === 'deny') return decided;
   const read = (arg: string | null) => (readable && argumentProblem(arg, readable) === null ? null : argumentProblem(arg, root));
   const problem = [...args.map(read), ...writes.map(arg => argumentProblem(arg, root))].find(p => p !== null);
@@ -84,10 +89,17 @@ function imageVerdict(path: string, root: string): Verdict {
   const problem = argumentProblem(path, root);
   return problem ? { action: 'ask', checks: [{ text: path, action: 'ask', why: problem, unallowable: true }] } : ALLOWED;
 }
+// A Subagent runs with Auto-approve, so starting one asks unless the user's rules say otherwise: the built-in rule does
+// not count. A rule matches the tool's name, not the prompt.
+function subagentVerdict(rules: Rule[]): Verdict {
+  const decided = ruled('subagent', rules.filter(r => r.source !== 'built-in'));
+  return { action: decided.action, checks: [decided] };
+}
 // websearch only reads the web: always allowed, no rule decides it.
 export function verdictOf(call: Pick<Block, 'tool' | 'content'>, input: ApprovalInput): Verdict {
   if (call.tool === 'websearch' || call.tool === 'skill') return ALLOWED;
   if (call.tool === 'image') return imageVerdict(call.content, input.root);
+  if (call.tool === 'subagent') return subagentVerdict(input.rules);
   return call.tool === 'question' ? questionVerdict(input.rules) : evaluate(call.content, input);
 }
 // The tools rules switch off: kept out of the Tools Block, calls denied.

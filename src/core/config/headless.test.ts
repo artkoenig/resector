@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { readConfig } from './config';
-import { headlessSettings } from './headless';
+import { SUBAGENT_ENV, headlessSettings } from './headless';
 
 const known = { policies: ['summary-reset', 'mine'], tools: ['bash', 'question', 'websearch'], repository: true };
 const config = (headless: object, rest: object = {}) =>
@@ -28,4 +28,8 @@ test('a worktree outside a git repository is a usage error, from a flag or the h
   const outside = { ...known, repository: false };
   expect(headlessSettings(config({}), { worktree: true }, outside)).toEqual({ usage: 'worktree: not a git repository' });
   expect(headlessSettings(config({ worktree: true }), {}, outside)).toEqual({ usage: 'worktree: not a git repository' });
+});
+
+test('the environment variable marking a Subagent', () => {
+  expect(SUBAGENT_ENV).toBe('RESECTOR_SUBAGENT');
 });

@@ -133,7 +133,7 @@ Context Policy, Permission Rules and Session Log work as in the TUI. Every run i
 | `-m, --model <profile>` | `defaultProfile` |
 | `--policy <name\|off>` | `defaultPolicy` |
 | `--thinking <off\|on\|level>` | the profile's |
-| `--tools <bash,websearch\|none>` | a new session's tools |
+| `--tools <bash,websearch,…\|none>` | a new session's tools |
 | `--show <thinking,tools,notes,policy\|all>` | nothing: stderr gets the closing line only |
 | `--max-turns <n>` | 50 requests to the model |
 | `-w, --worktree` | off: run in its own git worktree |
@@ -167,6 +167,10 @@ $ bun test src/core/tokens/split.test.ts
 | `130` | Ctrl-C (a second one exits at once) |
 
 **Asking.** With `--no-auto-approve` (or `"autoApprove": false`) a call the rules leave at `ask` is asked for. Such a call, or a Question, is asked at the terminal itself (`/dev/tty`), so it shows even with stderr redirected: `y` / `a` / `n` for a call; for a Question a number, your own answer, empty for the recommended one, `-` to skip; Ctrl-D rejects the call or declines the Question. Without a terminal (CI, cron) a Question is declined and such a call is not run (`no user to approve`); the run goes on. So unattended without Auto-approve, only calls whose arguments stay inside the project run. With it, everything not denied runs: `deny` what it must never do.
+
+## Subagents
+
+With the `subagent` tool the model starts a run of its own on a prompt: a [Headless Run](#headless-resector--p) with the Session's model and Auto-approve, as a Background Process ([ADR 0007](docs/adr/0007-subagents.md)). The Session goes on meanwhile; a Note tells the model when it has ended. It asks before starting one unless a rule says `"subagent": "allow"`, or Auto-approve is on; a Subagent starts none itself. `/tools subagent` switches it off.
 
 ## Configuration
 

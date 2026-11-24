@@ -1,4 +1,4 @@
-// The tool catalog: bash, websearch, question, skill and image, their definitions, and the Tools Block content offering them.
+// The tool catalog: bash, websearch, question, skill, image and subagent, their definitions, and the Tools Block content offering them.
 import { QUESTION_DEFINITION } from './question';
 
 type ToolDefinition = { name: string; description: string; parameters: object };
@@ -36,8 +36,19 @@ const CATALOG: ToolDefinition[] = [
       'results of your tool calls.',
     parameters: { type: 'object', properties: { path: { type: 'string', description: 'the image file, relative to the project root' } }, required: ['path'] },
   },
+  {
+    name: 'subagent',
+    description:
+      'Start a subagent: a run of its own that works on the prompt in the background with the same project. It does not know ' +
+      'this conversation, so the prompt must hold everything it needs. Returns at once with its pid and log file; it keeps ' +
+      'running, and a Note tells you once it ended: do not poll, a session at rest gets it by itself. A headless run (-p) has to wait for it itself (e.g. sleep through bash): ' +
+      'when you answer without calls, the run ends and stops its subagents.',
+    parameters: { type: 'object', properties: { prompt: { type: 'string', description: 'the whole task, with all it needs to know' } }, required: ['prompt'] },
+  },
 ];
 export const TOOL_NAMES = CATALOG.map(t => t.name);
+// The tools of a Subagent asked to have `names`, without any asked for every one: it starts none itself.
+export const subagentTools = (names = TOOL_NAMES) => names.filter(n => n !== 'subagent');
 
 // Tools Block content, protocol-neutral: name, description, JSON schema of the arguments.
 const toolsContent = (tools: ToolDefinition[]) => JSON.stringify(tools, null, 2);

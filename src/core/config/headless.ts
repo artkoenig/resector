@@ -2,6 +2,9 @@
 // what exists.
 import type { Config, Headless } from './config';
 
+// Marks a Subagent's environment: `start` for the Headless Run that is the Subagent, `inside` for what it starts.
+export const SUBAGENT_ENV = 'RESECTOR_SUBAGENT';
+
 // Flags of `resector -p`: the headless section's keys, and Auto-approve, which the config sets for the TUI too.
 export type Flags = Headless & { autoApprove?: boolean };
 export type Settings = Headless & { autoApprove: boolean };

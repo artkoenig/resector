@@ -7,6 +7,7 @@ import { connect } from '../adapters/backend/connect';
 import { createBackground, reapOrphans, type Background } from '../adapters/bash/background';
 import { createRunner } from '../adapters/bash/runner';
 import { createSplit } from '../adapters/bash/split';
+import { createSubagents } from '../adapters/bash/subagent';
 import { loadConfig, type ConfigPaths } from '../adapters/fs/config';
 import { loadPolicies } from '../adapters/fs/policies';
 import { listProjectFiles, probeEnvironment, projectFiles, projectImages, projectInstructions, tilde } from '../adapters/fs/project';
@@ -39,7 +40,7 @@ export type WorkspaceOptions = {
 };
 
 export type Loaded = NonNullable<ReturnType<typeof loadConfig>>;
-type Running = 'runner' | 'searcher' | 'approval' | 'project' | 'git';
+type Running = 'runner' | 'searcher' | 'subagents' | 'approval' | 'project' | 'git';
 // What a view adds to the Gate's options.
 type ViewOptions = 'editor' | 'clipboard' | 'openSessions';
 // What a new session starts with instead of the config's defaults (a Headless Run's settings).
@@ -183,7 +184,7 @@ export async function openWorkspace(options: WorkspaceOptions) {
         opened.release();
       },
       options: {
-        backend, ...runningIn(loaded, dir, checkout, opened.id, background), log: opened.log, events, notice: withFailed(withWarning(notice, warning)), instruction,
+        backend, ...runningIn(loaded, dir, checkout, opened.id, profile, background), log: opened.log, events, notice: withFailed(withWarning(notice, warning)), instruction,
         compactor: compactor(loaded, profile, opened.id), policies, autoApprove, skills, background: exitsLogged(background, opened.log, () => store.read(opened.id)),
       },
     };
@@ -223,8 +224,8 @@ export async function openWorkspace(options: WorkspaceOptions) {
       return { dir: checkout, checkout, warning: `worktree: ${errorText(e)} – runs in ${checkout}` };
     }
   }
-  // What depends on where the session runs: bash and websearch, the arguments' root, the project, git.
-  function runningIn(loaded: Loaded, dir: string, checkout: string, id: string, background: Background): Pick<GateOptions, Running> {
+  // What depends on where the session runs: bash, websearch and Subagents, the arguments' root, the project, git.
+  function runningIn(loaded: Loaded, dir: string, checkout: string, id: string, profile: string, background: Background): Pick<GateOptions, Running> {
     const git: Git = {
       branches: () => listBranches(dir),
       status: () => status(dir),
@@ -235,7 +236,7 @@ export async function openWorkspace(options: WorkspaceOptions) {
       reopen: notice => {
         const events = store.read(id);
         const at = sessionDir(events, id);
-        options.onReopen({ ...runningIn(loaded, at.dir, at.checkout, id, background), events, notice });
+        options.onReopen({ ...runningIn(loaded, at.dir, at.checkout, id, profile, background), events, notice });
       },
     };
     return {
@@ -245,6 +246,7 @@ export async function openWorkspace(options: WorkspaceOptions) {
         background: { registry: background, wait: loaded.config.bash?.backgroundWait ?? DEFAULT_BACKGROUND_WAIT },
       }),
       searcher: createSearcher({ cwd: dir, timeout: SEARCH_TIMEOUT }),
+      subagents: createSubagents({ cwd: dir, profile, registry: background }),
       approval: { split: split!, root: dir, readable: backgroundLogs(id), permissions: () => loaded.permissions },
       project: projectAt(dir, checkout),
       git: repository ? git : null,

@@ -4,7 +4,7 @@ import { TOOL_NAMES } from './catalog';
 import { parseQuestions } from './question';
 
 // The one argument of the other tools: a Tool Call's content. A question's content is all its arguments.
-const ARGUMENT: Record<Exclude<Tool, 'question'>, string> = { bash: 'command', websearch: 'query', skill: 'name', image: 'path' };
+const ARGUMENT: Record<Exclude<Tool, 'question'>, string> = { bash: 'command', websearch: 'query', skill: 'name', image: 'path', subagent: 'prompt' };
 
 // A run's output; exit: null when the run was stopped or still runs in the background.
 // `leftover`: the command left processes running, which were killed when it ended.
@@ -47,12 +47,14 @@ const backgrounded = (tool: Tool, args: unknown) => tool === 'bash' && (args as 
 export const callArguments = (tool: Tool, content: string, background?: true): string =>
   tool === 'question' ? content : JSON.stringify({ [ARGUMENT[tool]]: content, ...(background && { background }) });
 
-// Tool Result content: the output as is, then a line saying how the run ended.
-export function resultText({ output, exit, stopped, leftover, background }: RunResult, timeout: number): string {
+// Tool Result content: the output as is, then a line saying how the run ended. A Subagent's is the line only.
+export function resultText({ output, exit, stopped, leftover, background }: RunResult, timeout: number, tool?: Tool): string {
   if (background) {
     const { pid, log } = background;
+    const where = `pid ${pid} · log ${log} · stop: kill -- -${pid}`;
+    if (tool === 'subagent') return `[Subagent started: ${where}]`;
     const last = output.trimEnd().split('\n').slice(-BACKGROUND_LINES).join('\n');
-    return [last, `[running in the background: pid ${pid} · log ${log} · stop: kill -- -${pid}]`].filter(Boolean).join('\n');
+    return [last, `[running in the background: ${where}]`].filter(Boolean).join('\n');
   }
   const end = stopped === 'killed' ? '[killed]' : stopped === 'timeout' ? `[timeout after ${timeout} s]` : `[exit ${exit}]`;
   const lines = [output.trimEnd(), leftover ? '[processes it left running were killed; start long-running ones with background: true]' : '', end];

@@ -2,6 +2,7 @@
 // writes it.
 import type { Shown } from '../core/config/config';
 import type { SessionEvent } from '../core/log/events';
+import { callText } from '../core/log/fold';
 import { palette } from '../core/palette/palette';
 import { resultEnd } from '../core/tools/call';
 import type { Status } from '../gate';
@@ -42,7 +43,7 @@ export function createShow(kinds: Shown[], color: boolean) {
   }
 
   function block(e: Extract<SessionEvent, { type: 'BlockAdded' }>): string {
-    if (e.kind === 'Tool Call' && on.has('tools')) return lines(`${cyan('$')} ${e.tool === 'websearch' ? `websearch ${e.content}` : e.content}`);
+    if (e.kind === 'Tool Call' && on.has('tools')) return lines(`${cyan('$')} ${callText(e)}`);
     if (e.kind === 'Tool Result' && on.has('tools')) return lines(...resultLines(e.content).map(dim));
     return e.kind === 'Note' && on.has('notes') ? note(e.content) : '';
   }

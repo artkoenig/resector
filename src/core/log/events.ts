@@ -9,7 +9,7 @@ export type Origin = 'config' | 'user' | 'model' | 'tool' | 'compaction' | 'file
 export type Stopped = 'killed' | 'timeout';
 export type ToolProtocol = 'native';
 // The tools the harness runs.
-export type Tool = 'bash' | 'websearch' | 'question' | 'skill' | 'image';
+export type Tool = 'bash' | 'websearch' | 'question' | 'skill' | 'image' | 'subagent';
 // Reasoning: 'off', 'on', or an effort level the model's chat template accepts (e.g. 'low', 'xhigh').
 export type Thinking = string;
 
