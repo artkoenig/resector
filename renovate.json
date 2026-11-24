@@ -1,0 +1,34 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigestsToSemver"],
+  "timezone": "Europe/Berlin",
+  "prConcurrentLimit": 1,
+  "minimumReleaseAge": "3 days",
+  "internalChecksFilter": "strict",
+  "minimumReleaseAgeBehaviour": "timestamp-optional",
+  "separateMajorMinor": false,
+  "logLevelRemap": [
+    {
+      "description": "Expected with timestamp-optional (pinDigest updates have no release timestamp); do not show it as a repository problem",
+      "matchMessage": "/Some .+ did not have a releaseTimestamp, but as we're running with minimumReleaseAgeBehaviour=timestamp-optional, proceeding/",
+      "newLogLevel": "info"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "dependency-cruiser does not support TypeScript 7 yet",
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<7"
+    },
+    {
+      "description": "@opentui/core needs exactly this version (peer dependency): raise it together with OpenTUI",
+      "matchPackageNames": ["web-tree-sitter"],
+      "allowedVersions": "0.25.10"
+    },
+    {
+      "description": "One PR with every update (all managers, all update types)",
+      "matchPackageNames": ["*"],
+      "groupName": "all dependencies"
+    }
+  ]
+}
