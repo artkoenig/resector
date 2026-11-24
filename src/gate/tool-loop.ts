@@ -256,6 +256,9 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
       nextCall: () => ops.nextCall(context()),
     },
     setStopping, finish, advance, wentOn, decide,
+    // No call is pending, no results are held for review or left unsent (after a cancelled or failed request, or when
+    // the Session is opened again).
+    rests: () => !held && !ops.nextCall(context()) && context().blocks.findLast(b => b.kind !== 'Note' && b.kind !== 'Image')?.kind !== 'Tool Result',
     drive: (d: Driver | null) => void (driver = d),
   };
 }

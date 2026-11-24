@@ -53,6 +53,7 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   const choose = () => {
     const { draft: completed, run } = suggestion()!;
     if (run === null) return editDraft(completed);
+    if (gate.busy()) return;
     gate.submit(run);
     leaveInput();
   };
@@ -111,7 +112,7 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
   // A memo: `on(phase)` must fire on a phase change only, not on every update of the Compaction.
   const phase = createMemo(() => gate.compacting()?.phase);
   // The dock takes the keys; a Compaction under way keeps them.
-  const docked = createDockControl(gate, { draft, editDraft, leaveInput, compacting: () => !!phase(), scrollPreview, previewPage, onQuit: props.onQuit });
+  const docked = createDockControl(gate, { draft, editDraft, leaveInput, startInput, compacting: () => !!phase(), scrollPreview, previewPage, onQuit: props.onQuit });
   // The instruction line starts empty, on `i` or when blocked with the draft of the last run.
   createEffect(on(phase, p => p === 'instruction' && editDraft(gate.compacting()!.draft)));
   createEffect(() => phase() === 'instruction' && gate.measure(draft()));

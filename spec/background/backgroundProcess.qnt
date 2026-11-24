@@ -47,7 +47,7 @@ module backgroundProcess {
 
   var procs: Key -> Proc
   var app: App
-  var pending: Set[Key]       // exit Notes queued in memory for the next request
+  var pending: Set[Key]       // exit Notes not in the Context yet, owed by the next request
   var foreignKilled: bool
   var lastAction: str
 
@@ -146,24 +146,26 @@ module backgroundProcess {
   }
 
   // ---- registry ----
-  action observeExit(s: int, c: int): bool = {
+  // atOnce: its exit Note goes into the Context now (ADR 0007), else after the step under way, at the latest before the
+  // next request (a Headless Run's always).
+  action observeExit(s: int, c: int, atOnce: bool): bool = {
     val p = procs.get((s, c))
     all {
       app.alive, app.open == s, logRunning(p), exitObservable(p),
-      procs' = procs.set((s, c), logExit(p, ExitCode)),
-      pending' = pending.union(Set((s, c))),
+      procs' = procs.set((s, c), { ...logExit(p, ExitCode), noted: atOnce }),
+      pending' = if (atOnce) pending else pending.union(Set((s, c))),
       app' = app, foreignKilled' = foreignKilled,
       lastAction' = "observeExit",
     }
   }
 
   // `k` on the row (#130); works while busy.
-  action userStop(s: int, c: int): bool = {
+  action userStop(s: int, c: int, atOnce: bool): bool = {
     val p = procs.get((s, c))
     all {
       app.alive, app.open == s, logRunning(p),
-      procs' = procs.set((s, c), logExit(killGroup(p), UserStop)),
-      pending' = pending.union(Set((s, c))),
+      procs' = procs.set((s, c), { ...logExit(killGroup(p), UserStop), noted: atOnce }),
+      pending' = if (atOnce) pending else pending.union(Set((s, c))),
       app' = app, foreignKilled' = foreignKilled,
       lastAction' = "userStop",
     }
@@ -180,7 +182,7 @@ module backgroundProcess {
     }
   }
 
-  // Exit Notes go in before the next request (#125).
+  // Exit Notes still owed go in before the next request (#125).
   action sendRequest: bool = all {
     app.alive, app.open != NONE, pending != Set(),
     procs' = procs.keys().mapBy(k => if (pending.contains(k)) { ...procs.get(k), noted: true } else procs.get(k)),
@@ -238,14 +240,15 @@ module backgroundProcess {
   action step = {
     nondet s = SESSIONS.oneOf()
     nondet c = CALLS.oneOf()
+    nondet atOnce = Set(true, false).oneOf()
     any {
       openSession(s),
       start(s, c),
       leaderExits((s, c)),
       groupDies((s, c)),
       pidReused((s, c)),
-      observeExit(s, c),
-      userStop(s, c),
+      observeExit(s, c, atOnce),
+      userStop(s, c, atOnce),
       removePair(s, c),
       sendRequest,
       closeSession,

@@ -11,6 +11,8 @@ type Ui = {
   draft: () => string;
   editDraft: (text: string) => void;
   leaveInput: () => void;
+  // Opens the input with this text.
+  startInput: (text: string) => () => void;
   // A Compaction under way keeps the keys.
   compacting: () => boolean;
   scrollPreview: (lines: number) => void;
@@ -25,14 +27,19 @@ export function createDockControl(gate: Screen, ui: Ui) {
   // Reading older rows (the wheel over the block table): the preview shows again, the dock waits; the selection
   // the Question had, to go back to.
   const [peekFrom, setPeekFrom] = createSignal<number | null>(null);
+  // A message the user was writing when the Question came (after a request that started by itself): back once it is answered.
+  let aside = '';
   createEffect(
     on(
       () => gate.asked()?.call.id,
       id => {
+        if (id !== undefined && !typingOwn() && !ui.compacting()) aside ||= ui.draft();
         setDock(id === undefined ? null : dock.openDock(gate.asked()!.questions));
         setTypingOwn(false);
         setPeekFrom(null);
-        if (id !== undefined) ui.leaveInput();
+        if (id !== undefined) return ui.leaveInput();
+        if (aside) ui.startInput(aside)();
+        aside = '';
       },
     ),
   );

@@ -30,6 +30,8 @@ const MODE_KEYS: Partial<Record<KeyMode, Hint[]>> = {
   answer: [['enter', 'answer'], ['esc', 'back']],
   peek: [['↑↓', 'select'], ['esc', 'question'], ['q', 'quit']],
 };
+// A request started while the user writes: Enter sends only after it.
+const DRAFT_WAITS: Hint[] = [['tab/esc', 'back']];
 // Streaming, running or a policy running: the first Esc stops the loop after the step, the second aborts it.
 function busyKeys(gate: Screen): Hint[] | null {
   const step = gate.running() ? 'kill' : gate.streaming() || gate.policing() ? 'abort' : null;
@@ -38,7 +40,7 @@ function busyKeys(gate: Screen): Hint[] | null {
   return step && [['esc', gate.stopping() ? step : 'stop after'], ...kill, ...LOOK_KEYS];
 }
 function modeKeys(gate: Screen, mode: KeyMode): Hint[] {
-  const own = MODE_KEYS[mode] ?? busyKeys(gate);
+  const own = mode === 'input' && gate.busy() ? DRAFT_WAITS : (MODE_KEYS[mode] ?? busyKeys(gate));
   if (own) return own;
   // With marks only what acts on all marked blocks.
   const marked = gate.marked().size > 0;

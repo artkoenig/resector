@@ -22,6 +22,8 @@ const REASON: Record<string, string> = {
   user: 'stopped by the user',
   orphaned: 'killed after resector stopped unexpectedly',
 };
+// Whether resector ended it, and why.
+export const endedBy = (end: BackgroundEnd, signal: 'user' | 'session ended') => 'signal' in end && end.signal === signal;
 const reason = (end: BackgroundEnd) => ('exit' in end ? `exited with ${end.exit}` : (REASON[end.signal] ?? `killed by ${end.signal}`));
 
 // Self-contained: the start call may be gone from the Context.
