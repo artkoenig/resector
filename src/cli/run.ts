@@ -36,7 +36,7 @@ export type Io = {
   tty(): ReturnType<typeof openTty>;
   // Aborted by Ctrl-C.
   signal: AbortSignal;
-  // SIGTERM or SIGHUP: `stop` runs (the Background Processes end), then the process exits.
+  // SIGTERM or SIGHUP: `stop` runs (the running call and the Background Processes end), then the process exits.
   onTerminate(stop: () => Promise<void>): void;
 };
 
@@ -92,7 +92,14 @@ async function headless({ prompt, flags }: Run, io: Io): Promise<{ outcome: Outc
     io.env[SUBAGENT_ENV] = 'inside';
   }
   const opened = await workspace.open(loaded, { start: settings });
-  io.onTerminate(opened.release);
+  const terminated = new AbortController();
+  let released: Promise<void> | undefined;
+  const release = () => (released ??= opened.release());
+  // The running call is in a process group of its own: without the abort it would outlive the run.
+  io.onTerminate(() => {
+    terminated.abort();
+    return release();
+  });
   try {
     const show = createShow(settings.show ?? [], io.color);
     const toStderr = (text: string) => void (text && io.stderr(text));
@@ -114,7 +121,7 @@ async function headless({ prompt, flags }: Run, io: Io): Promise<{ outcome: Outc
       createEffect(on(gate.status, status => status && toStderr(show.status(status)), { defer: true }));
       const tty = io.tty();
       try {
-        return await gate.run({ prompt, signal: io.signal, maxTurns: settings.maxTurns, terminal: tty?.terminal });
+        return await gate.run({ prompt, signal: AbortSignal.any([io.signal, terminated.signal]), maxTurns: settings.maxTurns, terminal: tty?.terminal });
       } finally {
         tty?.close();
         dispose();
@@ -122,7 +129,8 @@ async function headless({ prompt, flags }: Run, io: Io): Promise<{ outcome: Outc
     });
     return { outcome, id: opened.id };
   } finally {
-    await opened.release();
+    // One release for both: terminated, its exit code comes first.
+    await release();
   }
 }
 

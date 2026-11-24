@@ -8,12 +8,12 @@ import type { RunResult } from '../../core/tools/call';
 
 // How often a process group is checked for members (ms).
 const POLL = 100;
-// SIGTERM, then SIGKILL after this (ms).
-const GRACE = 2000;
+// SIGTERM, then SIGKILL after this (ms), unless the start says otherwise.
+export const GRACE = 2000;
 
 // signal: what killed the leader; stopped: who ended it, the user (stop) or the session's end (stopAll).
 type Stopper = 'user' | 'session ended';
-type Entry = { exit: number | null; signal: string | null; leaderDone: boolean; stopped: Stopper | null; gone: Promise<void> };
+type Entry = { exit: number | null; signal: string | null; leaderDone: boolean; stopped: Stopper | null; grace: number; gone: Promise<void> };
 export type Background = ReturnType<typeof createBackground>;
 // A running Background Process in the Session's record: its group, and when its leader started (the pid-reuse guard).
 type Recorded = { pid: number; started: string | null };
@@ -72,9 +72,9 @@ export function createBackground({ dir, record }: { dir: string; record: string 
   const listeners = new Set<(pid: number, end: BackgroundEnd) => void>();
   let next = 0;
 
-  // command: run by bash, or a process's argv; env: added to its environment.
+  // command: run by bash, or a process's argv; env: added to its environment; grace: ms from SIGTERM to SIGKILL.
   // wait: seconds until the result, unless it ends sooner; signal: aborts the wait, killing it.
-  function start(command: string | string[], { cwd, wait, signal, env }: { cwd: string; wait: number; signal: AbortSignal; env?: Record<string, string> }): Promise<RunResult> {
+  function start(command: string | string[], { cwd, wait, signal, env, grace = GRACE }: { cwd: string; wait: number; signal: AbortSignal; env?: Record<string, string>; grace?: number }): Promise<RunResult> {
     const [file, ...args] = typeof command === 'string' ? ['bash', '-c', command] : command;
     mkdirSync(dir, { recursive: true });
     const pending = join(dir, `starting-${process.pid}-${next++}.log`);
@@ -86,7 +86,7 @@ export function createBackground({ dir, record }: { dir: string; record: string 
     const pid = child.pid!;
     const log = join(dir, `${pid}.log`);
     renameSync(pending, log);
-    const entry: Entry = { exit: null, signal: null, leaderDone: false, stopped: null, gone: Promise.resolve() };
+    const entry: Entry = { exit: null, signal: null, leaderDone: false, stopped: null, grace, gone: Promise.resolve() };
     child.on('exit', (code, signal) => {
       entry.exit = code;
       entry.signal = signal;
@@ -124,19 +124,19 @@ export function createBackground({ dir, record }: { dir: string; record: string 
     });
   }
 
-  // SIGTERM to every group, SIGKILL to what is left after the grace period. Who stopped one first stays its ending.
+  // SIGTERM to every group, SIGKILL to what is left after its grace period. Who stopped one first stays its ending.
   async function end(entries: [number, Entry][], by: Stopper): Promise<void> {
-    if (!entries.length) return;
     entries.forEach(([pid, e]) => {
       e.stopped ??= by;
       signalGroup(pid, 'SIGTERM');
     });
-    const all = Promise.all(entries.map(([, e]) => e.gone));
-    let timer: Timer | undefined;
-    const grace = new Promise<'late'>(resolve => (timer = setTimeout(() => resolve('late'), GRACE)));
-    if ((await Promise.race([all, grace])) === 'late') entries.forEach(([pid]) => signalGroup(pid, 'SIGKILL'));
-    clearTimeout(timer);
-    await all;
+    await Promise.all(
+      entries.map(async ([pid, e]) => {
+        const timer = setTimeout(() => signalGroup(pid, 'SIGKILL'), e.grace);
+        await e.gone;
+        clearTimeout(timer);
+      }),
+    );
   }
 
   return {
