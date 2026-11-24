@@ -18,9 +18,9 @@ let fake: ReturnType<typeof startFakeLlamaCpp>;
 afterEach(() => fake.stop());
 
 // A project with a config on the fake server, unless config is false; headless: its headless section; permission: its
-// rules; tty: the lines
+// rules; subagent: its subagent section; tty: the lines
 // typed at the terminal (the asking goes to <file>.out), none when there is no terminal.
-function project({ config = true, headless = {}, permission, tty, bash }: { config?: boolean; headless?: object; permission?: object; tty?: string[]; bash?: object } = {}) {
+function project({ config = true, headless = {}, permission, tty, bash, subagent, profiles }: { config?: boolean; headless?: object; permission?: object; tty?: string[]; bash?: object; subagent?: object; profiles?: string[] } = {}) {
   fake = startFakeLlamaCpp({ nCtx: 4096 });
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'resector-cli-')));
   const dir = join(root, 'project');
@@ -28,7 +28,7 @@ function project({ config = true, headless = {}, permission, tty, bash }: { conf
   const env = { HOME: join(root, 'home'), XDG_CONFIG_HOME: join(root, 'config'), XDG_DATA_HOME: join(root, 'data'), RESECTOR_CONFIG: join(root, 'config.jsonc') };
   const typed = join(root, 'tty');
   if (tty) writeFileSync(typed, tty.map(l => `${l}\n`).join(''));
-  if (config) writeFileSync(env.RESECTOR_CONFIG, JSON.stringify({ profiles: { local: { backend: 'llamacpp', endpoint: fake.url, window: 2048 } }, defaultProfile: 'local', headless, permission, bash }));
+  if (config) writeFileSync(env.RESECTOR_CONFIG, JSON.stringify({ profiles: Object.fromEntries(['local', ...(profiles ?? [])].map(name => [name, { backend: 'llamacpp', endpoint: fake.url, window: 2048 }])), defaultProfile: 'local', headless, permission, bash, subagent }));
   const sessions = () => {
     const at = projectSessionsDir(configPaths({ home: env.HOME, cwd: dir, env }));
     return (existsSync(at) ? readdirSync(at) : []).filter(f => f.endsWith('.jsonl')).map(f => readFileSync(join(at, f), 'utf8'));
@@ -291,6 +291,18 @@ test('a run starts a Subagent: a run with a Session of its own, on the parent\'s
   expect(JSON.stringify(fake.chatRequests[3])).toContain('child summary');
 }, 20_000);
 
+test('a Subagent runs on the configured profile', async () => {
+  const p = project({ profiles: ['other'], subagent: { profile: 'other' } });
+  const wait = `until grep -qs '^· answer' ${p.env.XDG_DATA_HOME}/resector/projects/*/background/*/*.log; do sleep 0.1; done; sleep 1`;
+  reply({ calls: [{ name: 'subagent', arguments: JSON.stringify({ prompt: 'look' }) }, { name: 'bash', arguments: JSON.stringify({ command: wait }) }] });
+  reply({ chunks: ['child done'] });
+  reply({ chunks: ['child summary'] });
+  reply({ chunks: ['parent done'] });
+  expect(await resector(p, ['-p', 'go', '--auto-approve'])).toMatchObject({ out: 'parent done\n', code: 0 });
+  expect(p.sessions().find(s => s.includes('"content":"look"') && !s.includes('"content":"go"'))).toContain('"profile":"other"');
+  expect(p.sessions().find(s => s.includes('"content":"go"'))).toContain('"profile":"local"');
+}, 20_000);
+
 test('a Subagent stopped at the session\'s end still kills what ignores SIGTERM', async () => {
   const p = project({ bash: { backgroundWait: 0.3 } });
   writeFileSync(join(p.dir, 'serve.sh'), "trap '' TERM; echo $$ > server.pid; while :; do sleep 0.05; done\n");
@@ -322,6 +334,18 @@ test('a Subagent\'s report: Session, Outcome, turns, tokens and the summary; wha
   expect(await resectorHere(p, ['-p', 'hi'])).toMatchObject({ out: 'done\n', code: 0 });
   expect(report()).toEqual({ session: expect.stringMatching(/^ses_/), turns: 1, tokens: expect.any(Number), outcome: 'answer', text: 'the summary' });
   expect(p.env).not.toHaveProperty('RESECTOR_SUBAGENT_REPORTS');
+});
+
+test('a Subagent is asked with the configured summary prompt instead of the built-in one', async () => {
+  const p = project({ subagent: { summaryPrompt: 'Report in one line.' } });
+  Object.assign(p.env, { RESECTOR_SUBAGENT: 'start' });
+  reply({ chunks: ['done'] });
+  reply({ chunks: ['one line'] });
+  expect((await resectorHere(p, ['-p', 'hi'])).code).toBe(0);
+  const asked = JSON.stringify(fake.chatRequests[1]);
+  expect(asked).toContain('Report in one line.');
+  expect(asked).not.toContain(DEFAULT_SUMMARY_PROMPT);
+  expect(p.sessions()[0]).toContain('Report in one line.');
 });
 
 test('a run that is no Subagent asks for no summary', async () => {

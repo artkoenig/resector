@@ -6,7 +6,7 @@ import type { ImageFiles, ReadFile } from '../core/notes/files';
 import type { Policy } from '../core/policy/policy';
 import type { Question } from '../core/tools/question';
 import type { Skill } from '../core/skills/skills';
-import type { Backend, Background, Clipboard, Editor, Runner, SessionLog } from './ports';
+import type { Backend, Background, Clipboard, Editor, Runner, SessionLog, Subagents } from './ports';
 
 // The view's selection and marks, which the Gate acts on and moves (ADR 0003): the rows shown, the selected block,
 // the marked ones. follow moves the selection unless the user reads an older row; release makes it follow again;
@@ -35,7 +35,7 @@ export type GateOptions = {
   backend: Backend;
   runner: Runner;
   searcher: Runner;
-  subagents: Runner;
+  subagents: Subagents;
   approval: Approval;
   editor: Editor;
   clipboard: Clipboard;

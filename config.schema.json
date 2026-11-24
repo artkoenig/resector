@@ -175,6 +175,28 @@
       },
       "additionalProperties": false
     },
+    "subagent": {
+      "description": "Settings of the Subagents the `subagent` tool starts; the others are those of `headless`",
+      "type": "object",
+      "properties": {
+        "profile": {
+          "description": "Model Profile of the Subagents; default: the Session's",
+          "type": "string"
+        },
+        "max": {
+          "description": "Subagents running at once per Session at most (default 2)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "summaryPrompt": {
+          "description": "Asks a Subagent for the summary at its end; default: the built-in prompt",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
     "bash": {
       "type": "object",
       "properties": {

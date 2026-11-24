@@ -6,10 +6,11 @@ import type { RunResult } from '../core/tools/call';
 import * as ops from '../core/context/operations';
 import type { Tool } from '../core/log/events';
 import type { Block } from '../core/log/fold';
+import { runningSubagents } from '../core/notes/background';
 import { imageError, type ImageFiles } from '../core/notes/files';
 import { IMAGE_EXTENSIONS, isImage } from '../core/notes/images';
 import { answerBlocks } from '../core/tools/answer';
-import type { Runner, Terminal } from './ports';
+import type { Runner, Subagents, Terminal } from './ports';
 import { answerText, parseQuestions, type Answer } from '../core/tools/question';
 import { errorText, titleOf } from './text';
 import type { GitSlice } from './git';
@@ -36,7 +37,7 @@ export type Driver = { ask: (call: Block) => void; stopped: () => boolean };
 // How a call the rules ask for is decided: the terminal's choice, or no user to ask.
 export type Choice = Awaited<ReturnType<Terminal['approve']>> | 'unattended';
 
-export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice, tools: { runner: Runner; searcher: Runner; subagents: Runner; skills: SkillsSlice; images: ImageFiles; send: () => void }) {
+export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice, tools: { runner: Runner; searcher: Runner; subagents: Subagents; skills: SkillsSlice; images: ImageFiles; send: () => void }) {
   const { context, nextId, append, apply, setStatus, running, setRunning } = k;
   const { follow } = sel;
 
@@ -98,12 +99,17 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
     return status.tone === 'ok';
   }
 
+  // A call refused anyway is not asked for.
+  function actionOn(call: Block) {
+    const action = rules.decided(call);
+    return action === 'ask' && refusal(call) ? 'allow' : action;
+  }
   // Decides the pending calls in order: an allowed one runs, a denied one is answered "denied by rule", the
   // first to ask for is selected. Then the results are sent, or held at the Gate. notes: what happened so far.
   function advance(notes: string[] = []) {
     if (driver?.stopped()) return;
     for (let call = ops.nextCall(context()); call; call = ops.nextCall(context())) {
-      const action = rules.decided(call);
+      const action = actionOn(call);
       if (action === 'allow') return void run(call, notes);
       if (action !== 'deny') return awaitUser(call, notes);
       follow(nextId());
@@ -117,7 +123,7 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
   // Calls left pending by a stop go on as the rules decide them; one to ask for still blocks the send.
   function wentOn(): boolean {
     const pending = ops.nextCall(context());
-    if (!pending || rules.decided(pending) === 'ask') return false;
+    if (!pending || actionOn(pending) === 'ask') return false;
     held = false;
     advance();
     return true;
@@ -131,10 +137,14 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
   }
 
   const runnerOf = ({ tool }: Block) => (tool === 'websearch' ? tools.searcher : tool === 'subagent' ? tools.subagents : tools.runner);
+  // Why a `subagent` call starts none now; null for every other call.
+  const refusal = ({ tool }: Block) => (tool === 'subagent' ? tools.subagents.refused(runningSubagents(k.events())) : null);
   // Runs the call with its tool's runner; its output streams into a live Tool Result row, then the next call is decided.
   async function run(call: Block, notes: string[]) {
     const atOnce = AT_ONCE[call.tool as Tool];
     if (atOnce) return void (atOnce(call), goOn(notes));
+    const refused = refusal(call);
+    if (refused) return void (append(ops.toolResult(call, nextId(), { output: refused, exit: 1, stopped: null }, 0)), goOn(notes));
     const abort = new AbortController();
     const tool = runnerOf(call);
     setStopping(false);

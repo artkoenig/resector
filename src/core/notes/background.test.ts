@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { SessionEvent } from '../log/events';
-import { endedBy, exitNoteText, exitOf, owedExitNotes } from './background';
+import { endedBy, exitNoteText, exitOf, owedExitNotes, runningSubagents } from './background';
 
 const call = (id: number, content: string): SessionEvent => ({ type: 'BlockAdded', id, kind: 'Tool Call', origin: 'model', content, background: true });
 const started = (c: number, pid: number): SessionEvent => ({ type: 'BackgroundStarted', call: c, pid, log: `/logs/${pid}.log` });
@@ -70,4 +70,15 @@ test('a Subagent\'s Note is made of its report and the prompt it was started wit
     'Background Process pid 43 ended: exited with 0\ncommand: serve\nlog: /logs/43.log',
     'Subagent pid 44 ended: stopped by the user · 2 turns · 500 tokens\nprompt: search\nsession: ses_a · log: /logs/44.log',
   ]);
+});
+
+test('the running Subagents are the started subagent calls without an exit', () => {
+  const call = (id: number, tool?: 'subagent') => ({ type: 'BlockAdded' as const, id, kind: 'Tool Call' as const, origin: 'model' as const, content: 'x', ...(tool && { tool }) });
+  const started = (call: number) => ({ type: 'BackgroundStarted' as const, call, pid: call, log: '' });
+  const events: SessionEvent[] = [call(1, 'subagent'), call(2, 'subagent'), call(3), call(4, 'subagent'), started(1), started(2), started(3), { type: 'BackgroundExited', call: 2, signal: 'user' }];
+  expect(runningSubagents(events)).toBe(1);
+  expect(runningSubagents([...events, started(4)])).toBe(2);
+  expect(runningSubagents([])).toBe(0);
+  const otherEvent = { type: 'Edited', id: 5, tool: 'subagent' } as unknown as SessionEvent;
+  expect(runningSubagents([otherEvent, started(5)])).toBe(0);
 });

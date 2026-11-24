@@ -18,6 +18,12 @@ export function exitOf(events: SessionEvent[], pid: number, end: BackgroundEnd):
   return start ? { type: 'BackgroundExited', call: start.call, ...end } : null;
 }
 
+// The Subagents running, counted from the log: one whose call is removed from the Context still runs.
+export function runningSubagents(events: SessionEvent[]): number {
+  const isSubagent = (call: number) => events.some(e => e.type === 'BlockAdded' && e.id === call && e.tool === 'subagent');
+  return [...startsOf(events).keys()].filter(call => isSubagent(call) && !hasExited(events, call)).length;
+}
+
 const REASON: Record<string, string> = {
   'session ended': 'stopped when the session ended',
   user: 'stopped by the user',

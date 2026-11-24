@@ -247,7 +247,7 @@ export async function openWorkspace(options: WorkspaceOptions) {
         background: { registry: background, wait: loaded.config.bash?.backgroundWait ?? DEFAULT_BACKGROUND_WAIT },
       }),
       searcher: createSearcher({ cwd: dir, timeout: SEARCH_TIMEOUT }),
-      subagents: createSubagents({ cwd: dir, profile, registry: background }),
+      subagents: createSubagents({ cwd: dir, profile, config: loaded.config, registry: background }),
       approval: { split: split!, root: dir, readable: backgroundLogs(id), permissions: () => loaded.permissions },
       project: projectAt(dir, checkout),
       git: repository ? git : null,
