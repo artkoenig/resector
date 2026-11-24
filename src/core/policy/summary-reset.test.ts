@@ -11,7 +11,7 @@ const blocks = (...specs: Spec[]): PolicyBlock[] => {
   return specs.map((s, i) => {
     const kind = kinds[i]!;
     const pair = kind === 'Tool Call' && kinds[i + 1] === 'Tool Result' ? i + 2 : kind === 'Tool Result' ? i : null;
-    const block: PolicyBlock = { id: i + 1, kind, origin: 'model', content: kind, tokens: 300, pair, pending: false, background: null };
+    const block: PolicyBlock = { id: i + 1, kind, origin: 'model', content: kind, tokens: 300, pair, pending: false, keep: false, background: null };
     return Array.isArray(s) ? { ...block, ...s[1] } : block;
   });
 };
@@ -21,7 +21,7 @@ const thinkingOff = { op: 'thinking' as const, mode: 'off' };
 const send = { op: 'send' as const };
 
 test('the intro goes right after the System and Tools Block, once', () => {
-  expect(summaryReset({ window: 99, used: 10, blocks: blocks('System', 'Tools', ['Note', { origin: 'environment' }], 'User') })).toEqual([{ op: 'note', after: 2, content: INTRO }]);
+  expect(summaryReset({ window: 99, used: 10, blocks: blocks('System', 'Tools', ['Note', { origin: 'environment', keep: true }], 'User') })).toEqual([{ op: 'note', after: 2, content: INTRO }]);
   expect(summaryReset({ window: 99, used: 10, blocks: blocks('System', 'User') })).toEqual([{ op: 'note', after: 1, content: INTRO }]);
   expect(summaryReset({ window: 99, used: 10, blocks: blocks('System', 'Tools', intro, 'User') })).toEqual([]);
   // Only the policy's Note with the intro is it.
@@ -57,7 +57,7 @@ test('the error asks for a summary between summary tags and says the call ran', 
 
 test('a summary of the model becomes a Note led by the handover in its place; every block before it goes but the System, Tools Block, intro, the project\'s Notes and the Skills; then it is sent on', () => {
   const context = blocks(
-    'System', 'Tools', intro, ['Note', { origin: 'environment' }], ['Note', { origin: 'file' }], ['Note', { origin: 'skill' }], 'User', 'Tool Call', ['Tool Result', { content: ERROR }], 'Thinking',
+    'System', 'Tools', intro, ['Note', { origin: 'environment', keep: true }], ['Note', { origin: 'file', keep: true }], ['Note', { origin: 'skill', keep: true }], 'User', 'Tool Call', ['Tool Result', { content: ERROR }], 'Thinking',
     ['Assistant', { content: 'Here it is.\n<summary>\n## Task\nfix x\n</summary>' }], 'User',
   );
   expect(summaryReset({ window: 99, used: 10, blocks: context })).toEqual([
@@ -67,10 +67,11 @@ test('a summary of the model becomes a Note led by the handover in its place; ev
   ]);
 });
 
-test('an Image before the summary goes, whether the user referenced it or a call attached it; one after it stays', () => {
+test('a File Reference, text or Image, and an attached Image before the summary go; one after it stays', () => {
+  const file: Spec = ['Note', { origin: 'file' }];
   const image = (origin: PolicyBlock['origin']): Spec => ['Image', { origin }];
-  const context = blocks('System', 'Tools', intro, image('file'), 'User', image('tool'), ['Assistant', { content: '<summary>s</summary>' }], image('file'));
-  expect(summaryReset({ window: 99, used: 10, blocks: context }).flatMap(op => (op.op === 'remove' ? [op.id] : []))).toEqual([4, 5, 6, 7]);
+  const context = blocks('System', 'Tools', intro, file, image('file'), 'User', image('tool'), ['Assistant', { content: '<summary>s</summary>' }], file, image('file'));
+  expect(summaryReset({ window: 99, used: 10, blocks: context }).flatMap(op => (op.op === 'remove' ? [op.id] : []))).toEqual([4, 5, 6, 7, 8]);
 });
 
 const running = { background: { pid: 9, log: '/h/9.log', running: true } };

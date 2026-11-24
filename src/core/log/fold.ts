@@ -28,6 +28,8 @@ export type Block = {
   unread?: true;
   // Note from a loaded Skill only: its name.
   skill?: string;
+  // Context of the session rather than its work: a policy clearing the work leaves it. A hint for policies, no lock.
+  keep?: true;
   // Tool Call only: no Tool Result yet, so it awaits approval.
   pending?: boolean;
   // Current Revision.
@@ -75,11 +77,16 @@ function afterAnswer(state: State, call: number): number {
   return at;
 }
 
+// Notes added with these origins: the Environment Note, the Project Instructions, the Skills note. A File Reference has
+// its own event.
+const SESSION_NOTES = new Set<Origin>(['environment', 'file', 'skill']);
+const kept = ({ origin }: Pick<Block, 'origin'>) => (SESSION_NOTES.has(origin) ? { keep: true as const } : {});
+
 const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   BlockAdded: (state, e) => {
     const block = { id: e.id, kind: e.kind, origin: e.origin, content: e.content, cutOff: e.cutOff === true, ...(e.tool && { tool: e.tool }),
       ...(e.call !== undefined && { call: e.call }), ...(e.stopped && { stopped: e.stopped }), ...(e.file && { file: e.file }),
-      ...(e.background && { background: e.background }) };
+      ...(e.background && { background: e.background }), ...kept(e) };
     state.entries.set(e.id, { ...block, ...NEW_ENTRY });
     insert(state, e.call === undefined ? state.order.length : afterCalls(state.order.map(id => entry(state, id)), e.call), e.id);
   },
@@ -142,7 +149,7 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
     insert(state, state.order.indexOf(e.after) + 1, e.id);
   },
   SkillLoaded: (state, e) => {
-    state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'skill', skill: e.name, file: e.file, content: e.content, cutOff: false, ...NEW_ENTRY });
+    state.entries.set(e.id, { id: e.id, kind: 'Note', origin: 'skill', skill: e.name, file: e.file, content: e.content, cutOff: false, keep: true, ...NEW_ENTRY });
     if (e.call === undefined) return void state.order.push(e.id);
     insert(state, afterAnswer(state, e.call), e.id);
   },

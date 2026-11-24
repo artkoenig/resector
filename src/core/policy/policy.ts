@@ -6,10 +6,11 @@ import type { Kind, Origin } from '../log/events';
 import { pairOf, type Block, type Context } from '../log/fold';
 
 // A Context Block as a policy sees it: tokens as rendered, the other block of its Tool Pair, whether it awaits approval,
+// whether it belongs to the session rather than its work (keep: the Environment Note, Project Instructions, Skills),
 // and on a Tool Call its Background Process (process group, log, whether it runs: then neither block of the pair may be
 // touched), else null.
 export type PolicyBlock = {
-  id: number; kind: Kind; origin: Origin; content: string; tokens: number; pair: number | null; pending: boolean;
+  id: number; kind: Kind; origin: Origin; content: string; tokens: number; pair: number | null; pending: boolean; keep: boolean;
   background: { pid: number; log: string; running: boolean } | null;
 };
 // What the Gate knows when it calls the policy, passed on as is: the window.
@@ -19,8 +20,8 @@ export type PolicyContext = Situation & { used: number; blocks: PolicyBlock[] };
 
 export function viewOf(context: Context, counted: { blocks: number[]; total: number }, situation: Situation): PolicyContext {
   const blocks = context.blocks;
-  const view = ({ id, kind, origin, content, pending, process }: Block, i: number): PolicyBlock => ({
-    id, kind, origin, content, tokens: counted.blocks[i]!, pair: pairOf(blocks, id).find(other => other !== id) ?? null, pending: pending === true,
+  const view = ({ id, kind, origin, content, pending, keep, process }: Block, i: number): PolicyBlock => ({
+    id, kind, origin, content, tokens: counted.blocks[i]!, pair: pairOf(blocks, id).find(other => other !== id) ?? null, pending: pending === true, keep: keep === true,
     background: process ? { pid: process.pid, log: process.log, running: process.running } : null,
   });
   return { ...situation, used: counted.total, blocks: blocks.map(view) };

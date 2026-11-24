@@ -284,3 +284,13 @@ test('an image an `image` call attached follows its answer’s calls and results
   expect(ids(session(1, call(3, 'a'), result(4, 3), { type: 'FileReferenced', id: 5, file: 'mine.png' }, next))).toEqual([1, 2, 3, 4, 8, 5]);
   expect(ids(session(1, call(3, 'a'), result(4, 3), toNote(5, 3), next))).toEqual([1, 2, 8, 5]);
 });
+
+test('the Environment Note, Project Instructions and Skills are to keep; File References and Images are not', () => {
+  const note = (id: number, origin: 'environment' | 'file' | 'skill' | 'background'): SessionEvent => ({ type: 'BlockAdded', id, kind: 'Note', origin, content: 'x' });
+  const events = session(1, note(3, 'environment'), note(4, 'file'), note(5, 'skill'), note(6, 'background'),
+    { type: 'SkillLoaded', id: 7, name: 'a', file: 'SKILL.md', content: 'x' },
+    { type: 'FileReferenced', id: 8, file: 'a.ts' }, { type: 'FileRead', id: 8, content: 'x' }, { type: 'FileReferenced', id: 9, file: 'a.png' });
+  expect(fold(events).blocks.filter(b => b.keep).map(b => b.id)).toEqual([3, 4, 5, 7]);
+  // A new Revision (the refreshed Environment Note) keeps it.
+  expect(block([...events, { type: 'Edit', id: 3, revision: 2, content: 'y' }], 3)!.keep).toBe(true);
+});
