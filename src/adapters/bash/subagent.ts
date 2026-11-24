@@ -2,7 +2,7 @@
 import { join } from 'node:path';
 import { SUBAGENT_ENV } from '../../core/config/headless';
 import type { Runner } from '../../gate/ports';
-import type { Background } from './background';
+import { GRACE, type Background } from './background';
 
 const MAIN = join(import.meta.dir, '..', '..', 'main.ts');
 
@@ -12,6 +12,7 @@ export function createSubagents({ cwd, profile, registry }: { cwd: string; profi
   const argv = (prompt: string) => [process.execPath, MAIN, `--prompt=${prompt}`, `--model=${profile}`, '--auto-approve', '--show', 'tools'];
   return {
     timeout: 0,
-    run: (prompt, { signal }) => registry.start(argv(prompt), { cwd, wait: 0, signal, env: { [SUBAGENT_ENV]: 'start' } }),
+    // Its grace exceeds the one it gives its own Background Processes: killed sooner, it would leave them running.
+    run: (prompt, { signal }) => registry.start(argv(prompt), { cwd, wait: 0, signal, env: { [SUBAGENT_ENV]: 'start' }, grace: 2 * GRACE }),
   };
 }

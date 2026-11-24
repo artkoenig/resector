@@ -93,6 +93,14 @@ test('stopAll ends every Background Process with SIGTERM, SIGKILL for those igno
   expect(r.running()).toEqual([]);
 });
 
+test('grace: one that needs longer to stop what it started gets it before SIGKILL', async () => {
+  const r = registry();
+  const signal = new AbortController().signal;
+  const { log } = (await r.start("trap 'sleep 2.5; echo cleaned; exit' TERM; echo trapped; while :; do sleep 0.05; done", { cwd, wait: 0.2, signal, grace: 4000 })).background!;
+  await r.stopAll();
+  expect(r.log(log)).toEndWith('cleaned\n');
+});
+
 test('stopAll with nothing running returns at once; the log dir is made only when needed', async () => {
   const other = join(cwd, 'none');
   const started = Date.now();

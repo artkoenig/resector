@@ -57,15 +57,15 @@ async function resectorHere(p: ReturnType<typeof project>, args: string[]) {
 }
 
 // Runs resector as a process with args; stdin: piped input; interrupt: Ctrl-C once the model was asked.
-// terminate: SIGTERM once the model was asked that many times.
-async function resector(p: ReturnType<typeof project>, args: string[], { stdin, interrupt = false, terminate }: { stdin?: string; interrupt?: boolean; terminate?: number } = {}) {
+// terminate: SIGTERM once it holds.
+async function resector(p: ReturnType<typeof project>, args: string[], { stdin, interrupt = false, terminate }: { stdin?: string; interrupt?: boolean; terminate?: () => boolean } = {}) {
   const proc = Bun.spawn(['bun', MAIN, ...args], { cwd: p.dir, env: { ...process.env, RESECTOR_SUBAGENT: undefined, ...p.env }, stdin: stdin === undefined ? 'ignore' : new Blob([stdin]), stdout: 'pipe', stderr: 'pipe' });
   if (interrupt) void (async () => {
     while (!fake.chatRequests.length) await Bun.sleep(10);
     proc.kill('SIGINT');
   })();
   if (terminate) void (async () => {
-    while (fake.chatRequests.length < terminate) await Bun.sleep(10);
+    while (!terminate()) await Bun.sleep(10);
     proc.kill('SIGTERM');
   })();
   const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
@@ -201,8 +201,9 @@ const SERVE = { name: 'bash', arguments: JSON.stringify({ command: 'bash serve.s
 const withServer = (p: ReturnType<typeof project>) => (writeFileSync(join(p.dir, 'serve.sh'), 'echo $$ > server.pid; echo up; sleep 30\n'), p);
 const serverAlive = (dir: string) => {
   try {
-    process.kill(-Number(readFileSync(join(dir, 'server.pid'), 'utf8')), 0);
-    return true;
+    const pid = Number(readFileSync(join(dir, 'server.pid'), 'utf8'));
+    process.kill(pid, 0);
+    return pid > 0;
   } catch {
     return false;
   }
@@ -222,9 +223,19 @@ test('SIGTERM stops the Background Processes, then exits 143', async () => {
   const p = withServer(project({ bash: { backgroundWait: 0.3 } }));
   reply({ calls: [SERVE] });
   reply({ chunks: ['partial'], hang: true });
-  const { code } = await resector(p, ['-p', 'go'], { terminate: 2 });
+  const { code } = await resector(p, ['-p', 'go'], { terminate: () => fake.chatRequests.length === 2 });
   expect(code).toBe(143);
   expect(existsSync(join(p.dir, 'server.pid'))).toBe(true);
+  expect(serverAlive(p.dir)).toBe(false);
+});
+
+test('SIGTERM kills the running call, then exits 143', async () => {
+  const p = withServer(project());
+  reply({ calls: [{ name: 'bash', arguments: JSON.stringify({ command: 'bash serve.sh' }) }] });
+  const { code } = await resector(p, ['-p', 'go', '--auto-approve'], { terminate: () => serverAlive(p.dir) });
+  expect(code).toBe(143);
+  // Killed, it counts as alive until init reaped it.
+  for (let i = 0; i < 100 && serverAlive(p.dir); i++) await Bun.sleep(10);
   expect(serverAlive(p.dir)).toBe(false);
 });
 
@@ -265,4 +276,20 @@ test('a run starts a Subagent: a run with a Session of its own, on the parent\'s
   expect(child).toContain(JSON.stringify(prompt));
   expect(p.sessions()).toHaveLength(2);
   expect(child).not.toContain('"content":"go"');
+}, 20_000);
+
+test('a Subagent stopped at the session\'s end still kills what ignores SIGTERM', async () => {
+  const p = project({ bash: { backgroundWait: 0.3 } });
+  writeFileSync(join(p.dir, 'serve.sh'), "trap '' TERM; echo $$ > server.pid; while :; do sleep 0.05; done\n");
+  // The parent goes on once the Subagent's server runs past its wait, then ends.
+  reply({ calls: [{ name: 'subagent', arguments: JSON.stringify({ prompt: 'serve' }) }, { name: 'bash', arguments: JSON.stringify({ command: 'until [ -s server.pid ]; do sleep 0.1; done; sleep 1.5' }) }] });
+  reply({ calls: [SERVE] });
+  reply({ chunks: ['waiting'], hang: true });
+  reply({ chunks: ['parent done'] });
+  const { code } = await resector(p, ['-p', 'go', '--auto-approve']);
+  expect(code).toBe(0);
+  for (let i = 0; i < 100 && serverAlive(p.dir); i++) await Bun.sleep(10);
+  const alive = serverAlive(p.dir);
+  if (alive) process.kill(Number(readFileSync(join(p.dir, 'server.pid'), 'utf8')), 'SIGKILL');
+  expect(alive).toBe(false);
 }, 20_000);
