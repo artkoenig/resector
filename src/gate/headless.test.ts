@@ -2,7 +2,7 @@
 import { expect, test } from 'bun:test';
 import { TOOLS } from '../core/tools/catalog';
 import type { Policy } from '../core/policy/policy';
-import { bash, gateWith, results } from './gate.harness';
+import { background, bash, gateWith, results } from './gate.harness';
 import type { Terminal } from './ports';
 
 const QUESTION = { question: 'Which one?', header: 'pick', options: [{ label: 'a', description: 'A' }, { label: 'b', description: 'B' }], recommended: 'a' };
@@ -209,4 +209,19 @@ test('aborted during the run or the summary request there is no summary', async 
   const stop = new AbortController();
   const run = g.gate.run({ prompt: 'hi', signal: stop.signal, summary: { ...SUMMARY, asking: () => setTimeout(() => stop.abort(), 10) } });
   expect(await run).toEqual({ kind: 'aborted', text: '', turns: 1, tokens: expect.any(Number) });
+});
+
+test('a summary cut off at max_tokens says so', async () => {
+  const g = gateWith();
+  g.reply({ content: 'hello' }, { content: 'said hel', finish: 'length' });
+  expect(await g.gate.run({ prompt: 'hi', summary: SUMMARY })).toMatchObject({ kind: 'answer', summary: { text: 'said hel\n\n[summary cut off at max_tokens]' } });
+});
+
+test('exit Notes of the run\'s own Background Processes come before the summary prompt', async () => {
+  const g = gateWith({ tools: TOOLS, global: { 'serve *': 'allow' } });
+  g.reply({ calls: [background('serve x')] }, { content: 'hello', delay: 30 }, { content: 'the summary' });
+  const asking = () => g.exit(4242, { exit: 0 });
+  expect(await g.gate.run({ prompt: 'hi', summary: { ...SUMMARY, asking } })).toMatchObject({ kind: 'answer', summary: { text: 'the summary' } });
+  const blocks = g.events.filter(e => e.type === 'BlockAdded').slice(-3);
+  expect(blocks).toMatchObject([{ kind: 'Note', origin: 'background' }, { kind: 'User', content: SUMMARY.prompt }, { kind: 'Assistant', content: 'the summary' }]);
 });

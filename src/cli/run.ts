@@ -67,7 +67,8 @@ export async function run(command: Run, io: Io): Promise<number> {
   const prompt = piped ? `${command.prompt}\n\n${piped}` : command.prompt;
   const reporter = createReporter(io);
   const ran = await headless({ ...command, prompt }, io, reporter).catch(e => ({ outcome: failed(errorText(e)), id: null }));
-  reporter.ended('usage' in ran ? failed(ran.usage) : ran.outcome);
+  // Already reported unless it failed on the way.
+  reporter.failed('usage' in ran ? failed(ran.usage).text : ran.outcome.text);
   if ('usage' in ran) {
     io.stderr(`resector: ${ran.usage}\n`);
     return USAGE;
@@ -151,7 +152,7 @@ type Reporter = ReturnType<typeof createReporter>;
 
 // A Subagent's report to its parent Session, kept up to date so that a kill leaves one too; how it ended first stays.
 // Nothing for other Headless Runs.
-function createReporter(io: Io) {
+export function createReporter(io: Pick<Io, 'env' | 'stderr'>) {
   const dir = io.env[SUBAGENT_ENV] === 'start' ? io.env[REPORTS_ENV] : undefined;
   // Not for what the Subagent starts.
   delete io.env[REPORTS_ENV];
@@ -176,6 +177,7 @@ function createReporter(io: Io) {
     asking() {
       running = false;
     },
+    failed: (text: string) => update({ outcome: 'error', text }),
     aborted: () => update({ outcome: 'aborted' }),
     ended: (outcome: Outcome) => update({ outcome: outcome.kind, turns: outcome.turns, tokens: outcome.tokens, text: reported(outcome) }),
   };

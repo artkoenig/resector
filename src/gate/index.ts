@@ -41,7 +41,7 @@ export function createGate({ log, openSessions, runner, searcher, subagents, app
   const processes = createBackgroundSlice(k, sel, background, { loopRests: () => loop.rests(), headless: () => headless.driven(), send: () => void sender.api.send() });
   const loop = createToolLoop(k, sel, rules, repo, { runner, searcher, subagents, skills, images: project.images, send: () => void sender.api.send() });
   const policy = createPolicy(k, sel, policies, compactor);
-  const headless = createHeadless(k, loop, rules, text => input.api.submit(text), () => void sender.api.send());
+  const headless = createHeadless(k, loop, rules, text => input.api.submit(text), () => void sender.api.send(), processes.addExitNotes);
   const sender = createSend(k, sel, { loop, policy, git: repo, project, policies, mayRequest: headless.mayRequest, summing: headless.summing, background: processes });
   const compacting = createCompaction(k, sel, { editor, instruction, compactor });
   const edits = createEdits(k, sel, loop, { editor, clipboard, project });

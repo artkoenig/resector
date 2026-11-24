@@ -30,7 +30,7 @@ type Run = { from: number; summaryFrom: number | null; maxTurns: number; maxed: 
 const until = <T>(asked: Promise<T>, signal: AbortSignal) =>
   Promise.race([asked, new Promise<null>(resolve => (signal.aborted ? resolve(null) : signal.addEventListener('abort', () => resolve(null), { once: true })))]);
 
-export function createHeadless(k: Kernel, loop: ToolLoop, rules: Rules, submit: (text: string) => void, send: () => void) {
+export function createHeadless(k: Kernel, loop: ToolLoop, rules: Rules, submit: (text: string) => void, send: () => void, addExitNotes: () => void) {
   let current: Run | null = null;
   let driven = false;
   const requests = (r: Run, from = r.from) => k.events().slice(from).filter((e): e is Extract<SessionEvent, { type: 'RequestSent' }> => e.type === 'RequestSent');
@@ -85,9 +85,12 @@ export function createHeadless(k: Kernel, loop: ToolLoop, rules: Rules, submit: 
     return { kind: 'answer', text: k.context().blocks.findLast(b => b.kind === 'Assistant')?.content ?? '', ...counts };
   }
 
-  // What the model wrote since `from`.
-  const writtenSince = (from: number) => k.events().slice(from)
-    .flatMap(e => (e.type === 'BlockAdded' && e.kind === 'Assistant' ? [e.content] : [])).join('\n').trim();
+  // What the model wrote since `from`; it says so when cut off at max_tokens.
+  function writtenSince(from: number): string {
+    const answers = k.events().slice(from).flatMap(e => (e.type === 'BlockAdded' && e.kind === 'Assistant' ? [e] : []));
+    const text = answers.map(a => a.content).join('\n').trim();
+    return text && answers.some(a => a.cutOff) ? `${text}\n\n[summary cut off at max_tokens]` : text;
+  }
 
   // Answered, or a resumed Session would run them.
   function answerCalls() {
@@ -106,6 +109,8 @@ export function createHeadless(k: Kernel, loop: ToolLoop, rules: Rules, submit: 
     const from = (r.summaryFrom = k.events().length);
     k.setStatus(null);
     answerCalls();
+    // Before the prompt: the prompt comes last.
+    addExitNotes();
     k.append({ type: 'BlockAdded', id: k.nextId(), kind: 'User', origin: 'user', content: prompt });
     send();
     await ended(r);

@@ -14,7 +14,7 @@ test('the last report written is the one read; a missing, dropped or broken one 
   writeReport(dir, 7, { session: 'ses_a', turns: 2, tokens: 20, outcome: 'answer', text: 'done' });
   expect(readReport(dir, 7)).toEqual({ report: { session: 'ses_a', turns: 2, tokens: 20, outcome: 'answer', text: 'done' } });
   expect(readdirSync(dir)).toEqual(['7.report.json']);
-  for (const broken of ['{"turns": 2, "te', 'null', '{"turns":2}']) {
+  for (const broken of ['{"turns": 2, "te', 'null', '{"turns":2}', ...['"session":1', '"text":{}', '"outcome":"great"'].map(f => `{"turns":2,"tokens":3,${f}}`)]) {
     writeFileSync(join(dir, '7.report.json'), broken);
     expect(readReport(dir, 7)).toEqual({});
   }

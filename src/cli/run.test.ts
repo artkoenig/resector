@@ -11,7 +11,7 @@ import { openTty } from '../adapters/terminal/tty';
 import { readReport } from '../adapters/bash/report';
 import { DEFAULT_SUMMARY_PROMPT } from '../core/notes/subagent';
 import { main } from '../main';
-import { run } from './run';
+import { createReporter, run } from './run';
 
 const MAIN = join(import.meta.dir, '..', 'main.ts');
 let fake: ReturnType<typeof startFakeLlamaCpp>;
@@ -264,8 +264,9 @@ const offered = (request: number) => (fake.chatRequests[request] as { tools?: { 
 test('a run starts a Subagent: a run with a Session of its own, on the parent\'s profile, whose result text came at once', async () => {
   const p = project();
   const prompt = "-look at 'this' \"too\" $HOME";
-  // The parent waits for the Subagent's end and its notice; until then the only other requests are the Subagent's.
-  const wait = `until grep -qs '^· answer' ${p.env.XDG_DATA_HOME}/resector/projects/*/background/*/*.log; do sleep 0.1; done; sleep 1`;
+  // The parent waits until it has logged the Subagent's end; until then the only other requests are the Subagent's.
+  const sessions = projectSessionsDir(configPaths({ home: p.env.HOME, cwd: p.dir, env: p.env }));
+  const wait = `until grep -qs 'Background[E]xited' ${sessions}/*.jsonl; do sleep 0.1; done`;
   reply({ calls: [{ name: 'subagent', arguments: JSON.stringify({ prompt }) }, { name: 'bash', arguments: JSON.stringify({ command: wait }) }] });
   reply({ chunks: ['child done'] });
   reply({ chunks: ['child summary'] });
@@ -366,4 +367,13 @@ test('a report that cannot be written does not stop the run', async () => {
   reply({ chunks: ['done'] });
   reply({ chunks: ['the summary'] });
   expect(await resectorHere(p, ['-p', 'hi'])).toMatchObject({ out: 'done\n', code: 0, err: expect.stringContaining('resector: report: ') });
+});
+
+test('failing on the way, a Subagent\'s report keeps its progress', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'resector-reports-'));
+  const reporter = createReporter({ env: { RESECTOR_SUBAGENT: 'start', RESECTOR_SUBAGENT_REPORTS: dir }, stderr: () => {} });
+  reporter.opened('ses_a');
+  reporter.logged({ type: 'RequestSent', hash: 'x', tokens: 70 });
+  reporter.failed('resector: thrown');
+  expect(readReport(dir, process.pid).report).toEqual({ session: 'ses_a', turns: 1, tokens: 70, outcome: 'error', text: 'resector: thrown' });
 });

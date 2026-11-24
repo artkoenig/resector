@@ -16,11 +16,20 @@ export function writeReport(dir: string, pid: number, report: SubagentReport) {
   renameSync(`${path}.tmp`, path);
 }
 
-// Nothing when the process left none, or none that can be read.
+const OUTCOMES: unknown[] = ['answer', 'error', 'aborted', 'max-turns'] satisfies SubagentReport['outcome'][];
+const optional = (value: unknown, holds: (value: unknown) => boolean) => value === undefined || holds(value);
+const isText = (value: unknown) => typeof value === 'string';
+
+function isReport(read: Record<keyof SubagentReport, unknown> | null): boolean {
+  return read !== null && Number.isFinite(read.turns) && Number.isFinite(read.tokens)
+    && optional(read.session, isText) && optional(read.text, isText) && optional(read.outcome, o => OUTCOMES.includes(o));
+}
+
+// Nothing when the process left none, or a broken one.
 export function readReport(dir: string, pid: number): { report?: SubagentReport } {
   try {
-    const report: SubagentReport | null = JSON.parse(readFileSync(pathOf(dir, pid), 'utf8'));
-    return Number.isFinite(report?.turns) && Number.isFinite(report?.tokens) ? { report: report! } : {};
+    const read = JSON.parse(readFileSync(pathOf(dir, pid), 'utf8'));
+    return isReport(read) ? { report: read } : {};
   } catch {
     return {};
   }
