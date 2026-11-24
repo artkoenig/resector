@@ -36,7 +36,7 @@ export type Driver = { ask: (call: Block) => void; stopped: () => boolean };
 // How a call the rules ask for is decided: the terminal's choice, or no user to ask.
 export type Choice = Awaited<ReturnType<Terminal['approve']>> | 'unattended';
 
-export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice, tools: { runner: Runner; searcher: Runner; skills: SkillsSlice; images: ImageFiles; send: () => void }) {
+export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice, tools: { runner: Runner; searcher: Runner; subagents: Runner; skills: SkillsSlice; images: ImageFiles; send: () => void }) {
   const { context, nextId, append, apply, setStatus, running, setRunning } = k;
   const { follow } = sel;
 
@@ -130,12 +130,13 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
     setStatus({ text: [...notes, call.tool === 'question' ? `? ${QUESTION_HINT}` : `? approve – ${APPROVE}`].join(' · '), tone: 'warn' });
   }
 
+  const runnerOf = ({ tool }: Block) => (tool === 'websearch' ? tools.searcher : tool === 'subagent' ? tools.subagents : tools.runner);
   // Runs the call with its tool's runner; its output streams into a live Tool Result row, then the next call is decided.
   async function run(call: Block, notes: string[]) {
     const atOnce = AT_ONCE[call.tool as Tool];
     if (atOnce) return void (atOnce(call), goOn(notes));
     const abort = new AbortController();
-    const tool = call.tool === 'websearch' ? tools.searcher : tools.runner;
+    const tool = runnerOf(call);
     setStopping(false);
     setRunning({ call, output: '', started: Date.now(), timeout: tool.timeout, abort });
     follow(nextId());

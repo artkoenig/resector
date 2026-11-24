@@ -29,12 +29,13 @@ export type View = {
 
 export type Status = { text: string; tone: 'info' | 'ok' | 'warn' | 'error' };
 // events: the Session Log so far (new or resumed); openSessions: shows /sessions; notice: initial status line.
-// runner: runs approved bash calls, searcher: search calls; approval: decides which may run; editor: $EDITOR for `e`;
-// clipboard: copy on select.
+// runner: runs approved bash calls, searcher: search calls, subagents: starts a Subagent on its
+// prompt; approval: decides which may run; editor: $EDITOR for `e`; clipboard: copy on select.
 export type GateOptions = {
   backend: Backend;
   runner: Runner;
   searcher: Runner;
+  subagents: Runner;
   approval: Approval;
   editor: Editor;
   clipboard: Clipboard;

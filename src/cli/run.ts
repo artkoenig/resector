@@ -6,9 +6,9 @@ import { configPaths } from '../adapters/fs/config';
 import { projectSessionStore } from '../adapters/store/sessions';
 import { openTty } from '../adapters/terminal/tty';
 import { openWorkspace } from '../compose/workspace';
-import { headlessSettings, type Flags } from '../core/config/headless';
+import { headlessSettings, SUBAGENT_ENV, type Flags } from '../core/config/headless';
 import type { SessionEvent } from '../core/log/events';
-import { TOOL_NAMES } from '../core/tools/catalog';
+import { subagentTools, TOOL_NAMES } from '../core/tools/catalog';
 import { createGate, type Outcome } from '../gate';
 import { minimalView } from '../gate/minimal-view';
 import { count, errorText, formatTokens } from '../gate/text';
@@ -77,12 +77,20 @@ export async function run(command: Run, io: Io): Promise<number> {
 // The run on a new session with the settings; without a config, or with flags naming what does not exist, it fails
 // before one is opened.
 async function headless({ prompt, flags }: Run, io: Io): Promise<{ outcome: Outcome; id: string | null } | { usage: string }> {
+  const subagent = io.env[SUBAGENT_ENV];
+  if (subagent && subagent !== 'start') return { usage: 'a Subagent starts no Headless Runs' };
   const paths = configPaths({ home: io.home, cwd: io.cwd, env: io.env });
   const workspace = await openWorkspace({ paths, store: projectSessionStore(paths), cwd: io.cwd, openFile: async () => {}, onReopen: () => {} });
   const loaded = workspace.config();
   if (!loaded) return { outcome: failed(`no config at ${paths.global} – run resector once to set it up`), id: null };
   const settings = headlessSettings(loaded.config, flags, { policies: workspace.policies.all.map(p => p.name), tools: TOOL_NAMES, repository: workspace.repository });
   if ('usage' in settings) return settings;
+  // A Subagent starts none itself: no tool for it, and what it starts inherits the
+  // process's environment and finds itself inside one.
+  if (subagent) {
+    settings.tools = subagentTools(settings.tools);
+    io.env[SUBAGENT_ENV] = 'inside';
+  }
   const opened = await workspace.open(loaded, { start: settings });
   io.onTerminate(opened.release);
   try {

@@ -1,4 +1,4 @@
-// Background Processes of one opened Session: bash calls started with `background: true`, their output in a log file,
+// Background Processes of one opened Session: bash calls started with `background: true` and Subagents, their output in a log file,
 // running in their own process group until it is empty (bash may exit long before the server it forked), stop or stopAll.
 import { spawn, spawnSync } from 'node:child_process';
 import { closeSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -72,13 +72,15 @@ export function createBackground({ dir, record }: { dir: string; record: string 
   const listeners = new Set<(pid: number, end: BackgroundEnd) => void>();
   let next = 0;
 
+  // command: run by bash, or a process's argv; env: added to its environment.
   // wait: seconds until the result, unless it ends sooner; signal: aborts the wait, killing it.
-  function start(command: string, { cwd, wait, signal }: { cwd: string; wait: number; signal: AbortSignal }): Promise<RunResult> {
+  function start(command: string | string[], { cwd, wait, signal, env }: { cwd: string; wait: number; signal: AbortSignal; env?: Record<string, string> }): Promise<RunResult> {
+    const [file, ...args] = typeof command === 'string' ? ['bash', '-c', command] : command;
     mkdirSync(dir, { recursive: true });
     const pending = join(dir, `starting-${process.pid}-${next++}.log`);
     const fd = openSync(pending, 'a');
     // Own process group (setsid): a kill reaches everything it starts; the log file holds the output, no pipes.
-    const child = spawn('bash', ['-c', command], { cwd, stdio: ['ignore', fd, fd], detached: true, env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' } });
+    const child = spawn(file!, args, { cwd, stdio: ['ignore', fd, fd], detached: true, env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0', ...env } });
     closeSync(fd);
     child.unref();
     const pid = child.pid!;

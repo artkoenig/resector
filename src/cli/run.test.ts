@@ -59,7 +59,7 @@ async function resectorHere(p: ReturnType<typeof project>, args: string[]) {
 // Runs resector as a process with args; stdin: piped input; interrupt: Ctrl-C once the model was asked.
 // terminate: SIGTERM once the model was asked that many times.
 async function resector(p: ReturnType<typeof project>, args: string[], { stdin, interrupt = false, terminate }: { stdin?: string; interrupt?: boolean; terminate?: number } = {}) {
-  const proc = Bun.spawn(['bun', MAIN, ...args], { cwd: p.dir, env: { ...process.env, ...p.env }, stdin: stdin === undefined ? 'ignore' : new Blob([stdin]), stdout: 'pipe', stderr: 'pipe' });
+  const proc = Bun.spawn(['bun', MAIN, ...args], { cwd: p.dir, env: { ...process.env, RESECTOR_SUBAGENT: undefined, ...p.env }, stdin: stdin === undefined ? 'ignore' : new Blob([stdin]), stdout: 'pipe', stderr: 'pipe' });
   if (interrupt) void (async () => {
     while (!fake.chatRequests.length) await Bun.sleep(10);
     proc.kill('SIGINT');
@@ -227,3 +227,42 @@ test('SIGTERM stops the Background Processes, then exits 143', async () => {
   expect(existsSync(join(p.dir, 'server.pid'))).toBe(true);
   expect(serverAlive(p.dir)).toBe(false);
 });
+
+test('inside a Subagent -p is a usage error: it starts none itself', async () => {
+  const p = project();
+  Object.assign(p.env, { RESECTOR_SUBAGENT: 'inside' });
+  expect(await resectorHere(p, ['-p', 'hi'])).toEqual({ out: '', err: 'resector: a Subagent starts no Headless Runs\n', code: 2 });
+  expect(p.sessions()).toEqual([]);
+});
+
+test('a Subagent has no subagent tool, also when the config names it, and marks its environment', async () => {
+  const p = project({ headless: { tools: ['bash', 'subagent'] } });
+  Object.assign(p.env, { RESECTOR_SUBAGENT: 'start' });
+  reply({ chunks: ['ok'] });
+  expect((await resectorHere(p, ['-p', 'hi'])).code).toBe(0);
+  expect(offered(0)).toEqual(['bash']);
+  expect((p.env as Record<string, string>).RESECTOR_SUBAGENT).toBe('inside');
+});
+
+// The tools offered with a request.
+const offered = (request: number) => (fake.chatRequests[request] as { tools?: { function: { name: string } }[] }).tools?.map(t => t.function.name);
+
+test('a run starts a Subagent: a run with a Session of its own, on the parent\'s profile, whose result text came at once', async () => {
+  const p = project();
+  const prompt = "-look at 'this' \"too\" $HOME";
+  // The parent waits for the Subagent's end; until then the only other request is the Subagent's.
+  const wait = `until grep -qs '^· answer' ${p.env.XDG_DATA_HOME}/resector/projects/*/background/*/*.log; do sleep 0.1; done`;
+  reply({ calls: [{ name: 'subagent', arguments: JSON.stringify({ prompt }) }, { name: 'bash', arguments: JSON.stringify({ command: wait }) }] });
+  reply({ chunks: ['child done'] });
+  reply({ chunks: ['parent done'] });
+  const { out, code, err } = await resector(p, ['-p', 'go', '--auto-approve', '--show', 'tools']);
+  expect({ out, code }).toEqual({ out: 'parent done\n', code: 0 });
+  expect(err).toContain('Subagent started: pid ');
+  expect(err).toContain(`$ subagent ${prompt}`);
+  expect(offered(0)).toContain('subagent');
+  expect(offered(1)).not.toContain('subagent');
+  const [child] = p.sessions().filter(s => s.includes('child done'));
+  expect(child).toContain(JSON.stringify(prompt));
+  expect(p.sessions()).toHaveLength(2);
+  expect(child).not.toContain('"content":"go"');
+}, 20_000);

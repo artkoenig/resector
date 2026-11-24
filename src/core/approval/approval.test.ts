@@ -36,6 +36,20 @@ test('a Question is never asked for: only a rule for `question` denies it, the l
   expect(deniedTools(permissionRules({ question: 'deny' }, { question: 'allow' }))).toEqual([]);
 });
 
+test('a Subagent is asked for by default, whatever the built-in rule allows; a Permission Rule matching `subagent` decides it', () => {
+  const input = (...rules: Rule[]) => ({ rules: [...BUILTIN_ALLOW, ...rules], split: words, root: ROOT });
+  const subagent = { tool: 'subagent' as const, content: 'find the bug && rm -rf /' };
+  expect(verdictOf(subagent, input())).toEqual({ action: 'ask', checks: [{ text: 'subagent', action: 'ask', why: 'no rule → default ask', unallowable: false }] });
+  expect(verdictOf(subagent, input(rule('find *', 'allow'), rule('rm *', 'deny'))).action).toBe('ask');
+  expect(verdictOf(subagent, input(rule('subagent', 'allow')))).toEqual({ action: 'allow', checks: [{ text: 'subagent', action: 'allow', why: 'global rule "subagent"', unallowable: false }] });
+  expect(verdictOf(subagent, input(rule('subagent', 'allow'), rule('subagent', 'deny', 'project'))).action).toBe('deny');
+  expect(verdictOf(subagent, input(rule('*', 'deny'))).action).toBe('deny');
+  // `a` allows further ones.
+  const asked = sessionRules(verdictOf(subagent, input()));
+  expect(asked).toEqual({ patterns: ['subagent *'] });
+  expect(verdictOf(subagent, input(rule('subagent *', 'allow', 'session'))).action).toBe('allow');
+});
+
 test('a pattern ending in " *" matches the command alone or with arguments, not a longer word', () => {
   expect(matches('git status *', 'git status')).toBe(true);
   expect(matches('git status *', 'git status --short')).toBe(true);

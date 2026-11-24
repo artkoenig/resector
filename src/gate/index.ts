@@ -32,14 +32,14 @@ function ownAutoApprove(): AutoApprove {
   return { on, set };
 }
 
-export function createGate({ log, openSessions, runner, searcher, approval, editor, clipboard, project, skills: available = [], instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, policies = NO_POLICIES, autoApprove = ownAutoApprove(), git = null, background, ...options }: GateOptions, view: (k: Kernel) => View) {
+export function createGate({ log, openSessions, runner, searcher, subagents, approval, editor, clipboard, project, skills: available = [], instruction = () => compaction.DEFAULT_INSTRUCTION, compactor = async () => null, policies = NO_POLICIES, autoApprove = ownAutoApprove(), git = null, background, ...options }: GateOptions, view: (k: Kernel) => View) {
   const k = createKernel({ log, project, backend: options.backend, events: options.events, status: options.notice ?? null });
   const sel = view(k);
   const repo = createGit(k, git, project, approval.root);
   const rules = createRules(k, approval, autoApprove);
   const skills = createSkills(k, available);
   const processes = createBackgroundSlice(k, sel, background, { loopRests: () => loop.rests(), headless: () => headless.driven(), send: () => void sender.api.send() });
-  const loop = createToolLoop(k, sel, rules, repo, { runner, searcher, skills, images: project.images, send: () => void sender.api.send() });
+  const loop = createToolLoop(k, sel, rules, repo, { runner, searcher, subagents, skills, images: project.images, send: () => void sender.api.send() });
   const policy = createPolicy(k, sel, policies, compactor);
   const headless = createHeadless(k, loop, rules, text => input.api.submit(text));
   const sender = createSend(k, sel, { loop, policy, git: repo, project, policies, mayRequest: headless.mayRequest, background: processes });

@@ -84,10 +84,17 @@ function imageVerdict(path: string, root: string): Verdict {
   const problem = argumentProblem(path, root);
   return problem ? { action: 'ask', checks: [{ text: path, action: 'ask', why: problem, unallowable: true }] } : ALLOWED;
 }
+// A Subagent runs with Auto-approve, so starting one asks unless the user's rules say otherwise: the built-in rule does
+// not count. A rule matches the tool's name, not the prompt.
+function subagentVerdict(input: ApprovalInput): Verdict {
+  const decided = check({ text: 'subagent', args: [], writes: [] }, { ...input, rules: input.rules.filter(r => r.source !== 'built-in') });
+  return { action: decided.action, checks: [decided] };
+}
 // websearch only reads the web: always allowed, no rule decides it.
 export function verdictOf(call: Pick<Block, 'tool' | 'content'>, input: ApprovalInput): Verdict {
   if (call.tool === 'websearch' || call.tool === 'skill') return ALLOWED;
   if (call.tool === 'image') return imageVerdict(call.content, input.root);
+  if (call.tool === 'subagent') return subagentVerdict(input);
   return call.tool === 'question' ? questionVerdict(input.rules) : evaluate(call.content, input);
 }
 // The tools rules switch off: kept out of the Tools Block, calls denied.

@@ -158,7 +158,7 @@ export function approvable(context: Context, block: Block): string | null {
 }
 
 export const toolResult = (call: Block, id: number, run: RunResult, timeout: number): BlockAdded => ({
-  type: 'BlockAdded', id, kind: 'Tool Result', origin: 'tool', content: resultText(run, timeout), call: call.id,
+  type: 'BlockAdded', id, kind: 'Tool Result', origin: 'tool', content: resultText(run, timeout, call.tool), call: call.id,
   ...(run.stopped && { stopped: run.stopped }),
 });
 

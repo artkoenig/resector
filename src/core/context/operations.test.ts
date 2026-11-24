@@ -115,7 +115,7 @@ test('/tools switches a tool in the Tools Block as its next Revision; unknown to
   const events = session(on);
   const [context] = at(events, 5);
   expect(toggleTool(events, context, 'websearch', [])).toEqual({ event: { type: 'Edit', id: 5, revision: 2, content: toolsWithout('websearch') } });
-  expect(toggleTool(events, context, 'python', [])).toEqual({ error: 'unknown tool python – bash websearch question skill image' });
+  expect(toggleTool(events, context, 'python', [])).toEqual({ error: 'unknown tool python – bash websearch question skill image subagent' });
   expect(toggleTool(session(), fold(session()), 'websearch', [])).toEqual({ error: 'no Tools Block' });
 });
 

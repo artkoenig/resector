@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { toggleTool, TOOLS, toolNames } from './catalog';
+import { subagentTools, toggleTool, TOOL_NAMES, TOOLS, toolNames } from './catalog';
 import { QUESTION_DEFINITION } from './question';
 
 const SEARCH = {
@@ -57,32 +57,51 @@ const IMAGE = {
   parameters: { type: 'object', properties: { path: { type: 'string', description: 'the image file, relative to the project root' } }, required: ['path'] },
 };
 
-test('a new Tools Block offers every tool: bash, websearch, question, skill and image', () => {
-  expect(JSON.parse(TOOLS)).toEqual([BASH, SEARCH, QUESTION_TOOL, SKILL, IMAGE]);
+const SUBAGENT = {
+  name: 'subagent',
+  description: expect.stringContaining('Start a subagent'),
+  parameters: { type: 'object', properties: { prompt: { type: 'string', description: 'the whole task, with all it needs to know' } }, required: ['prompt'] },
+};
+
+test('a new Tools Block offers every tool: bash, websearch, question, skill, image and subagent', () => {
+  expect(JSON.parse(TOOLS)).toEqual([BASH, SEARCH, QUESTION_TOOL, SKILL, IMAGE, SUBAGENT]);
   expect(QUESTION_DEFINITION.description).toContain('always a recommendation');
   expect(QUESTION_DEFINITION.description).toContain('never add an "Other" option');
-  expect(toolNames(TOOLS)).toBe('bash, websearch, question, skill, image');
+  expect(toolNames(TOOLS)).toBe('bash, websearch, question, skill, image, subagent');
   expect(toolNames('[{"name":"a"},{"name":"b"}]')).toBe('a, b');
   expect(toolNames('[]')).toBe('no tools');
 });
 
 test('/tools switches a tool off and on again; an unknown one is refused', () => {
   const off = toggleTool(TOOLS, 'bash') as { content: string };
-  expect(toolNames(off.content)).toBe('websearch, question, skill, image');
+  expect(toolNames(off.content)).toBe('websearch, question, skill, image, subagent');
   expect(toggleTool(off.content, 'bash')).toEqual({ content: TOOLS });
-  expect(toggleTool(TOOLS, 'python')).toEqual({ error: 'unknown tool python – bash websearch question skill image' });
-  expect(toggleTool(TOOLS, 'toString')).toEqual({ error: 'unknown tool toString – bash websearch question skill image' });
+  expect(toggleTool(TOOLS, 'python')).toEqual({ error: 'unknown tool python – bash websearch question skill image subagent' });
+  expect(toggleTool(TOOLS, 'toString')).toEqual({ error: 'unknown tool toString – bash websearch question skill image subagent' });
 });
 
 test('/tools websearch switches websearch off; on again it sits after bash, with one query parameter', () => {
   const off = toggleTool(TOOLS, 'websearch') as { content: string };
-  expect(JSON.parse(off.content)).toEqual([BASH, QUESTION_TOOL, SKILL, IMAGE]);
+  expect(JSON.parse(off.content)).toEqual([BASH, QUESTION_TOOL, SKILL, IMAGE, SUBAGENT]);
   expect(toggleTool(off.content, 'websearch')).toEqual({ content: TOOLS });
   expect(toggleTool('[]', 'websearch')).toEqual({ content: JSON.stringify([JSON.parse(TOOLS)[1]], null, 2) });
 });
 
-test('/tools image switches image off; on again it sits last, with one path parameter', () => {
+test('/tools image switches image off; on again it sits before subagent, with one path parameter', () => {
   const off = toggleTool(TOOLS, 'image') as { content: string };
-  expect(JSON.parse(off.content)).toEqual([BASH, SEARCH, QUESTION_TOOL, SKILL]);
+  expect(JSON.parse(off.content)).toEqual([BASH, SEARCH, QUESTION_TOOL, SKILL, SUBAGENT]);
   expect(toggleTool(off.content, 'image')).toEqual({ content: TOOLS });
+});
+
+test('a Subagent is offered every tool asked for, all without any, but never `subagent`', () => {
+  expect(subagentTools(undefined)).toEqual(['bash', 'websearch', 'question', 'skill', 'image']);
+  expect(subagentTools(['bash', 'subagent'])).toEqual(['bash']);
+  expect(subagentTools([])).toEqual([]);
+  expect(TOOL_NAMES).toContain('subagent');
+});
+
+test('the subagent tool says what its Subagent does not know and that its result comes later', () => {
+  const tool = JSON.parse(TOOLS).find((t: { name: string }) => t.name === 'subagent');
+  expect(tool.parameters.required).toEqual(['prompt']);
+  for (const said of ['does not know', 'Note', 'sleep']) expect(tool.description).toContain(said);
 });

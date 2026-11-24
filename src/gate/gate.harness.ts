@@ -12,12 +12,14 @@ import type { RunResult } from '../core/tools/call';
 import { createGate, type Compactor, type Gate, type View } from '.';
 import type { Skill } from '../core/skills/skills';
 import { minimalView } from './minimal-view';
-import type { Backend, Background, RunOptions } from './ports';
+import type { Backend, Background, RunOptions, Runner } from './ports';
 
 // One simple command per line, its words as arguments: enough for the rules to decide.
 const split: Split = command => command.split('\n').map(text => ({ text, args: text.split(' ').slice(1), writes: [] }));
 
 export const bash = (command: string): RawCall => ({ name: 'bash', arguments: JSON.stringify({ command }) });
+// A call starting a Subagent.
+export const subagent = (prompt: string): RawCall => ({ name: 'subagent', arguments: JSON.stringify({ prompt }) });
 // A bash call to run as a Background Process.
 export const background = (command: string): RawCall => ({ name: 'bash', arguments: JSON.stringify({ command, background: true }) });
 
@@ -143,9 +145,12 @@ export function gateWith(setup: GateSetup = {}) {
   const [active, setActive] = createSignal<Policy | null>(null);
   const [autoOn, setAutoOn] = createSignal(false);
   const searcher = { timeout: 30, run: async (query: string) => ({ output: `results for ${query}\n`, exit: 0, stopped: null }) };
+  // Starts no process: the prompts of the Subagents asked for, pid 4343.
+  const prompts: string[] = [];
+  const subagents: Runner = { timeout: 0, run: async prompt => (prompts.push(prompt), { output: '', exit: null, stopped: null, background: { pid: 4343, log: '/home/background/4343.log' } }) };
   let selection: View;
   const gate = createRoot(() => createGate({
-    backend, runner, searcher, events, log: { append: e => void logged.push(e) }, editor, clipboard: async () => {},
+    backend, runner, searcher, subagents, events, log: { append: e => void logged.push(e) }, editor, clipboard: async () => {},
     approval: { split, root: '/project', permissions: () => permissionRules(ASK_ALL(global), project) },
     project: {
       read: path => files[path] ?? null,
@@ -163,7 +168,7 @@ export function gateWith(setup: GateSetup = {}) {
   }, k => (selection = minimalView(k, id => focused.push(id)))));
   const select = (id: number) => selection.setSelected(id);
   const mark = (...ids: number[]) => selection.setMarked(new Set(ids));
-  return { gate, sent, reply, ran, focused, events: logged, select, selected: () => selection.selected(), mark, exit, logs, stopped };
+  return { gate, sent, reply, ran, prompts, focused, events: logged, select, selected: () => selection.selected(), mark, exit, logs, stopped };
 }
 
 // Until the Gate is idle: no answer streaming, no call running, no policy or Compaction under way.
