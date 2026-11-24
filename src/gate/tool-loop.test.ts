@@ -278,7 +278,7 @@ test('a skill call loads its body as a Note and resolves without approval; the l
     { type: 'BlockAdded', id: 4, kind: 'Assistant', origin: 'model', content: 'I will use TDD.' },
     { type: 'BlockAdded', id: 5, kind: 'Tool Call', origin: 'model', tool: 'skill', content: 'tdd' },
     { type: 'ResponseReceived', usage: null, cached: null },
-    { type: 'SkillLoaded', id: 6, call: 5, name: 'tdd', file: '/skills/tdd/SKILL.md', content: 'Write tests first.' },
+    { type: 'SkillLoaded', id: 6, call: 5, name: 'tdd', file: '/skills/tdd/SKILL.md', content: '[/skills/tdd/SKILL.md]\nSkill directory: /skills/tdd\n\nWrite tests first.' },
     { type: 'BlockAdded', id: 7, kind: 'Tool Result', origin: 'tool', content: 'loaded tdd\n[exit 0]', call: 5 },
     { type: 'RequestSent', hash: expect.any(String), tokens: expect.any(Number) },
     { type: 'BlockAdded', id: 8, kind: 'Assistant', origin: 'model', content: 'done' },
@@ -302,9 +302,9 @@ test('a skill with requires auto-loads its dependencies as separate Notes', asyn
   await settled(g.gate);
   const skillNotes = g.gate.context().blocks.filter(b => b.origin === 'skill');
   expect(skillNotes).toHaveLength(3);
-  expect(skillNotes[0]!.content).toBe('Wayfinder body.');
-  expect(skillNotes[1]!.content).toBe('Grilling body.');
-  expect(skillNotes[2]!.content).toBe('Domain modeling body.');
+  expect(skillNotes[0]!.content).toBe('[/skills/wayfinder/SKILL.md]\nSkill directory: /skills/wayfinder\n\nWayfinder body.');
+  expect(skillNotes[1]!.content).toBe('[/skills/grilling/SKILL.md]\nSkill directory: /skills/grilling\n\nGrilling body.');
+  expect(skillNotes[2]!.content).toBe('[/skills/domain-modeling/SKILL.md]\nSkill directory: /skills/domain-modeling\n\nDomain modeling body.');
   // The Tool Result mentions all loaded names.
   const result = g.events.find(e => e.type === 'BlockAdded' && e.kind === 'Tool Result');
   expect(result).toMatchObject({ content: 'loaded wayfinder, grilling, domain-modeling\n[exit 0]' });

@@ -49,9 +49,13 @@ function blockScalar(lines: string[], at: number, raw: string): string {
   return block.join(scalar[1] === '>' ? ' ' : '\n').trim();
 }
 
-// The full content of a skill Note: its body, then each supplementary file under a heading.
-export const skillContent = (skill: Skill): string =>
-  [skill.body, ...skill.files.map(f => `\n---\n\n## ${f.name}\n\n${f.content}`)].join('\n');
+// The full content of a skill Note: where the skill is and what of it follows, its body, then each supplementary file
+// under its path. Without that a model does not recognize a file the body refers to and searches the disk for it.
+export function skillContent(skill: Skill): string {
+  const folder = dirname(skill.file);
+  const included = skill.files.length ? `\nIncluded below, do not read again: ${skill.files.map(f => f.name).join(', ')}` : '';
+  return [`[${skill.file}]\nSkill directory: ${folder}${included}\n\n${skill.body}`, ...skill.files.map(f => `[${folder}/${f.name}]\n${f.content}`)].join('\n\n---\n\n');
+}
 
 // The Skills note: one line per skill, the metadata the model sees without loading any body.
 export const skillsNote = (skills: Skill[]): string =>
