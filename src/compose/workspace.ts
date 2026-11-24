@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { createSignal } from 'solid-js';
 import { connect } from '../adapters/backend/connect';
 import { createBackground, reapOrphans, type Background } from '../adapters/bash/background';
+import { readReport } from '../adapters/bash/report';
 import { createRunner } from '../adapters/bash/runner';
 import { createSplit } from '../adapters/bash/split';
 import { createSubagents } from '../adapters/bash/subagent';
@@ -86,7 +87,7 @@ export async function openWorkspace(options: WorkspaceOptions) {
   // logged as ended for every one recorded, so none stays running in its Session Log.
   for (const id of store.orphaned()) {
     for (const pid of reapOrphans(store.backgroundRecord(id))) {
-      const exited = store.has(id) && exitOf(store.read(id), pid, { signal: 'orphaned' });
+      const exited = store.has(id) && exitOf(store.read(id), pid, { signal: 'orphaned', ...readReport(backgroundLogs(id), pid) });
       if (exited) store.append(id, exited);
     }
   }

@@ -175,3 +175,5 @@ export const deny = notRun('denied by rule');
 export const decline = notRun('declined');
 // A Headless Run without a terminal: nobody can approve the call.
 export const unattended = notRun('no user to approve');
+// A call in a Subagent's summary.
+export const afterRun = notRun('not run: the run has ended');

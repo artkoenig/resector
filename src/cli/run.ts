@@ -2,12 +2,14 @@
 // the closing status on stderr, the outcome as exit code.
 import { homedir } from 'node:os';
 import { createEffect, createRoot, on } from 'solid-js';
+import { REPORTS_ENV, writeReport } from '../adapters/bash/report';
 import { configPaths } from '../adapters/fs/config';
 import { projectSessionStore } from '../adapters/store/sessions';
 import { openTty } from '../adapters/terminal/tty';
 import { openWorkspace } from '../compose/workspace';
 import { headlessSettings, SUBAGENT_ENV, type Flags } from '../core/config/headless';
-import type { SessionEvent } from '../core/log/events';
+import type { SessionEvent, SubagentReport } from '../core/log/events';
+import { DEFAULT_SUMMARY_PROMPT } from '../core/notes/subagent';
 import { subagentTools, TOOL_NAMES } from '../core/tools/catalog';
 import { createGate, type Outcome } from '../gate';
 import { minimalView } from '../gate/minimal-view';
@@ -63,7 +65,9 @@ export function processIo(): Io {
 export async function run(command: Run, io: Io): Promise<number> {
   const piped = (await io.piped()).trim();
   const prompt = piped ? `${command.prompt}\n\n${piped}` : command.prompt;
-  const ran = await headless({ ...command, prompt }, io).catch(e => ({ outcome: failed(errorText(e)), id: null }));
+  const reporter = createReporter(io);
+  const ran = await headless({ ...command, prompt }, io, reporter).catch(e => ({ outcome: failed(errorText(e)), id: null }));
+  reporter.ended('usage' in ran ? failed(ran.usage) : ran.outcome);
   if ('usage' in ran) {
     io.stderr(`resector: ${ran.usage}\n`);
     return USAGE;
@@ -76,7 +80,7 @@ export async function run(command: Run, io: Io): Promise<number> {
 
 // The run on a new session with the settings; without a config, or with flags naming what does not exist, it fails
 // before one is opened.
-async function headless({ prompt, flags }: Run, io: Io): Promise<{ outcome: Outcome; id: string | null } | { usage: string }> {
+async function headless({ prompt, flags }: Run, io: Io, reporter: Reporter): Promise<{ outcome: Outcome; id: string | null } | { usage: string }> {
   const subagent = io.env[SUBAGENT_ENV];
   if (subagent && subagent !== 'start') return { usage: 'a Subagent starts no Headless Runs' };
   const paths = configPaths({ home: io.home, cwd: io.cwd, env: io.env });
@@ -92,11 +96,13 @@ async function headless({ prompt, flags }: Run, io: Io): Promise<{ outcome: Outc
     io.env[SUBAGENT_ENV] = 'inside';
   }
   const opened = await workspace.open(loaded, { start: settings });
+  reporter.opened(opened.id);
   const terminated = new AbortController();
   let released: Promise<void> | undefined;
   const release = () => (released ??= opened.release());
   // The running call is in a process group of its own: without the abort it would outlive the run.
   io.onTerminate(() => {
+    reporter.aborted();
     terminated.abort();
     return release();
   });
@@ -108,6 +114,7 @@ async function headless({ prompt, flags }: Run, io: Io): Promise<{ outcome: Outc
       ...opened.options.log,
       append: (e: SessionEvent) => {
         opened.options.log.append(e);
+        reporter.logged(e);
         toStderr(show.event(e));
       },
     };
@@ -121,7 +128,10 @@ async function headless({ prompt, flags }: Run, io: Io): Promise<{ outcome: Outc
       createEffect(on(gate.status, status => status && toStderr(show.status(status)), { defer: true }));
       const tty = io.tty();
       try {
-        return await gate.run({ prompt, signal: AbortSignal.any([io.signal, terminated.signal]), maxTurns: settings.maxTurns, terminal: tty?.terminal });
+        const outcome = await gate.run({ prompt, signal: AbortSignal.any([io.signal, terminated.signal]), maxTurns: settings.maxTurns, terminal: tty?.terminal, summary: summaryFor(subagent, reporter) });
+        // Before the release, which may take long enough to be killed.
+        reporter.ended(outcome);
+        return outcome;
       } finally {
         tty?.close();
         dispose();
@@ -132,6 +142,48 @@ async function headless({ prompt, flags }: Run, io: Io): Promise<{ outcome: Outc
     // One release for both: terminated, its exit code comes first.
     await release();
   }
+}
+
+// Only a Subagent is asked for a summary.
+const summaryFor = (subagent: string | undefined, { asking }: Reporter) => (subagent ? { prompt: DEFAULT_SUMMARY_PROMPT, asking } : undefined);
+
+type Reporter = ReturnType<typeof createReporter>;
+
+// A Subagent's report to its parent Session, kept up to date so that a kill leaves one too; how it ended first stays.
+// Nothing for other Headless Runs.
+function createReporter(io: Io) {
+  const dir = io.env[SUBAGENT_ENV] === 'start' ? io.env[REPORTS_ENV] : undefined;
+  // Not for what the Subagent starts.
+  delete io.env[REPORTS_ENV];
+  let report: SubagentReport = { turns: 0, tokens: 0 };
+  // The run goes on: its requests are turns.
+  let running = true;
+  function update(more: Partial<SubagentReport>) {
+    if (!dir || report.outcome) return;
+    report = { ...report, ...more };
+    // No reason for the run to fail: the parent learns of the end without it.
+    try {
+      writeReport(dir, process.pid, report);
+    } catch (e) {
+      io.stderr(`resector: report: ${errorText(e)}\n`);
+    }
+  }
+  return {
+    opened: (session: string) => update({ session }),
+    logged(e: SessionEvent) {
+      if (running && e.type === 'RequestSent') update({ turns: report.turns + 1, tokens: e.tokens });
+    },
+    asking() {
+      running = false;
+    },
+    aborted: () => update({ outcome: 'aborted' }),
+    ended: (outcome: Outcome) => update({ outcome: outcome.kind, turns: outcome.turns, tokens: outcome.tokens, text: reported(outcome) }),
+  };
+}
+// What the parent reads below the head: the summary or why there is none, an error's status text.
+function reported({ text, summary, kind }: Outcome): string {
+  if (!summary) return kind === 'error' ? text : '';
+  return 'text' in summary ? summary.text : `no summary: ${summary.error}`;
 }
 
 const failed = (text: string): Outcome => ({ kind: 'error', text: `resector: ${text}`, turns: 0, tokens: 0 });

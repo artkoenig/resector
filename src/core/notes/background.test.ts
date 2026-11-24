@@ -55,3 +55,19 @@ test('endedBy: whether resector ended the process for that reason', () => {
   // An end without a signal names none, not even undefined.
   expect(endedBy({ exit: 0 }, undefined as never)).toBe(false);
 });
+
+test('a Subagent\'s Note is made of its report and the prompt it was started with', () => {
+  const report = { session: 'ses_a', turns: 2, tokens: 500, outcome: 'answer' as const, text: 'all done' };
+  const subagent = (id: number, content: string): SessionEvent => ({ type: 'BlockAdded', id, kind: 'Tool Call', origin: 'model', tool: 'subagent', content });
+  const start = (call: number, pid: number): SessionEvent => ({ type: 'BackgroundStarted', call, pid, log: `/logs/${pid}.log` });
+  const events: SessionEvent[] = [
+    subagent(4, 'look'), start(4, 42), { type: 'BackgroundExited', call: 4, exit: 0, report },
+    { type: 'BlockAdded', id: 6, kind: 'Tool Call', origin: 'model', tool: 'bash', content: 'serve' }, start(6, 43), { type: 'BackgroundExited', call: 6, exit: 0 },
+    subagent(8, 'search'), start(8, 44), { type: 'BackgroundExited', call: 8, signal: 'user', report: { ...report, outcome: 'aborted', text: '' } },
+  ];
+  expect(owedExitNotes(events).map(n => n.content)).toEqual([
+    'Subagent pid 42 ended: answer · 2 turns · 500 tokens\nprompt: look\nsession: ses_a · log: /logs/42.log\n\nall done',
+    'Background Process pid 43 ended: exited with 0\ncommand: serve\nlog: /logs/43.log',
+    'Subagent pid 44 ended: stopped by the user · 2 turns · 500 tokens\nprompt: search\nsession: ses_a · log: /logs/44.log',
+  ]);
+});

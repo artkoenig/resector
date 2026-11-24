@@ -17,7 +17,7 @@ test('the process of a Subagent gets prompt, profile and flags unchanged, withou
   await createSubagents({ cwd, profile: 'qwen', registry: recording }).run(prompt, { signal: new AbortController().signal, onOutput: () => {} });
   const [argv, { cwd: at, wait, env }] = started[0]!;
   expect(argv.slice(2)).toEqual([`--prompt=${prompt}`, '--model=qwen', '--auto-approve', '--show', 'tools']);
-  expect({ at, wait, env }).toEqual({ at: cwd, wait: 0, env: { RESECTOR_SUBAGENT: 'start' } });
+  expect({ at, wait, env }).toEqual({ at: cwd, wait: 0, env: { RESECTOR_SUBAGENT: 'start', RESECTOR_SUBAGENT_REPORTS: registry.dir } });
 });
 
 test('a process started from its arguments sees them as they are, and the environment added to it', async () => {

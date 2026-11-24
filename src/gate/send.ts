@@ -23,7 +23,7 @@ function asksForAnswer(blocks: Block[], opening: Set<number>): boolean {
 }
 
 // mayRequest: whether another request may go (a Headless Run's turns).
-export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy: PolicySlice; git: GitSlice; project: Project; policies: Policies; mayRequest: () => boolean; background: BackgroundSlice }) {
+export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy: PolicySlice; git: GitSlice; project: Project; policies: Policies; mayRequest: () => boolean; summing: () => boolean; background: BackgroundSlice }) {
   const { context, events, nextId, append, setStatus, backend, streaming, setStreaming, split } = k;
   const { follow, setSelected } = sel;
   const { loop } = deps;
@@ -146,7 +146,8 @@ export function createSend(k: Kernel, sel: View, deps: { loop: ToolLoop; policy:
   // edits the Context and it goes, without a message of the user. Esc while the answer streamed stops here.
   async function sendOn() {
     const policy = deps.policies.active();
-    if (!policy || loop.api.stopping()) return;
+    // A Subagent's summary is the last answer.
+    if (!policy || loop.api.stopping() || deps.summing()) return;
     if (await deps.policy.sendsOn(policy)) await send();
   }
 

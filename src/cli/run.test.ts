@@ -8,6 +8,8 @@ import { startFakeLlamaCpp, type Reply } from '../../test/fake-llamacpp';
 import { configPaths } from '../adapters/fs/config';
 import { projectSessionsDir } from '../adapters/store/session-log';
 import { openTty } from '../adapters/terminal/tty';
+import { readReport } from '../adapters/bash/report';
+import { DEFAULT_SUMMARY_PROMPT } from '../core/notes/subagent';
 import { main } from '../main';
 import { run } from './run';
 
@@ -250,6 +252,7 @@ test('a Subagent has no subagent tool, also when the config names it, and marks 
   const p = project({ headless: { tools: ['bash', 'subagent'] } });
   Object.assign(p.env, { RESECTOR_SUBAGENT: 'start' });
   reply({ chunks: ['ok'] });
+  reply({ chunks: ['the summary'] });
   expect((await resectorHere(p, ['-p', 'hi'])).code).toBe(0);
   expect(offered(0)).toEqual(['bash']);
   expect((p.env as Record<string, string>).RESECTOR_SUBAGENT).toBe('inside');
@@ -261,10 +264,11 @@ const offered = (request: number) => (fake.chatRequests[request] as { tools?: { 
 test('a run starts a Subagent: a run with a Session of its own, on the parent\'s profile, whose result text came at once', async () => {
   const p = project();
   const prompt = "-look at 'this' \"too\" $HOME";
-  // The parent waits for the Subagent's end; until then the only other request is the Subagent's.
-  const wait = `until grep -qs '^· answer' ${p.env.XDG_DATA_HOME}/resector/projects/*/background/*/*.log; do sleep 0.1; done`;
+  // The parent waits for the Subagent's end and its notice; until then the only other requests are the Subagent's.
+  const wait = `until grep -qs '^· answer' ${p.env.XDG_DATA_HOME}/resector/projects/*/background/*/*.log; do sleep 0.1; done; sleep 1`;
   reply({ calls: [{ name: 'subagent', arguments: JSON.stringify({ prompt }) }, { name: 'bash', arguments: JSON.stringify({ command: wait }) }] });
   reply({ chunks: ['child done'] });
+  reply({ chunks: ['child summary'] });
   reply({ chunks: ['parent done'] });
   const { out, code, err } = await resector(p, ['-p', 'go', '--auto-approve', '--show', 'tools']);
   expect({ out, code }).toEqual({ out: 'parent done\n', code: 0 });
@@ -276,6 +280,14 @@ test('a run starts a Subagent: a run with a Session of its own, on the parent\'s
   expect(child).toContain(JSON.stringify(prompt));
   expect(p.sessions()).toHaveLength(2);
   expect(child).not.toContain('"content":"go"');
+  expect(child).toContain(JSON.stringify(DEFAULT_SUMMARY_PROMPT));
+  expect(child).toContain('child summary');
+  const parent = p.sessions().find(s => s.includes('"content":"go"'))!;
+  const notes = parent.trim().split('\n').map(l => JSON.parse(l)).filter(e => e.type === 'BlockAdded' && e.kind === 'Note' && e.content.includes('child summary'));
+  expect(notes.map(n => n.content)).toEqual([
+    expect.stringMatching(/^Subagent pid \d+ ended: answer · 1 turn · \S+ tokens\nprompt: -look at 'this' "too" \$HOME\nsession: ses_\S+ · log: \S+\.log\n\nchild summary$/),
+  ]);
+  expect(JSON.stringify(fake.chatRequests[3])).toContain('child summary');
 }, 20_000);
 
 test('a Subagent stopped at the session\'s end still kills what ignores SIGTERM', async () => {
@@ -293,3 +305,65 @@ test('a Subagent stopped at the session\'s end still kills what ignores SIGTERM'
   if (alive) process.kill(Number(readFileSync(join(p.dir, 'server.pid'), 'utf8')), 'SIGKILL');
   expect(alive).toBe(false);
 }, 20_000);
+
+// A project whose runs are Subagents, and the reports they leave (of this process, of any).
+function subagentProject() {
+  const p = project();
+  const dir = mkdtempSync(join(tmpdir(), 'resector-reports-'));
+  Object.assign(p.env, { RESECTOR_SUBAGENT: 'start', RESECTOR_SUBAGENT_REPORTS: dir });
+  return { p, report: () => readReport(dir, process.pid).report, reports: () => readdirSync(dir).map(f => JSON.parse(readFileSync(join(dir, f), 'utf8'))) };
+}
+
+test('a Subagent\'s report: Session, Outcome, turns, tokens and the summary; what it starts does not know of it', async () => {
+  const { p, report } = subagentProject();
+  reply({ chunks: ['done'] });
+  reply({ chunks: ['the summary'] });
+  expect(await resectorHere(p, ['-p', 'hi'])).toMatchObject({ out: 'done\n', code: 0 });
+  expect(report()).toEqual({ session: expect.stringMatching(/^ses_/), turns: 1, tokens: expect.any(Number), outcome: 'answer', text: 'the summary' });
+  expect(p.env).not.toHaveProperty('RESECTOR_SUBAGENT_REPORTS');
+});
+
+test('a run that is no Subagent asks for no summary', async () => {
+  const p = project();
+  reply({ chunks: ['done'] });
+  expect((await resectorHere(p, ['-p', 'hi'])).code).toBe(0);
+  expect(fake.chatRequests).toHaveLength(1);
+});
+
+test('a summary request that fails leaves the answer and why there is none', async () => {
+  const { p, report } = subagentProject();
+  reply({ chunks: ['done'] });
+  reply({ error: 'crashed' });
+  expect(await resectorHere(p, ['-p', 'hi'])).toMatchObject({ out: 'done\n', code: 0 });
+  expect(report()).toMatchObject({ outcome: 'answer', turns: 1, text: expect.stringMatching(/^no summary: backend error: /) });
+});
+
+test('a Subagent\'s error is reported with its status text', async () => {
+  const { p, report } = subagentProject();
+  reply({ error: 'crashed' });
+  expect((await resectorHere(p, ['-p', 'hi'])).code).toBe(1);
+  expect(report()).toMatchObject({ outcome: 'error', turns: 1, text: expect.stringMatching(/^backend error: /) });
+  expect(fake.chatRequests).toHaveLength(1);
+});
+
+test('a usage error is reported too, without a Session', async () => {
+  const { p, report } = subagentProject();
+  expect((await resectorHere(p, ['-p', 'hi', '-m', 'big'])).code).toBe(2);
+  expect(report()).toEqual({ outcome: 'error', turns: 0, tokens: 0, text: expect.stringContaining('big') });
+});
+
+test('SIGTERM during the summary request: aborted, with the turns of the run and no summary', async () => {
+  const { p, reports } = subagentProject();
+  reply({ chunks: ['done'] });
+  reply({ chunks: ['part'], hang: true });
+  expect((await resector(p, ['-p', 'hi'], { terminate: () => fake.chatRequests.length === 2 })).code).toBe(143);
+  expect(reports()).toEqual([{ session: expect.any(String), turns: 1, tokens: expect.any(Number), outcome: 'aborted' }]);
+});
+
+test('a report that cannot be written does not stop the run', async () => {
+  const { p } = subagentProject();
+  Object.assign(p.env, { RESECTOR_SUBAGENT_REPORTS: '/nowhere/gone' });
+  reply({ chunks: ['done'] });
+  reply({ chunks: ['the summary'] });
+  expect(await resectorHere(p, ['-p', 'hi'])).toMatchObject({ out: 'done\n', code: 0, err: expect.stringContaining('resector: report: ') });
+});

@@ -19,7 +19,11 @@ type By = { by?: string };
 
 // How a Background Process ended: bash's exit code, or the signal that killed it (`SIGTERM`), or why resector stopped
 // it: `session ended` (released with its Session), `user` (`k`), `orphaned` (left by a crashed instance).
-export type BackgroundEnd = { exit: number } | { signal: string };
+// report: what a Subagent left for its parent Session.
+export type BackgroundEnd = ({ exit: number } | { signal: string }) & { report?: SubagentReport };
+// A Subagent's Session (none when it ended before one was opened), the requests of its run and the Context's tokens at
+// the last one. outcome: how its run ended, none while it goes on; text: its summary, or the status of an error.
+export type SubagentReport = { session?: string; turns: number; tokens: number; outcome?: 'answer' | 'error' | 'aborted' | 'max-turns'; text?: string };
 
 export type Usage = { prompt_tokens: number; completion_tokens: number };
 
