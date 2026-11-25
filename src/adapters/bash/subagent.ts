@@ -4,6 +4,7 @@ import type { Config } from '../../core/config/config';
 import { SUBAGENT_ENV, SUBAGENT_SESSION_ENV } from '../../core/config/headless';
 import { inWorktree, subagentRefusal } from '../../core/config/subagent';
 import type { SubagentWorktree } from '../../core/log/events';
+import type { RunResult } from '../../core/tools/call';
 import type { Subagents } from '../../gate/ports';
 import { ensureWorktree, head, settleWorktree, worktreeBranch } from '../git/git';
 import { GRACE, type Background } from './background';
@@ -30,8 +31,12 @@ export function createSubagents({ cwd, profile, config, registry, repository, wo
   // `=`: a prompt or name starting with - is no flag.
   const argv = (prompt: string) => [process.execPath, MAIN, `--prompt=${prompt}`, `--model=${config.subagent?.profile ?? profile}`, '--auto-approve', '--show', 'tools'];
   // Its grace exceeds the one it gives its own Background Processes: killed sooner, it would leave them running.
-  const start = (command: string[], signal: AbortSignal, env: Record<string, string> = {}) =>
-    registry.start(command, { cwd, wait: 0, signal, env: { [SUBAGENT_ENV]: 'start', [REPORTS_ENV]: registry.dir, ...env }, grace: 2 * GRACE });
+  // The Session id is picked here, so the parent's log names it whatever becomes of the process.
+  async function start(command: string[], signal: AbortSignal, id: string): Promise<RunResult> {
+    const env = { [SUBAGENT_ENV]: 'start', [REPORTS_ENV]: registry.dir, [SUBAGENT_SESSION_ENV]: id };
+    const result = await registry.start(command, { cwd, wait: 0, signal, env, grace: 2 * GRACE });
+    return result.background ? { ...result, background: { ...result.background, session: id } } : result;
+  }
   // The worktree is made here, from the HEAD of where the parent runs, so the result can name it; the Subagent's
   // Session gets the id picked for it and finds its worktree there.
   async function startInWorktree(prompt: string, signal: AbortSignal) {
@@ -50,7 +55,7 @@ export function createSubagents({ cwd, profile, config, registry, repository, wo
       } catch {}
     };
     try {
-      const result = await start([...argv(prompt), '--worktree'], signal, { [SUBAGENT_SESSION_ENV]: id });
+      const result = await start([...argv(prompt), '--worktree'], signal, id);
       if (result.background) return { ...result, background: { ...result.background, worktree } };
       discard();
       return result;
@@ -64,6 +69,6 @@ export function createSubagents({ cwd, profile, config, registry, repository, wo
     refused: (running, worktree) => subagentRefusal(config, running, { worktree, repository }),
     worktree: asked => inWorktree(config, asked),
     // --no-worktree: the decision is the parent's, the Subagent's own config makes none.
-    run: (prompt, { signal, worktree }) => (worktree ? startInWorktree(prompt, signal) : start([...argv(prompt), '--no-worktree'], signal)),
+    run: (prompt, { signal, worktree }) => (worktree ? startInWorktree(prompt, signal) : start([...argv(prompt), '--no-worktree'], signal, session())),
   };
 }

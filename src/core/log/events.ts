@@ -49,8 +49,8 @@ export type SessionEvent =
   | { type: 'FileRead'; id: number; content: string }
   | { type: 'ImageRead'; id: number; image: string }
   // Tool Call `call` keeps running as a Background Process: its process group `pid`, its output in `log`.
-  // worktree: the one made for a Subagent.
-  | { type: 'BackgroundStarted'; call: number; pid: number; log: string; worktree?: SubagentWorktree }
+  // session: a Subagent's Session, named before it is opened (older logs: none); worktree: the one made for a Subagent.
+  | { type: 'BackgroundStarted'; call: number; pid: number; log: string; session?: string; worktree?: SubagentWorktree }
   // … its process group is empty: the leader's exit code, or what ended it (a signal's name, `session ended`).
   | ({ type: 'BackgroundExited'; call: number } & BackgroundEnd)
   | { type: 'RequestSent'; hash: string; tokens: number }

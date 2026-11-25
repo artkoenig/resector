@@ -276,3 +276,58 @@ test('the worktree of a Subagent left by a crashed resector is settled at start:
   expect(log('ses_old').at(-1)).toEqual({ type: 'BackgroundExited', call: 9, signal: 'orphaned' });
   expect(existsSync(worktree!.path)).toBe(false);
 });
+
+const parentOf = (...sessions: string[]): SessionEvent[] => [
+  ...chat('local'),
+  ...sessions.flatMap((session, i): SessionEvent[] => [
+    { type: 'BlockAdded', id: 9 + i, kind: 'Tool Call', origin: 'model', tool: 'subagent', content: 'look' },
+    { type: 'BackgroundStarted', call: 9 + i, pid: 1, log: '/logs/x.log', session },
+  ]),
+];
+
+// A parent Session with three Subagents: one with a clean worktree, one with a commit in its worktree, one never opened.
+async function withSubagents() {
+  const at = await workspace({ git: true, sessions: { ses_p: parentOf('ses_a', 'ses_b', 'ses_none'), ses_a: chat('local'), ses_b: chat('local'), ses_other: chat('local') } });
+  const worktrees = join(at.paths.projectHome.data, 'worktrees');
+  const clean = subagentWorktree(at.project, worktrees, 'ses_a').path;
+  const committed = subagentWorktree(at.project, worktrees, 'ses_b').path;
+  gitIn(committed, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'work');
+  const left = () => ['ses_p', 'ses_a', 'ses_b', 'ses_other'].filter(id => existsSync(join(at.sessionsDir, `${id}.jsonl`)));
+  return { ...at, clean, committed, left };
+}
+
+test('deleting a session deletes its Subagents\' with their worktrees and reports the branches kept', async () => {
+  const { ws, project, paths, clean, committed, left } = await withSubagents();
+  const logs = join(paths.projectHome.data, 'background', 'ses_a');
+  put(join(logs, '1.log'), 'up\n');
+  expect(ws.deleteSession('ses_p')).toEqual(['branch resector/ses_b kept – not merged']);
+  expect(left()).toEqual(['ses_other']);
+  expect([clean, committed, logs].map(p => existsSync(p))).toEqual([false, false, false]);
+  expect(gitIn(project, 'branch', '--format=%(refname:short)').split('\n')).toEqual(['main', 'resector/ses_b']);
+});
+
+test('a Subagent\'s session is deleted on its own', async () => {
+  const { ws, clean, committed, left } = await withSubagents();
+  expect(ws.deleteSession('ses_a')).toEqual([]);
+  expect(left()).toEqual(['ses_p', 'ses_b', 'ses_other']);
+  expect([existsSync(clean), existsSync(committed)]).toEqual([false, true]);
+});
+
+test('uncommitted changes in a Subagent\'s worktree: deleting the parent removes nothing unless forced', async () => {
+  const { ws, clean, committed, left } = await withSubagents();
+  put(join(committed, 'new.txt'), 'new\n');
+  expect([ws.worktreeDirty('ses_p'), ws.worktreeDirty('ses_a')]).toEqual([true, false]);
+  expect(() => ws.deleteSession('ses_p')).toThrow('--force');
+  expect(left()).toEqual(['ses_p', 'ses_a', 'ses_b', 'ses_other']);
+  expect(existsSync(clean)).toBe(true);
+  ws.deleteSession('ses_p', true);
+  expect(left()).toEqual(['ses_other']);
+});
+
+test('with a Subagent\'s session open in another instance the parent is not deleted, nothing is removed', async () => {
+  const { ws, sessionsDir, clean, left } = await withSubagents();
+  put(join(sessionsDir, 'ses_b.lock'), String(process.ppid));
+  expect(() => ws.deleteSession('ses_p')).toThrow('session ses_b is open in another resector instance');
+  expect(left()).toHaveLength(4);
+  expect(existsSync(clean)).toBe(true);
+});

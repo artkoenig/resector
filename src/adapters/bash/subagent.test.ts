@@ -19,7 +19,7 @@ test('the process of a Subagent gets prompt, profile and flags unchanged, withou
   await createSubagents({ cwd, profile: 'qwen', config: { profiles: {} }, registry: recording, ...NO_REPOSITORY }).run(prompt, { signal: new AbortController().signal, onOutput: () => {} });
   const [argv, { cwd: at, wait, env }] = started[0]!;
   expect(argv.slice(2)).toEqual([`--prompt=${prompt}`, '--model=qwen', '--auto-approve', '--show', 'tools', '--no-worktree']);
-  expect({ at, wait, env }).toEqual({ at: cwd, wait: 0, env: { RESECTOR_SUBAGENT: 'start', RESECTOR_SUBAGENT_REPORTS: registry.dir } });
+  expect({ at, wait, env }).toEqual({ at: cwd, wait: 0, env: { RESECTOR_SUBAGENT: 'start', RESECTOR_SUBAGENT_REPORTS: registry.dir, RESECTOR_SUBAGENT_SESSION: 'ses_x' } });
 });
 
 test('the Subagents run on the configured profile', async () => {
@@ -70,7 +70,8 @@ test('headless.worktree gives every Subagent a worktree; without either it runs 
   const at = { cwd: root, profile: 'qwen', registry: recording, repository: true, worktrees, session: () => 'ses_child' };
   const plain = createSubagents({ ...at, config: { profiles: {} } });
   expect([plain.worktree(), plain.worktree(true)]).toEqual([false, true]);
-  expect((await plain.run('look', options)).background?.worktree).toBeUndefined();
+  const { background } = await plain.run('look', options);
+  expect([background?.session, background?.worktree]).toEqual(['ses_child', undefined]);
   // The parent's decision holds: the Subagent's own config does not make one.
   expect(started[0]![0]).toContain('--no-worktree');
   expect(existsSync(worktrees)).toBe(false);

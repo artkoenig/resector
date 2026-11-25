@@ -24,6 +24,7 @@ import { environmentText } from '../core/notes/environment';
 import { BUILT_IN, DEFAULT_POLICY } from '../core/policy/built-in';
 import type { Policy } from '../core/policy/policy';
 import type { Settings } from '../core/config/headless';
+import { familyOf, subagentsOf } from '../core/session/family';
 import { checkoutOf, inWorktree, newSession, skillsUpdate, summarize, type SessionRef } from '../core/session/session';
 import type { Skill } from '../core/skills/skills';
 import type { AutoApprove, Background as Processes, GateOptions, Git, Policies, SessionLog, Status } from '../gate';
@@ -104,8 +105,22 @@ export async function openWorkspace(options: WorkspaceOptions) {
     }
     return { ...end, ...(left && { worktree: left }) };
   }
-  // An id for a Subagent's Session, picked by its parent: no Session and no worktree has it.
-  const subagentSession = () => store.vacant(id => existsSync(join(worktrees, id)));
+  // An id for a Subagent's Session, picked by its parent: no Session and no worktree has it, and none was picked that
+  // its Subagent has yet to open.
+  const picked = new Set<string>();
+  function subagentSession(): string {
+    const id = store.vacant(id => picked.has(id) || existsSync(join(worktrees, id)));
+    picked.add(id);
+    return id;
+  }
+  // A Session with its Subagents', which are deleted with it.
+  const family = (id: string) => familyOf(id, id => (store.has(id) ? subagentsOf(store.read(id)) : []));
+  const dirty = (id: string) => repository && worktreeDirty(worktrees, id);
+  // The status text for an unmerged branch kept; none outside a repository.
+  function dropWorktree(id: string, force: boolean): string[] {
+    const removed = repository ? removeWorktree(here, worktrees, id, force) : null;
+    return removed?.kept ? [`branch ${removed.branch} kept – not merged`] : [];
+  }
   // The project as seen from where a session runs: its checkout or its worktree.
   const projectAt = (dir: string, checkout = here) => ({
     read: projectFiles(dir),
@@ -283,21 +298,29 @@ export async function openWorkspace(options: WorkspaceOptions) {
     // The config as on disk now; null when there is none.
     config: () => loadConfig(paths),
     open,
-    // The status text for an unmerged branch kept; none outside a repository.
-    removeWorktree(id: string, force: boolean): string[] {
-      const removed = repository ? removeWorktree(here, worktrees, id, force) : null;
-      return removed?.kept ? [`branch ${removed.branch} kept – not merged`] : [];
-    },
-    // Refused for a session open in another instance. Background Processes it still has (left by a crash since the
-    // start) are killed first; their logs go with it.
-    deleteSession(id: string) {
-      if (!store.locked(id)) {
+    family,
+    // Deletes a session and its Subagents' with their worktrees; the status texts for unmerged branches kept. Uncommitted
+    // changes go only with force. Refused, with nothing removed, while one of them is open in another instance or, without
+    // force, has uncommitted changes. Background Processes they still have (left by a crash since the start) are killed
+    // first; their logs go with them.
+    deleteSession(id: string, force = false): string[] {
+      const ids = family(id);
+      // A dirty worktree first: git refuses it before another one is removed.
+      const byDirt = [...ids.filter(dirty), ...ids.filter(id => !dirty(id))];
+      for (const id of ids) {
+        if (store.locked(id)) throw new Error(`session ${id} is open in another resector instance`);
         reapOrphans(store.backgroundRecord(id));
-        rmSync(backgroundLogs(id), { recursive: true, force: true });
       }
-      store.delete(id);
+      const kept = byDirt.flatMap(id => dropWorktree(id, force));
+      // The parent last: until then it names the others.
+      for (const id of ids.toReversed()) {
+        rmSync(backgroundLogs(id), { recursive: true, force: true });
+        store.delete(id);
+      }
+      return kept;
     },
-    worktreeDirty: (id: string) => repository && worktreeDirty(worktrees, id),
+    // Whether deleting the session would lose uncommitted changes, also of its Subagents' worktrees.
+    worktreeDirty: (id: string) => family(id).some(dirty),
     // Where a listed session started, when that is another checkout of the Project: its branch and directory.
     origin(events: SessionEvent[]): string | null {
       const started = checkoutOf(events);

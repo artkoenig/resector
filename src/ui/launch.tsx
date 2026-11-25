@@ -39,6 +39,8 @@ export function Launch(props: LaunchOptions) {
   const [gate, setGate] = createSignal<GateOptions | null>(null);
   const [view, setView] = createSignal<'gate' | 'sessions'>('gate');
   let session: Opened | null = null;
+  // The session left last, freed once its Background Processes have stopped.
+  let released: Promise<void> = Promise.resolve();
   const [current, setCurrent] = createSignal('');
   // Set once the Context Policies are loaded, before the first session opens.
   let workspace: Workspace;
@@ -51,7 +53,7 @@ export function Launch(props: LaunchOptions) {
 
   async function open(loaded: Loaded, how: OpenWith = {}) {
     const opened = await workspace.open(loaded, how);
-    if (session?.id !== opened.id) void session?.release();
+    if (session && session.id !== opened.id) released = session.release();
     session = opened;
     setCurrent(opened.id);
     setFound(null);
@@ -65,15 +67,19 @@ export function Launch(props: LaunchOptions) {
     setGate({ ...gate()!, events, notice: undefined });
     setView('gate');
   };
-  // Deleting the current session first switches to the newest other one, or a new empty session. Its worktree goes
-  // first, with its uncommitted changes only when the user confirmed them (force); its branch only if merged.
+  // Deleting the current session (or the one it is a Subagent's of) first switches to the newest other one, or a new
+  // empty session. force: the user confirmed losing uncommitted changes.
   async function remove(id: string, force: boolean): Promise<string> {
     const titleOf = (id: string) => summarize(props.store.read(id)).title;
     const title = titleOf(id);
-    const switched = id === current();
-    if (switched) await open(load(), { which: props.store.list().find(s => !s.locked && s.id !== id)?.id });
-    const kept = workspace.removeWorktree(id, force);
-    workspace.deleteSession(id);
+    const family = workspace.family(id);
+    const switched = family.includes(current());
+    if (switched) {
+      await open(load(), { which: props.store.list().find(s => !s.locked && !family.includes(s.id))?.id });
+      // Its Subagents still running hold their Sessions until they have stopped.
+      await released;
+    }
+    const kept = workspace.deleteSession(id, force);
     return [`deleted "${title}"`, ...(switched ? [`switched to "${titleOf(current())}"`] : []), ...kept].join(' · ');
   }
   const rename = (id: string, title: string) => {
@@ -128,6 +134,7 @@ export function Launch(props: LaunchOptions) {
           open={id => (id === current() ? Promise.resolve(back()) : switchTo(id))}
           create={() => switchTo()}
           remove={remove}
+          subagents={id => workspace.family(id).slice(1).filter(props.store.has).length}
           worktreeDirty={id => workspace.worktreeDirty(id)}
           origin={s => workspace.origin(s.events)}
           rename={rename}
