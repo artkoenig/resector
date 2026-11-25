@@ -11,7 +11,7 @@ import { createSplit } from '../adapters/bash/split';
 import { createSubagents } from '../adapters/bash/subagent';
 import { loadConfig, type ConfigPaths } from '../adapters/fs/config';
 import { loadPolicies } from '../adapters/fs/policies';
-import { listProjectFiles, probeEnvironment, projectFiles, projectImages, projectInstructions, tilde } from '../adapters/fs/project';
+import { listProjectFiles, probeEnvironment, projectFiles, projectImages, projectInstructions, projectTexts, tilde } from '../adapters/fs/project';
 import { discoverSkills } from '../adapters/fs/skills';
 import { ensureWorktree, isRepository, listBranches, locateCheckout, mainCheckout, removeWorktree, status, switchBranch, topLevel, watchHead, worktreeDirty } from '../adapters/git/git';
 import { createSearcher } from '../adapters/search/ddgr';
@@ -94,6 +94,7 @@ export async function openWorkspace(options: WorkspaceOptions) {
   // The project as seen from where a session runs: its checkout or its worktree.
   const projectAt = (dir: string, checkout = here) => ({
     read: projectFiles(dir),
+    isText: projectTexts(dir),
     // Copies of images sent, shared by the Project's sessions.
     images: projectImages(dir, join(paths.projectHome.data, 'images')),
     list: () => listProjectFiles(dir),

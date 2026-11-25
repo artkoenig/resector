@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { listProjectFiles, probeEnvironment, projectFiles, projectImages, projectInstructions } from './project';
+import { listProjectFiles, probeEnvironment, projectFiles, projectImages, projectInstructions, projectTexts } from './project';
 
 const dir = () => realpathSync(mkdtempSync(join(tmpdir(), 'resector-project-')));
 
@@ -15,6 +15,20 @@ test('files are read relative to the project root, or absolute; anything unreada
   expect(read(join(root, 'src/a.ts'))).toBe('x\n');
   expect(read('missing.ts')).toBeNull();
   expect(read('src')).toBeNull();
+});
+
+test('a text file begins with UTF-8 without NUL; no binary, directory or missing file', () => {
+  const root = dir();
+  mkdirSync(join(root, 'src'));
+  const files: Record<string, string | Buffer> = {
+    Makefile: 'all:\n', empty: '', 'umlaut.txt': 'Grüße\n', 'long.txt': `x${'ü'.repeat(64 * 1024)}`,
+    'nul.bin': 'a\0b', 'latin1.txt': Buffer.from([0x47, 0x72, 0xfc, 0xdf, 0x65]), 'cut.txt': Buffer.from([0x61, 0xc3]),
+  };
+  for (const [name, content] of Object.entries(files)) writeFileSync(join(root, name), content);
+  const isText = projectTexts(root);
+  expect(Object.keys(files).filter(isText)).toEqual(['Makefile', 'empty', 'umlaut.txt', 'long.txt']);
+  expect(isText(join(root, 'Makefile'))).toBe(true);
+  expect([isText('src'), isText('gone.txt')]).toEqual([false, false]);
 });
 
 test('the project files for @path completion: git ignores apply in a repository, else dot dirs and node_modules are skipped', () => {

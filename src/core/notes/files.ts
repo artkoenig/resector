@@ -40,9 +40,9 @@ export function fileCompletions(input: string, files: readonly string[], limit =
   return { at: input.length - typed[1]!.length, paths };
 }
 
-// A path as an @reference writes it: quoted when it has whitespace.
+// A path as an @reference writes it: quoted when it has whitespace or ends in what would be read as the sentence's punctuation.
 export function referencePath(path: string): string {
-  return /\s/.test(path) ? `"${path}"` : path;
+  return /\s|[.,;:!?)]$/.test(path) ? `"${path}"` : path;
 }
 
 // `path`, `path:a` or `path:a-b`.

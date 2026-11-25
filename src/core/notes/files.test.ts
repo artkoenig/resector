@@ -39,6 +39,7 @@ test('a path with spaces completes quoted, also while typed after a quote', () =
   expect(fileCompletions('@a"b', ['a"bc', 'abc'])?.paths).toEqual(['a"bc']);
   expect(referencePath('Bild 1.png')).toBe('"Bild 1.png"');
   expect(referencePath('b.ts')).toBe('b.ts');
+  expect(references(`@${referencePath('copy(1)')}`).files).toEqual(['copy(1)']);
 });
 
 test('no completion once the path is complete, ended or not being typed', () => {

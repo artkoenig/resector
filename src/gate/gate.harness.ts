@@ -164,6 +164,7 @@ export function gateWith(setup: GateSetup = {}) {
     approval: { split, root: '/project', permissions: () => permissionRules(ASK_ALL(global), project) },
     project: {
       read: path => files[path] ?? null,
+      isText: path => path in files && !files[path]!.includes('\0'),
       // An image's copy is named after its path; sent as its name behind a data URL prefix.
       images: { exists: path => path in files, save: path => (path in files ? `copy-${path}` : null), load: image => `data:${image}` },
       list: () => Object.keys(files),

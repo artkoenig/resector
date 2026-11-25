@@ -13,7 +13,7 @@ import { createRunner } from '../adapters/bash/runner';
 import { createSplit } from '../adapters/bash/split';
 import { createSessionLog } from '../adapters/store/session-log';
 import { permissionRules, type Permissions, type Split } from '../core/approval/approval';
-import { listProjectFiles, projectFiles, projectImages } from '../adapters/fs/project';
+import { listProjectFiles, projectFiles, projectImages, projectTexts } from '../adapters/fs/project';
 import { newSession, type SessionNotes } from '../core/session/session';
 import type { Tool } from '../core/log/events';
 import type { Policy } from '../core/policy/policy';
@@ -89,7 +89,7 @@ export async function start({ tools = BASH_TOOLS, template, window = 4096, exact
   initial.forEach(log.append);
   const opened: string[] = [];
   const approval = { split, root: project, permissions: () => permissionRules(ASK_ALL(global), own) };
-  const files = { read: projectFiles(project), images: projectImages(project, join(project, '..', `${basename(project)}-images`)), list: () => listProjectFiles(project), environment: () => fixture.environment, open: async (path: string) => void openedFiles.push(path) };
+  const files = { read: projectFiles(project), isText: projectTexts(project), images: projectImages(project, join(project, '..', `${basename(project)}-images`)), list: () => listProjectFiles(project), environment: () => fixture.environment, open: async (path: string) => void openedFiles.push(path) };
   const [active, setActive] = createSignal<Policy | null>(null);
   ui = await testRender(
     () => <App backend={backend} runner={runner} searcher={searcher} subagents={{ timeout: 0, refused: () => null, run: async () => ({ output: '', exit: null, stopped: null, background: { pid: 4343, log: join(logs, '4343.log') } }) }} approval={approval} editor={text => fixture.editor(text)} project={files} clipboard={async text => void copied.push(text)} log={log} events={initial} instruction={() => 'keep the gist'} compactor={compactor} policies={{ all: policies, active, set: setActive }} openSessions={() => opened.push('sessions')} git={git} background={registry} hidden={hidden === 'default' ? undefined : hidden} onQuit={() => {}} />,
