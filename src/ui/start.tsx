@@ -8,12 +8,15 @@ import { createEditor, createFileEditor } from '../adapters/editor/editor';
 import { projectSessionStore } from '../adapters/store/sessions';
 import type { SessionRef } from '../core/session/session';
 import { Launch } from './launch';
+import { terminalSettled } from './settle';
 
 export type Start = { resume?: SessionRef };
 
 export async function start({ resume }: Start) {
   const renderer = await createCliRenderer({ exitOnCtrlC: true });
-  const exit = (code: number, message = '') => {
+  // Quitting right after the start (a config error) would leave the terminal's answers on the shell's prompt.
+  const exit = async (code: number, message = '') => {
+    if (process.stdin.isTTY) await terminalSettled({ write: text => void process.stdout.write(text), prependInputHandler: h => renderer.prependInputHandler(h), removeInputHandler: h => renderer.removeInputHandler(h) });
     renderer.destroy();
     process.stderr.write(message);
     process.exit(code);
@@ -30,13 +33,13 @@ export async function start({ resume }: Start) {
         openFile={createFileEditor(terminal)}
         clipboard={createClipboard({ osc52: text => renderer.copyToClipboardOSC52(text), command: copyCommand(process.platform, process.env) })}
         resume={resume}
-        onQuit={() => exit(0)}
+        onQuit={() => void exit(0)}
         onTerminate={quit => {
           const signals = ['SIGTERM', 'SIGHUP'] as const;
           signals.forEach(s => process.on(s, quit));
           return () => signals.forEach(s => process.off(s, quit));
         }}
-        onFatal={message => exit(1, `resector: ${message}\n`)}
+        onFatal={message => void exit(1, `resector: ${message}\n`)}
       />
     ),
     renderer,
