@@ -26,6 +26,11 @@
       "allowedVersions": "0.25.10"
     },
     {
+      "description": "@opentui/solid does not support Solid 2 yet (peer dependency)",
+      "matchPackageNames": ["solid-js"],
+      "allowedVersions": "<2"
+    },
+    {
       "description": "One PR with every update (all managers, all update types)",
       "matchPackageNames": ["*"],
       "groupName": "all dependencies"
