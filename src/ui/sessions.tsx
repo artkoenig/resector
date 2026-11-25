@@ -1,10 +1,11 @@
 // /sessions: full-screen table of the project's sessions with a preview of the selected one.
 import { useKeyboard, useTerminalDimensions } from '@opentui/solid';
-import { createSignal, For, Show } from 'solid-js';
+import { createMemo, createSignal, For, Show } from 'solid-js';
 import type { SessionStore, StoredSession } from '../adapters/store/sessions';
 import { fold } from '../core/log/fold';
+import { arranged } from '../core/session/family';
 import { ago, around, cell, right } from './format';
-import { errorText, formatTokens, titleOf } from '../gate/text';
+import { count, errorText, formatTokens, titleOf } from '../gate/text';
 import type { Status } from '../gate';
 import { Footer, footerLines, HeaderBand, type Hint } from './parts';
 import { ACCENT, BG, KIND_COLOR, MUTED, SELECTED_BG, TEXT, TONE } from './theme';
@@ -15,13 +16,18 @@ const FIXED_COLUMNS = 60;
 const KEYS: Hint[] = [['↑↓', 'select'], ['enter', 'open'], ['r', 'rename'], ['d', 'delete'], ['n', 'new'], ['/', 'filter'], ['esc', 'back']];
 const EDIT_KEYS: Hint[] = [['enter', 'apply'], ['esc', 'cancel']];
 
-const deleteQuestion = (dirty: boolean) =>
-  dirty ? 'Delete this session? Its worktree has uncommitted changes – y removes them / N' : 'Delete this session? y / N';
+function deleteQuestion({ subagents, dirty }: Deleting): string {
+  const what = subagents ? `Delete this session and its ${count(subagents, 'Subagent session')}?` : 'Delete this session?';
+  return dirty ? `${what} ${subagents ? 'A' : 'Its'} worktree has uncommitted changes – y removes them / N` : `${what} y / N`;
+}
 
+// The session to delete, how many Subagent Sessions go with it, and whether uncommitted changes in a worktree do.
+type Deleting = { session: StoredSession; subagents: number; dirty: boolean };
 type Editing = { kind: 'rename'; session: StoredSession } | { kind: 'filter' };
 
 // open/create/remove switch the current session (remove returns the status text; force: remove the worktree's
-// uncommitted changes too); back returns to the Gate. worktreeDirty: whether deleting would lose changes.
+// uncommitted changes too); back returns to the Gate. subagents: how many Subagent Sessions are deleted with a
+// session. worktreeDirty: whether deleting would lose changes.
 // origin: where a session started when not in the current checkout (branch and directory), else null.
 export type SessionsProps = {
   store: SessionStore;
@@ -31,6 +37,7 @@ export type SessionsProps = {
   open: (id: string) => Promise<void>;
   create: () => Promise<void>;
   remove: (id: string, force: boolean) => Promise<string>;
+  subagents: (id: string) => number;
   worktreeDirty: (id: string) => boolean;
   origin: (s: StoredSession) => string | null;
   rename: (id: string, title: string) => void;
@@ -43,10 +50,14 @@ export function Sessions(props: SessionsProps) {
   const [filter, setFilter] = createSignal('');
   const [editing, setEditing] = createSignal<Editing | null>(null);
   const [draft, setDraft] = createSignal('');
-  // The session to delete, and whether its worktree has uncommitted changes.
-  const [confirm, setConfirm] = createSignal<{ session: StoredSession; dirty: boolean } | null>(null);
+  const [confirm, setConfirm] = createSignal<Deleting | null>(null);
   const [status, setStatus] = createSignal<Status | null>(null);
-  const list = () => all().filter(s => s.title.toLowerCase().includes(filter().toLowerCase()));
+  // Subagent Sessions under their parent's; a filter leaves their place and mark.
+  const rows = createMemo(() => arranged(all()));
+  const depths = createMemo(() => new Map(rows().map(r => [r.session.id, r.depth])));
+  const depthOf = (s: StoredSession) => depths().get(s.id) ?? 0;
+  const label = (s: StoredSession) => (depthOf(s) ? `${'  '.repeat(depthOf(s))}↳ ${s.title}` : s.title);
+  const list = () => rows().map(r => r.session).filter(s => s.title.toLowerCase().includes(filter().toLowerCase()));
   const [selectedId, setSelectedId] = createSignal(props.current());
   const index = () => Math.max(0, list().findIndex(s => s.id === selectedId()));
   const selected = (): StoredSession | undefined => list()[index()];
@@ -92,7 +103,7 @@ export function Sessions(props: SessionsProps) {
     },
     d: () => {
       const s = selected();
-      if (s && !refused(s, '⊘ cannot delete: open in another instance')) setConfirm({ session: s, dirty: props.worktreeDirty(s.id) });
+      if (s && !refused(s, '⊘ cannot delete: open in another instance')) setConfirm({ session: s, subagents: props.subagents(s.id), dirty: props.worktreeDirty(s.id) });
     },
     n: () => void props.create().catch(fail),
     '/': () => {
@@ -123,7 +134,7 @@ export function Sessions(props: SessionsProps) {
 
   const titleWidth = () => Math.max(8, size().width - FIXED_COLUMNS);
   const hints = () => (editing() ? EDIT_KEYS : KEYS);
-  const footerStatus = (): Status | null => (editing() ? null : confirm() ? { text: deleteQuestion(confirm()!.dirty), tone: 'error' } : status());
+  const footerStatus = (): Status | null => (editing() ? null : confirm() ? { text: deleteQuestion(confirm()!), tone: 'error' } : status());
   // Session rows that fit: the screen less header band, column header, blank line, preview (header + blocks),
   // the input line while editing and the footer. Lines never shrink, so rows cannot overlap.
   const capacity = () =>
@@ -146,7 +157,7 @@ export function Sessions(props: SessionsProps) {
 
   const previewTitle = (s: StoredSession) => {
     const at = props.origin(s);
-    return ` · ${s.id} · last blocks${at ? ` · ${at}` : ''}`;
+    return ` · ${s.id}${depthOf(s) ? ' · Subagent' : ''} · last blocks${at ? ` · ${at}` : ''}`;
   };
   const heading = () => `Sessions · ${all().length} sessions${filter() ? ` · filter "${filter()}"` : ''}`;
   const isSelected = (s: StoredSession) => s.id === selected()?.id;
@@ -161,7 +172,7 @@ export function Sessions(props: SessionsProps) {
             <text flexShrink={0} bg={isSelected(s) ? SELECTED_BG : undefined} fg={confirm()?.session === s ? TONE.error : TEXT}>
               <span style={{ fg: ACCENT }}>{`${isSelected(s) ? '┃' : ' '}${s.id === props.current() ? '●' : ' '}`}</span>
               <span style={{ fg: TONE.error }}>{`${s.locked ? '⊘' : ' '}  `}</span>
-              <span>{`${cell(s.title, titleWidth())} `}</span>
+              <span>{`${cell(label(s), titleWidth())} `}</span>
               <span style={{ fg: MUTED }}>{`${ago(s.updated).padEnd(10)} `}</span>
               <span style={{ fg: profileOf(s).fg }}>{`${cell(profileOf(s).text, 20)} `}</span>
               <span style={{ fg: context(s).warn ? TONE.warn : undefined }}>{`${context(s).text.padEnd(14)} `}</span>

@@ -6,7 +6,7 @@ import { gateWith, ofType, results, settled, subagent, until } from './gate.harn
 
 const PROMPT = "fix 'it' && say \"done\"\n$HOME";
 
-test('an allowed subagent call starts one with the prompt as it is; its result says so at once, the loop goes on', async () => {
+test('an allowed subagent call starts one with the prompt as it is; its result says so at once, the log names its Session, the loop goes on', async () => {
   const g = gateWith({ tools: TOOLS, global: { subagent: 'allow' } });
   g.reply({ calls: [subagent(PROMPT)] }, { content: 'started it' });
   g.gate.submit('go');
@@ -16,7 +16,7 @@ test('an allowed subagent call starts one with the prompt as it is; its result s
   expect(g.events.filter(e => e.type === 'BlockAdded' && e.id >= 4 || e.type === 'BackgroundStarted').slice(0, 3)).toEqual([
     { type: 'BlockAdded', id: 4, kind: 'Tool Call', origin: 'model', tool: 'subagent', content: PROMPT },
     { type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', content: '[Subagent started: pid 4343 · log /home/background/4343.log · stop: kill -- -4343]', call: 4 },
-    { type: 'BackgroundStarted', call: 4, pid: 4343, log: '/home/background/4343.log' },
+    { type: 'BackgroundStarted', call: 4, pid: 4343, log: '/home/background/4343.log', session: 'ses_4343' },
   ]);
   expect(g.gate.status()?.text).toContain('answer complete');
   expect(g.sent).toHaveLength(2);
@@ -182,7 +182,7 @@ test('a call with worktree is asked for with the argument; its Tool Result names
       type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', call: 4,
       content: '[Subagent started: pid 4343 · log /home/background/4343.log · stop: kill -- -4343 · worktree /home/worktrees/ses_4343 · branch resector/ses_4343]',
     },
-    { type: 'BackgroundStarted', call: 4, pid: 4343, log: '/home/background/4343.log', worktree: WORKTREE },
+    { type: 'BackgroundStarted', call: 4, pid: 4343, log: '/home/background/4343.log', session: 'ses_4343', worktree: WORKTREE },
   ]);
   expect(JSON.stringify(g.sent[1]!.request)).toContain('\\"worktree\\":true');
 });

@@ -160,7 +160,7 @@ export function gateWith(setup: GateSetup = {}) {
     run: async (prompt, { worktree }) => {
       const pid = 4342 + prompts.push(prompt);
       const made = worktree && { worktree: { path: `/home/worktrees/ses_${pid}`, branch: `resector/ses_${pid}`, base: 'abc' } };
-      return { output: '', exit: null, stopped: null, background: { pid, log: `/home/background/${pid}.log`, ...made } };
+      return { output: '', exit: null, stopped: null, background: { pid, log: `/home/background/${pid}.log`, session: `ses_${pid}`, ...made } };
     },
   };
   let selection: View;

@@ -230,3 +230,51 @@ test('the preview names the branch and directory of a session started in another
   await key('down');
   expect(line(await frameMatching(ui, f => f.includes('Preview · ses_b')), /Preview/)).toContain('· /gone/checkout (gone)');
 });
+
+// A session that started the Subagents with these Sessions.
+const parent = (title: string, ...sessions: string[]): SessionEvent[] => [
+  ...titled('local', title),
+  ...sessions.flatMap((session, i): SessionEvent[] => [
+    { type: 'BlockAdded', id: 90 + i, kind: 'Tool Call', origin: 'model', tool: 'subagent', content: 'look' },
+    { type: 'BackgroundStarted', call: 90 + i, pid: 1, log: '/x.log', session },
+    { type: 'BackgroundExited', call: 90 + i, exit: 0 },
+  ]),
+];
+const withSubagents = () =>
+  sessionsView({ ses_a: titled('local', 'look'), ses_o: titled('local', 'other'), ses_p: parent('plan', 'ses_a', 'ses_b'), ses_b: titled('local', 'fix') });
+
+test('Subagent sessions are listed indented under their parent and marked; one opens on its own', async () => {
+  await withSubagents();
+  for (let i = 0; i < 4; i++) await key('down');
+  const frame = await frameMatching(ui, f => f.includes('Preview · ses_b · Subagent · last blocks'));
+  const titles = frame.split('\n').flatMap(l => l.match(/^.{5}( *(?:↳ )?(?:plan|look|fix)) /)?.[1] ?? []);
+  expect(titles).toEqual(['plan', '  ↳ look', '  ↳ fix']);
+  await key('up');
+  await frameMatching(ui, f => f.includes('Preview · ses_a · Subagent'));
+  await key('enter');
+  await frameMatching(ui, f => f.includes('resumed "look"'));
+});
+
+test('a Subagent session is deleted on its own', async () => {
+  const { store } = await withSubagents();
+  for (let i = 0; i < 3; i++) await key('down');
+  await key('d');
+  await frameMatching(ui, f => f.includes('Delete this session? y / N'));
+  await key('y');
+  await frameMatching(ui, f => f.includes('deleted "look"'));
+  expect(store.list().map(s => s.id).sort()).toEqual(['ses_b', 'ses_o', 'ses_p', 'ses_test']);
+});
+
+test('deleting the parent of the current session says what goes with it and switches away first', async () => {
+  const { store } = await withSubagents();
+  for (let i = 0; i < 3; i++) await key('down');
+  await key('enter');
+  await frameMatching(ui, f => f.includes('resumed "look"'));
+  await openSessions();
+  await key('up');
+  await key('d');
+  await frameMatching(ui, f => f.includes('Delete this session and its 2 Subagent sessions? y / N'));
+  await key('y');
+  await frameMatching(ui, f => f.includes('deleted "plan" · switched to'));
+  expect(store.list().map(s => s.id).sort()).toEqual(['ses_o', 'ses_test']);
+});

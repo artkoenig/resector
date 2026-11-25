@@ -10,8 +10,8 @@ const ARGUMENT: Record<Exclude<Tool, 'question'>, string> = { bash: 'command', w
 // `leftover`: the command left processes running, which were killed when it ended.
 // `background`: it still runs as a Background Process: its process group and log file.
 export type RunResult = { output: string; exit: number | null; stopped: Stopped | null; leftover?: true; background?: Started };
-// worktree: the one made for a Subagent.
-export type Started = { pid: number; log: string; worktree?: SubagentWorktree };
+// session: the id picked for a Subagent's Session; worktree: the one made for a Subagent.
+export type Started = { pid: number; log: string; session?: string; worktree?: SubagentWorktree };
 // Lines of a Background Process's output its Tool Result shows; the rest is in its log.
 const BACKGROUND_LINES = 20;
 
