@@ -3,7 +3,7 @@ import { createRoot, createSignal } from 'solid-js';
 import { BASH_TOOLS, withTools } from '../../test/requests';
 import { permissionRules, type Permissions, type Split } from '../core/approval/approval';
 import type { Config } from '../core/config/config';
-import { subagentRefusal } from '../core/config/subagent';
+import { inWorktree, subagentRefusal } from '../core/config/subagent';
 import type { ChatResult } from '../core/tools/answer';
 import type { BackgroundEnd, SessionEvent, Thinking, Tool } from '../core/log/events';
 import type { Policy } from '../core/policy/policy';
@@ -126,6 +126,7 @@ export type GateSetup = {
   skills?: Skill[];
   logged?: SessionEvent[];
   subagent?: Config['subagent'];
+  headless?: Config['headless'];
   // false: the Session runs outside a git repository.
   repository?: boolean;
 } & Parameters<typeof scriptedBackend>[0];
@@ -155,6 +156,7 @@ export function gateWith(setup: GateSetup = {}) {
   const subagents: Subagents = {
     timeout: 0,
     refused: (running, worktree) => subagentRefusal({ profiles: {}, subagent: setup.subagent }, running, { worktree, repository: setup.repository ?? true }),
+    worktree: asked => inWorktree({ headless: setup.headless }, asked),
     run: async (prompt, { worktree }) => {
       const pid = 4342 + prompts.push(prompt);
       const made = worktree && { worktree: { path: `/home/worktrees/ses_${pid}`, branch: `resector/ses_${pid}`, base: 'abc' } };

@@ -187,6 +187,17 @@ test('a call with worktree is asked for with the argument; its Tool Result names
   expect(JSON.stringify(g.sent[1]!.request)).toContain('\\"worktree\\":true');
 });
 
+test('a worktree every Subagent gets by the config shows on the call without the argument too', async () => {
+  const g = gateWith({ tools: TOOLS, headless: { worktree: true } });
+  g.reply({ calls: [subagent('fix')] }, { content: 'started it' });
+  g.gate.submit('go');
+  await settled(g.gate);
+  expect(titleOf(g.gate.context().blocks.find(b => b.id === 4)!)).toBe('subagent [worktree] fix');
+  g.gate.approve();
+  await settled(g.gate);
+  expect(ofType(g.events, 'BackgroundStarted')[0]).toMatchObject({ worktree: WORKTREE });
+});
+
 const exitNote = (g: ReturnType<typeof gateWith>) =>
   g.events.flatMap(e => (e.type === 'BlockAdded' && e.origin === 'background' ? [e.content] : [])).at(-1);
 

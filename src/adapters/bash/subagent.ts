@@ -62,6 +62,8 @@ export function createSubagents({ cwd, profile, config, registry, repository, wo
   return {
     timeout: 0,
     refused: (running, worktree) => subagentRefusal(config, running, { worktree, repository }),
-    run: (prompt, { signal, worktree }) => (inWorktree(config, worktree) ? startInWorktree(prompt, signal) : start(argv(prompt), signal)),
+    worktree: asked => inWorktree(config, asked),
+    // --no-worktree: the decision is the parent's, the Subagent's own config makes none.
+    run: (prompt, { signal, worktree }) => (worktree ? startInWorktree(prompt, signal) : start([...argv(prompt), '--no-worktree'], signal)),
   };
 }

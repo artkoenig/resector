@@ -16,7 +16,7 @@ type ExportLog = (ref: SessionRef) => string;
 
 const USAGE =
   'usage: resector [-c [id]] | resector -p <prompt> [options] | resector --export-fixture [id] | resector --version\n' +
-  'options with -p: -m <profile> --policy <name|off> --thinking <off|on|level> --tools <list|none> --show <list|all> --max-turns <n> -w --[no-]auto-approve\n';
+  'options with -p: -m <profile> --policy <name|off> --thinking <off|on|level> --tools <list|none> --show <list|all> --max-turns <n> -w --no-worktree --[no-]auto-approve\n';
 // The flags of a Headless Run: allowed only with -p.
 const RUN_OPTIONS = {
   model: { type: 'string', short: 'm' },
@@ -26,6 +26,7 @@ const RUN_OPTIONS = {
   show: { type: 'string' },
   'max-turns': { type: 'string' },
   worktree: { type: 'boolean', short: 'w' },
+  'no-worktree': { type: 'boolean' },
   'auto-approve': { type: 'boolean' },
   'no-auto-approve': { type: 'boolean' },
 } as const;
@@ -60,7 +61,7 @@ function runCommand(prompt: string, values: Values, id?: string): Result | { run
 }
 
 // The flags as the headless config section names them, checked like it; null for a bad value, or for Auto-approve
-// both on and off.
+// or the worktree both on and off.
 function runFlags(values: Values): Flags | null {
   const list = (v: string) => v.split(',').map(s => s.trim()).filter(Boolean);
   const parsed = HeadlessSchema.safeParse({
@@ -70,9 +71,10 @@ function runFlags(values: Values): Flags | null {
     tools: values.tools === undefined ? undefined : values.tools === 'none' ? [] : list(values.tools),
     show: values.show === 'all' ? SHOWN : values.show === undefined ? undefined : list(values.show),
     maxTurns: values['max-turns'] === undefined ? undefined : Number(values['max-turns']),
-    worktree: values.worktree,
+    worktree: values['no-worktree'] ? false : values.worktree,
   });
   const auto = autoApproveFlag(values);
+  if (values.worktree && values['no-worktree']) return null;
   return parsed.success && auto ? { ...parsed.data, ...auto } : null;
 }
 

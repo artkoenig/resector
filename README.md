@@ -143,6 +143,7 @@ Context Policy, Permission Rules and Session Log work as in the TUI. Every run i
 | `--show <thinking,tools,notes,policy\|all>` | nothing: stderr gets the closing line only |
 | `--max-turns <n>` | 50 requests to the model |
 | `-w, --worktree` | off: run in its own git worktree |
+| `--no-worktree` | run where it is started, also with `headless.worktree` set |
 | `--auto-approve`, `--no-auto-approve` | `autoApprove`: run every call the rules leave at `ask`, unasked; or ask for it |
 
 The `headless` section of the [config](#configuration) (global, then project) sets the same; flags win. `permission` and `autoApprove` stay shared with the TUI.

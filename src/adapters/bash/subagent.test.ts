@@ -18,7 +18,7 @@ test('the process of a Subagent gets prompt, profile and flags unchanged, withou
   const prompt = '-fix "it" $(rm x)\n`now`';
   await createSubagents({ cwd, profile: 'qwen', config: { profiles: {} }, registry: recording, ...NO_REPOSITORY }).run(prompt, { signal: new AbortController().signal, onOutput: () => {} });
   const [argv, { cwd: at, wait, env }] = started[0]!;
-  expect(argv.slice(2)).toEqual([`--prompt=${prompt}`, '--model=qwen', '--auto-approve', '--show', 'tools']);
+  expect(argv.slice(2)).toEqual([`--prompt=${prompt}`, '--model=qwen', '--auto-approve', '--show', 'tools', '--no-worktree']);
   expect({ at, wait, env }).toEqual({ at: cwd, wait: 0, env: { RESECTOR_SUBAGENT: 'start', RESECTOR_SUBAGENT_REPORTS: registry.dir } });
 });
 
@@ -68,10 +68,13 @@ test('headless.worktree gives every Subagent a worktree; without either it runs 
   const worktrees = join(cwd, 'data2', 'worktrees');
   const { started, recording } = recorded();
   const at = { cwd: root, profile: 'qwen', registry: recording, repository: true, worktrees, session: () => 'ses_child' };
-  expect((await createSubagents({ ...at, config: { profiles: {} } }).run('look', options)).background?.worktree).toBeUndefined();
-  expect(started[0]![0]).not.toContain('--worktree');
+  const plain = createSubagents({ ...at, config: { profiles: {} } });
+  expect([plain.worktree(), plain.worktree(true)]).toEqual([false, true]);
+  expect((await plain.run('look', options)).background?.worktree).toBeUndefined();
+  // The parent's decision holds: the Subagent's own config does not make one.
+  expect(started[0]![0]).toContain('--no-worktree');
   expect(existsSync(worktrees)).toBe(false);
-  expect((await createSubagents({ ...at, config: { profiles: {}, headless: { worktree: true } } }).run('fix', options)).background?.worktree?.path).toBe(join(worktrees, 'ses_child'));
+  expect(createSubagents({ ...at, config: { profiles: {}, headless: { worktree: true } } }).worktree()).toBe(true);
 });
 
 test('outside a git repository a call with worktree is refused; a worktree that cannot be made fails the call, nothing is started', async () => {
