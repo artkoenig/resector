@@ -16,7 +16,7 @@ type ExportLog = (ref: SessionRef) => string;
 
 const USAGE =
   'usage: resector [-c [id]] | resector -p <prompt> [options] | resector --export-fixture [id] | resector --version\n' +
-  'options with -p: -m <profile> --policy <name|off> --thinking <off|on|level> --tools <list|none> --show <list|all> --max-turns <n> -w --[no-]auto-approve\n';
+  'options with -p: -m <profile> --policy <name|off> --thinking <off|on|level> --tools <list|none> --show <list|all> --max-turns <n> -w --no-worktree --[no-]auto-approve\n';
 // The flags of a Headless Run: allowed only with -p.
 const RUN_OPTIONS = {
   model: { type: 'string', short: 'm' },
@@ -26,6 +26,7 @@ const RUN_OPTIONS = {
   show: { type: 'string' },
   'max-turns': { type: 'string' },
   worktree: { type: 'boolean', short: 'w' },
+  'no-worktree': { type: 'boolean' },
   'auto-approve': { type: 'boolean' },
   'no-auto-approve': { type: 'boolean' },
 } as const;
@@ -59,7 +60,7 @@ function runCommand(prompt: string, values: Values, id?: string): Result | { run
   return flags ? { run: { prompt, flags } } : USAGE_ERROR;
 }
 
-// The flags as the headless config section names them, checked like it; null for a bad value, or for Auto-approve
+// The flags as the headless config section names them, checked like it; null for a bad value, or for a switch
 // both on and off.
 function runFlags(values: Values): Flags | null {
   const list = (v: string) => v.split(',').map(s => s.trim()).filter(Boolean);
@@ -70,18 +71,18 @@ function runFlags(values: Values): Flags | null {
     tools: values.tools === undefined ? undefined : values.tools === 'none' ? [] : list(values.tools),
     show: values.show === 'all' ? SHOWN : values.show === undefined ? undefined : list(values.show),
     maxTurns: values['max-turns'] === undefined ? undefined : Number(values['max-turns']),
-    worktree: values.worktree,
   });
-  const auto = autoApproveFlag(values);
-  return parsed.success && auto ? { ...parsed.data, ...auto } : null;
+  const switches = switchFlags(values);
+  return parsed.success && switches ? { ...parsed.data, ...switches } : null;
 }
 
-// Auto-approve as the flags switch it, left to the config when neither is given; null for both.
-function autoApproveFlag(values: Values): Pick<Flags, 'autoApprove'> | null {
-  const [on, off] = [values['auto-approve'], values['no-auto-approve']];
-  if (on && off) return null;
-  return { autoApprove: on ? true : off ? false : undefined };
+// Auto-approve and the worktree as the flags switch them, left to the config when neither is given; null for both.
+function switchFlags(values: Values): Pick<Flags, 'autoApprove' | 'worktree'> | null {
+  const autoApprove = switched(values['auto-approve'], values['no-auto-approve']);
+  const worktree = switched(values.worktree, values['no-worktree']);
+  return autoApprove === null || worktree === null ? null : { autoApprove, worktree };
 }
+const switched = (on?: boolean, off?: boolean): boolean | undefined | null => (on && off ? null : on ? true : off ? false : undefined);
 
 if (import.meta.main) {
   const command = main(process.argv.slice(2));

@@ -294,3 +294,15 @@ test('the Environment Note, Project Instructions and Skills are to keep; File Re
   // A new Revision (the refreshed Environment Note) keeps it.
   expect(block([...events, { type: 'Edit', id: 3, revision: 2, content: 'y' }], 3)!.keep).toBe(true);
 });
+
+test('callText: a subagent call in a worktree of its own says so', () => {
+  expect(callText({ tool: 'subagent', content: 'fix it' })).toBe('subagent fix it');
+  expect(callText({ tool: 'subagent', content: 'fix it', worktree: true })).toBe('subagent [worktree] fix it');
+});
+
+test('a subagent call asked for in a worktree of its own keeps that; one without has no such mark', () => {
+  const call = (id: number, worktree?: true): SessionEvent => ({ type: 'BlockAdded', id, kind: 'Tool Call', origin: 'model', tool: 'subagent', content: 'fix', ...(worktree && { worktree }) });
+  const [own, shared] = fold([{ type: 'SessionCreated', profile: 'default', protocol: 'native' }, call(1, true), call(2)]).blocks;
+  expect(own).toEqual({ id: 1, kind: 'Tool Call', origin: 'model', tool: 'subagent', content: 'fix', cutOff: false, revision: 1, pending: true, worktree: true });
+  expect(shared).toEqual({ id: 2, kind: 'Tool Call', origin: 'model', tool: 'subagent', content: 'fix', cutOff: false, revision: 1, pending: true });
+});

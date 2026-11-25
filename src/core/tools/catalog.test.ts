@@ -59,8 +59,15 @@ const IMAGE = {
 
 const SUBAGENT = {
   name: 'subagent',
-  description: expect.stringContaining('Start a subagent'),
-  parameters: { type: 'object', properties: { prompt: { type: 'string', description: 'the whole task, with all it needs to know' } }, required: ['prompt'] },
+  description: expect.stringMatching(/Start a subagent.*`worktree`.*changes files.*uncommitted changes are not in it.*git merge.*without commits or changes is removed/s),
+  parameters: {
+    type: 'object',
+    properties: {
+      prompt: { type: 'string', description: 'the whole task, with all it needs to know' },
+      worktree: { type: 'boolean', description: 'run it in a git worktree of its own, on a branch of its own' },
+    },
+    required: ['prompt'],
+  },
 };
 
 test('a new Tools Block offers every tool: bash, websearch, question, skill, image and subagent', () => {

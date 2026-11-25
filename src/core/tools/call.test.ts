@@ -21,7 +21,7 @@ test('a bash call with background: true runs in the background; it is sent back 
   expect(parseCall({ name: 'bash', arguments: '{"command":"serve","background":true}' }, ['bash'])).toEqual({ tool: 'bash', content: 'serve', background: true });
   expect(parseCall({ name: 'bash', arguments: '{"command":"ls","background":false}' }, ['bash'])).toEqual({ tool: 'bash', content: 'ls' });
   expect(parseCall({ name: 'websearch', arguments: '{"query":"bun","background":true}' }, ['websearch'])).toEqual({ tool: 'websearch', content: 'bun' });
-  expect(callArguments('bash', 'serve', true)).toBe('{"command":"serve","background":true}');
+  expect(callArguments('bash', 'serve', { background: true })).toBe('{"command":"serve","background":true}');
 });
 
 test('a question call yields its arguments as content; an invalid one is rejected back to the model', () => {
@@ -109,4 +109,17 @@ test('a subagent call has a prompt, sent back as it came', () => {
   expect(parseCall({ name: 'subagent', arguments: '{"prompt":"look"}' }, ['subagent'])).toEqual({ tool: 'subagent', content: 'look' });
   expect(parseCall({ name: 'subagent', arguments: '{}' }, ['subagent'])).toEqual({ error: 'no prompt string' });
   expect(callArguments('subagent', 'look')).toBe('{"prompt":"look"}');
+});
+
+test('a subagent call with worktree: true runs in a worktree of its own; it is sent back with it', () => {
+  expect(parseCall({ name: 'subagent', arguments: '{"prompt":"fix","worktree":true}' }, ['subagent'])).toEqual({ tool: 'subagent', content: 'fix', worktree: true });
+  expect(parseCall({ name: 'subagent', arguments: '{"prompt":"fix","worktree":false}' }, ['subagent'])).toEqual({ tool: 'subagent', content: 'fix' });
+  expect(parseCall({ name: 'bash', arguments: '{"command":"ls","worktree":true}' }, ['bash'])).toEqual({ tool: 'bash', content: 'ls' });
+  expect(callArguments('subagent', 'fix', { worktree: true })).toBe('{"prompt":"fix","worktree":true}');
+});
+
+test('a Subagent started in a worktree: its result names the worktree and its branch', () => {
+  const worktree = { path: '/data/worktrees/ses_a', branch: 'resector/ses_a', base: 'abc' };
+  expect(resultText({ output: '', exit: null, stopped: null, background: { pid: 42, log: '/h/42.log', worktree } }, 120, 'subagent'))
+    .toBe('[Subagent started: pid 42 · log /h/42.log · stop: kill -- -42 · worktree /data/worktrees/ses_a · branch resector/ses_a]');
 });

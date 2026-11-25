@@ -4,7 +4,7 @@ import { quoted, sessionRules } from '../core/approval/approval';
 import type { ChatResult } from '../core/tools/answer';
 import type { RunResult } from '../core/tools/call';
 import * as ops from '../core/context/operations';
-import type { Tool } from '../core/log/events';
+import type { SessionEvent, Tool } from '../core/log/events';
 import type { Block } from '../core/log/fold';
 import { runningSubagents } from '../core/notes/background';
 import { imageError, type ImageFiles } from '../core/notes/files';
@@ -78,9 +78,14 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
   // The answer's text and Tool Calls become blocks; its calls are decided by the rules.
   // `policy`: what the active policy did before the request; `speed`: how fast the answer was generated.
   // Returns whether the answer ended the tool loop: complete, without calls.
+  // A subagent call says where its Subagent runs, also when the config and not the call asks for the worktree:
+  // decided once, as the user approves it.
+  const inPlace = <E extends SessionEvent>(e: E): E =>
+    e.type === 'BlockAdded' && e.kind === 'Tool Call' && e.tool === 'subagent' && tools.subagents.worktree(e.worktree) ? { ...e, worktree: true } : e;
   function finish(result: ChatResult, policy: string | null, speed: string | null = null): boolean {
     // Calls to a tool denied by rule are parsed too: they are answered "denied by rule".
-    const { events, notRun } = answerBlocks(result, nextId(), [...k.toolsOn(), ...rules.denied()]);
+    const { events: blocks, notRun } = answerBlocks(result, nextId(), [...k.toolsOn(), ...rules.denied()]);
+    const events = blocks.map(inPlace);
     // At once: a rejected Question is never pending without its Tool Result.
     batch(() => {
       events.forEach(append);
@@ -138,7 +143,7 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
 
   const runnerOf = ({ tool }: Block) => (tool === 'websearch' ? tools.searcher : tool === 'subagent' ? tools.subagents : tools.runner);
   // Why a `subagent` call starts none now; null for every other call.
-  const refusal = ({ tool }: Block) => (tool === 'subagent' ? tools.subagents.refused(runningSubagents(k.events())) : null);
+  const refusal = ({ tool, worktree }: Block) => (tool === 'subagent' ? tools.subagents.refused(runningSubagents(k.events()), worktree) : null);
   // Runs the call with its tool's runner; its output streams into a live Tool Result row, then the next call is decided.
   async function run(call: Block, notes: string[]) {
     const atOnce = AT_ONCE[call.tool as Tool];
@@ -153,7 +158,7 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
     setStatus(null);
     try {
       const onOutput = (text: string) => setRunning({ ...running()!, output: running()!.output + text });
-      const result = await tool.run(call.content, { signal: abort.signal, onOutput, ...(call.background && { background: true }) });
+      const result = await tool.run(call.content, { signal: abort.signal, onOutput, ...(call.background && { background: true }), ...(call.worktree && { worktree: true }) });
       ran(call, result, tool.timeout, notes);
     } catch (e) {
       setRunning(null);

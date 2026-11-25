@@ -36,8 +36,8 @@ export function answerBlocks(result: ChatResult, first: number, tools: string[])
   const kept = calls.filter(c => cutOff || errorOf(c).length).map(c => `${c.raw.name} ${c.raw.arguments}`);
   const content = [result.content, ...kept].filter(Boolean).join('\n');
   const text = textBlocks(result.thinking, content, cutOff, runnable.length > 0, first);
-  const toolCalls = runnable.map(({ tool, content, background }, i): BlockAdded =>
-    ({ type: 'BlockAdded', id: first + text.length + i, kind: 'Tool Call', origin: 'model', content, ...(tool !== 'bash' && { tool }), ...(background && { background }) }));
+  const toolCalls = runnable.map(({ tool, content, background, worktree }, i): BlockAdded =>
+    ({ type: 'BlockAdded', id: first + text.length + i, kind: 'Tool Call', origin: 'model', content, ...(tool !== 'bash' && { tool }), ...(background && { background }), ...(worktree && { worktree }) }));
   // A rejected Question is answered with the error right away (never shown to the user), after all calls.
   const rejections = runnable.flatMap(({ rejected }, i) => (rejected === undefined ? [] : [{ call: toolCalls[i]!.id, rejected }]));
   const results = rejections.map(({ call, rejected }, i): BlockAdded =>

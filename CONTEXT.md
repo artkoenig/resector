@@ -72,7 +72,7 @@ Process a bash or `subagent` Tool Call starts that keeps running after the call'
 _Avoid_: job, service, daemon
 
 **Subagent**:
-A Headless Run a Session's model starts with the `subagent` tool; a Background Process of that Session. Runs with Auto-approve in a Session of its own, inherits nothing of the parent's Context and starts no Subagents itself. At its end it writes a summary of its work, which the parent gets in the exit Note. Its Session is listed under the parent Session and deleted with it.
+A Headless Run a Session's model starts with the `subagent` tool; a Background Process of that Session. Runs with Auto-approve in a Session of its own, inherits nothing of the parent's Context and starts no Subagents itself. At its end it writes a summary of its work, which the parent gets in the exit Note. With the tool's `worktree` argument it runs in a Session Worktree of its own, its branch started from the HEAD of where the parent runs; merging that branch is the parent model's work. Its Session is listed under the parent Session and deleted with it.
 _Avoid_: worker, child agent, task
 
 **Hold**:
@@ -138,7 +138,7 @@ Complete, append-only sequence of events of a session: blocks added (by user, mo
 _Avoid_: history, transcript
 
 **Session Worktree**:
-Git worktree of its own, in the Project Home, in which a Session runs instead of the project directory, so its tools change nothing there. Switched per Session and kept after resume; removed with its Session, its branch only when merged.
+Git worktree of its own, in the Project Home, in which a Session runs instead of the project directory, so its tools change nothing there. Switched per Session and kept after resume; removed with its Session, its branch only when merged. A Subagent's is removed with its branch at the Subagent's end when left clean and without a commit.
 
 **Model Profile**:
 Per-model settings: backend, endpoint, tokenizer, window size, Tool Protocol, tool result format, sampling, thinking at session start (off, on or effort level; switchable at the Review Gate), and optionally another Model Profile used for Compaction (default: the same). Fixed for a session; only when it is gone from the config at resume does the session fall back to the default Model Profile.

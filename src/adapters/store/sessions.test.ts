@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { newSession } from '../../core/session/session';
-import { openSessionStore } from './sessions';
+import { openSessionStore, sessionId } from './sessions';
 
 const dir = () => mkdtempSync(join(tmpdir(), 'resector-sessions-'));
 const sleeper = Bun.spawn(['sleep', '30']);
@@ -118,4 +118,12 @@ test('orphaned lists the sessions with a background record that no live instance
   } finally {
     sleeper.kill();
   }
+});
+
+test('a vacant id is the first no Session has and nothing else has taken', () => {
+  const root = dir();
+  stored(root, sessionId(1000), 1);
+  const store = openSessionStore(root);
+  expect(store.vacant(id => id === sessionId(1001), 1000)).toBe(sessionId(1002));
+  expect(store.vacant(() => false, 1000)).toBe(sessionId(1001));
 });

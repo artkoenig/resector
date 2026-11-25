@@ -3,7 +3,7 @@ import { createRoot, createSignal } from 'solid-js';
 import { BASH_TOOLS, withTools } from '../../test/requests';
 import { permissionRules, type Permissions, type Split } from '../core/approval/approval';
 import type { Config } from '../core/config/config';
-import { subagentRefusal } from '../core/config/subagent';
+import { inWorktree, subagentRefusal } from '../core/config/subagent';
 import type { ChatResult } from '../core/tools/answer';
 import type { BackgroundEnd, SessionEvent, Thinking, Tool } from '../core/log/events';
 import type { Policy } from '../core/policy/policy';
@@ -126,6 +126,9 @@ export type GateSetup = {
   skills?: Skill[];
   logged?: SessionEvent[];
   subagent?: Config['subagent'];
+  headless?: Config['headless'];
+  // false: the Session runs outside a git repository.
+  repository?: boolean;
 } & Parameters<typeof scriptedBackend>[0];
 
 // The Gate on the minimal view: rows are the blocks sent next, the selection follows. focused: the blocks the Gate
@@ -148,14 +151,16 @@ export function gateWith(setup: GateSetup = {}) {
   const [active, setActive] = createSignal<Policy | null>(null);
   const [autoOn, setAutoOn] = createSignal(false);
   const searcher = { timeout: 30, run: async (query: string) => ({ output: `results for ${query}\n`, exit: 0, stopped: null }) };
-  // Starts no process: the prompts of the Subagents asked for, pids from 4343.
+  // Starts no process: the prompts of the Subagents asked for, pids from 4343; a worktree is named after the pid.
   const prompts: string[] = [];
   const subagents: Subagents = {
     timeout: 0,
-    refused: running => subagentRefusal({ profiles: {}, subagent: setup.subagent }, running),
-    run: async prompt => {
+    refused: (running, worktree) => subagentRefusal({ profiles: {}, subagent: setup.subagent }, running, { worktree, repository: setup.repository ?? true }),
+    worktree: asked => inWorktree({ headless: setup.headless }, asked),
+    run: async (prompt, { worktree }) => {
       const pid = 4342 + prompts.push(prompt);
-      return { output: '', exit: null, stopped: null, background: { pid, log: `/home/background/${pid}.log` } };
+      const made = worktree && { worktree: { path: `/home/worktrees/ses_${pid}`, branch: `resector/ses_${pid}`, base: 'abc' } };
+      return { output: '', exit: null, stopped: null, background: { pid, log: `/home/background/${pid}.log`, ...made } };
     },
   };
   let selection: View;

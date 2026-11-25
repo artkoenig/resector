@@ -4,7 +4,7 @@ import { main } from './main';
 
 const USAGE =
   'usage: resector [-c [id]] | resector -p <prompt> [options] | resector --export-fixture [id] | resector --version\n' +
-  'options with -p: -m <profile> --policy <name|off> --thinking <off|on|level> --tools <list|none> --show <list|all> --max-turns <n> -w --[no-]auto-approve\n';
+  'options with -p: -m <profile> --policy <name|off> --thinking <off|on|level> --tools <list|none> --show <list|all> --max-turns <n> -w --no-worktree --[no-]auto-approve\n';
 
 test('--version prints the package version', () => {
   expect(main(['--version'])).toEqual({ code: 0, out: `resector ${pkg.version}\n` });
@@ -57,6 +57,7 @@ test('the flags of -p are passed on; none without -p, a bad value or Auto-approv
     run: { prompt: 'hi', flags: { tools: [], show: ['thinking', 'tools', 'notes', 'policy'], profile: 'big', worktree: true } },
   });
   expect(main(['-p', 'hi', '--no-auto-approve'])).toEqual({ run: { prompt: 'hi', flags: { autoApprove: false } } });
-  for (const bad of [['--max-turns', '0'], ['--max-turns', 'many'], ['--show', 'tools,colors'], ['--auto-approve', '--no-auto-approve']]) expect(main(['-p', 'hi', ...bad])).toEqual({ code: 2, out: USAGE });
-  for (const alone of [['-m', 'big'], ['--auto-approve'], ['--no-auto-approve'], ['-w'], ['-c', '--tools', 'none']]) expect(main(alone)).toEqual({ code: 2, out: USAGE });
+  expect(main(['-p', 'hi', '--no-worktree'])).toEqual({ run: { prompt: 'hi', flags: { worktree: false } } });
+  for (const bad of [['--max-turns', '0'], ['--max-turns', 'many'], ['--show', 'tools,colors'], ['--auto-approve', '--no-auto-approve'], ['-w', '--no-worktree']]) expect(main(['-p', 'hi', ...bad])).toEqual({ code: 2, out: USAGE });
+  for (const alone of [['-m', 'big'], ['--auto-approve'], ['--no-auto-approve'], ['-w'], ['--no-worktree'], ['-c', '--tools', 'none']]) expect(main(alone)).toEqual({ code: 2, out: USAGE });
 });

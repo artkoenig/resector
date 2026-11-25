@@ -14,7 +14,9 @@ export type StoredSession = SessionSummary & { id: string; updated: Date; locked
 export type OpenSession = { id: string; events: SessionEvent[]; log: SessionLog & { path: string }; release: () => void };
 export type SessionStore = ReturnType<typeof openSessionStore>;
 
-const newId = () => `ses_${Date.now().toString(36)}`;
+// A session's id from the time it is made at.
+export const sessionId = (at: number) => `ses_${at.toString(36)}`;
+const newId = () => sessionId(Date.now());
 
 function alive(pid: number): boolean {
   try {
@@ -83,7 +85,16 @@ export function openSessionStore(dir: string, { id = newId } = {}) {
         })
         .sort((a, b) => b.updated.getTime() - a.updated.getTime());
     },
-    create: () => lock(id()),
+    // as: the id picked for it (a Subagent's, by its parent Session).
+    create(as?: string): OpenSession {
+      if (as !== undefined && existsSync(logPath(as))) throw new Error(`session ${as} exists`);
+      return lock(as ?? id());
+    },
+    // An id to pick for a new Session: no Session has it, and nothing `taken` (a worktree left behind).
+    vacant(taken: (id: string) => boolean, from = Date.now()): string {
+      const free = (id: string) => !existsSync(logPath(id)) && !lockedByOther(id) && !taken(id);
+      for (let at = from; ; at++) if (free(sessionId(at))) return sessionId(at);
+    },
     open: (ref: SessionRef): OpenSession => lock(resolve(ref)),
     read: (id: string) => read(resolve(id)),
     exportLog: (ref: SessionRef): string => readFileSync(logPath(resolve(ref)), 'utf8'),

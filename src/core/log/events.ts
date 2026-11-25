@@ -19,8 +19,11 @@ type By = { by?: string };
 
 // How a Background Process ended: bash's exit code, or the signal that killed it (`SIGTERM`), or why resector stopped
 // it: `session ended` (released with its Session), `user` (`k`), `orphaned` (left by a crashed instance).
-// report: what a Subagent left for its parent Session.
-export type BackgroundEnd = ({ exit: number } | { signal: string }) & { report?: SubagentReport };
+// report: what a Subagent left for its parent Session. worktree: its worktree is still there (removed when left
+// empty); dirty: with uncommitted changes.
+export type BackgroundEnd = ({ exit: number } | { signal: string }) & { report?: SubagentReport; worktree?: { dirty: boolean } };
+// A Subagent's worktree: its top level, its branch and the commit it started from.
+export type SubagentWorktree = { path: string; branch: string; base: string };
 // A Subagent's Session (none when it ended before one was opened), the requests of its run and the Context's tokens at
 // the last one. outcome: how its run ended, none while it goes on; text: its summary, or the status of an error.
 export type SubagentReport = { session?: string; turns: number; tokens: number; outcome?: 'answer' | 'error' | 'aborted' | 'max-turns'; text?: string };
@@ -38,15 +41,16 @@ export type SessionEvent =
   // Tool Result: `call` = its Tool Call, content = the output (origin user: the answer to a Question).
   // file: the file a Note was read from. Older logs may carry `pin` (ADR 0002): ignored on replay.
   // background: a bash Tool Call run as a Background Process; exited: the Note telling Tool Call `exited`'s Background
-  // Process ended.
-  | { type: 'BlockAdded'; id: number; kind: Kind; origin: Origin; content: string; tool?: Tool; cutOff?: true; call?: number; stopped?: Stopped; file?: string; background?: true; exited?: number }
+  // Process ended. worktree: a subagent Tool Call asking for a worktree of its own.
+  | { type: 'BlockAdded'; id: number; kind: Kind; origin: Origin; content: string; tool?: Tool; cutOff?: true; call?: number; stopped?: Stopped; file?: string; background?: true; worktree?: true; exited?: number }
   // `@<path>[:a-b]`: a reference row, read only on send (an image file: an Image block) …
   | { type: 'FileReferenced'; id: number; call?: number; file: string }
   // … into a snapshot, never refreshed afterwards; an image into a copy in the Project Home, `image` its name.
   | { type: 'FileRead'; id: number; content: string }
   | { type: 'ImageRead'; id: number; image: string }
   // Tool Call `call` keeps running as a Background Process: its process group `pid`, its output in `log`.
-  | { type: 'BackgroundStarted'; call: number; pid: number; log: string }
+  // worktree: the one made for a Subagent.
+  | { type: 'BackgroundStarted'; call: number; pid: number; log: string; worktree?: SubagentWorktree }
   // … its process group is empty: the leader's exit code, or what ended it (a signal's name, `session ended`).
   | ({ type: 'BackgroundExited'; call: number } & BackgroundEnd)
   | { type: 'RequestSent'; hash: string; tokens: number }

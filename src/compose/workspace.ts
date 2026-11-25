@@ -1,6 +1,6 @@
 // The app's wiring outside any view: config and Context Policies, opening a new or resumed session, where it runs
 // (checkout or Session Worktree) and the ports for it. Shared by the TUI and runs without it.
-import { rmSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createSignal } from 'solid-js';
 import { connect } from '../adapters/backend/connect';
@@ -13,13 +13,13 @@ import { loadConfig, type ConfigPaths } from '../adapters/fs/config';
 import { loadPolicies } from '../adapters/fs/policies';
 import { listProjectFiles, probeEnvironment, projectFiles, projectImages, projectInstructions, projectTexts, tilde } from '../adapters/fs/project';
 import { discoverSkills } from '../adapters/fs/skills';
-import { ensureWorktree, isRepository, listBranches, locateCheckout, mainCheckout, removeWorktree, status, switchBranch, topLevel, watchHead, worktreeDirty } from '../adapters/git/git';
+import { ensureWorktree, isRepository, listBranches, locateCheckout, mainCheckout, removeWorktree, settleWorktree, status, switchBranch, topLevel, watchHead, worktreeDirty } from '../adapters/git/git';
 import { createSearcher } from '../adapters/search/ddgr';
 import type { SessionStore } from '../adapters/store/sessions';
 import type { Split } from '../core/approval/approval';
-import type { SessionEvent } from '../core/log/events';
+import type { BackgroundEnd, SessionEvent } from '../core/log/events';
 import { fold } from '../core/log/fold';
-import { exitOf } from '../core/notes/background';
+import { exitOf, runningAs } from '../core/notes/background';
 import { environmentText } from '../core/notes/environment';
 import { BUILT_IN, DEFAULT_POLICY } from '../core/policy/built-in';
 import type { Policy } from '../core/policy/policy';
@@ -56,8 +56,8 @@ const DEFAULT_BACKGROUND_WAIT = 5;
 // A websearch runs into this timeout (seconds).
 const SEARCH_TIMEOUT = 30;
 
-// which: a session to resume, else a new session (with start); started: at start.
-export type OpenWith = { which?: SessionRef; started?: boolean; start?: StartWith };
+// which: a session to resume, else a new session (with start, and the id picked for it); started: at start.
+export type OpenWith = { which?: SessionRef; started?: boolean; start?: StartWith; id?: string };
 
 // Loads the Context Policies once; the active policy and Auto-approve belong to the app, they stay when switching
 // sessions. Auto-approve starts as configured.
@@ -87,10 +87,25 @@ export async function openWorkspace(options: WorkspaceOptions) {
   // logged as ended for every one recorded, so none stays running in its Session Log.
   for (const id of store.orphaned()) {
     for (const pid of reapOrphans(store.backgroundRecord(id))) {
-      const exited = store.has(id) && exitOf(store.read(id), pid, { signal: 'orphaned', ...readReport(backgroundLogs(id), pid) });
+      const exited = store.has(id) && exitOf(store.read(id), pid, settled(store.read(id), pid, { signal: 'orphaned', ...readReport(backgroundLogs(id), pid) }));
       if (exited) store.append(id, exited);
     }
   }
+  // The end of process group `pid` with what is left of the worktree made for it, a Subagent's: removed when left
+  // empty; one that cannot be looked at is named as left.
+  function settled(events: SessionEvent[], pid: number, end: BackgroundEnd): BackgroundEnd {
+    const worktree = runningAs(events, pid)?.worktree;
+    if (!worktree) return end;
+    let left: BackgroundEnd['worktree'];
+    try {
+      left = settleWorktree(here, worktree) ?? undefined;
+    } catch {
+      left = { dirty: false };
+    }
+    return { ...end, ...(left && { worktree: left }) };
+  }
+  // An id for a Subagent's Session, picked by its parent: no Session and no worktree has it.
+  const subagentSession = () => store.vacant(id => existsSync(join(worktrees, id)));
   // The project as seen from where a session runs: its checkout or its worktree.
   const projectAt = (dir: string, checkout = here) => ({
     read: projectFiles(dir),
@@ -109,8 +124,8 @@ export async function openWorkspace(options: WorkspaceOptions) {
     return other && other !== name ? { profile: other, backend: await connect(config.profile(other), `${session}:compaction`) } : null;
   };
 
-  function create(loaded: Loaded, start: StartWith | undefined, skills: Skill[]) {
-    const opened = store.create();
+  function create(loaded: Loaded, start: StartWith | undefined, skills: Skill[], id?: string) {
+    const opened = store.create(id);
     const profile = loaded.profile(start?.profile);
     // The project instructions are read once, now.
     const events = newSession(profile.name, loaded.systemPrompt(profile), {
@@ -162,13 +177,13 @@ export async function openWorkspace(options: WorkspaceOptions) {
   }
 
   // A new one is dropped again if its backend fails.
-  async function open(loaded: Loaded, { which, started = false, start }: OpenWith = {}): Promise<Opened> {
+  async function open(loaded: Loaded, { which, started = false, start, id }: OpenWith = {}): Promise<Opened> {
     split ??= await createSplit();
     if (start || !autoConfigured) setAutoOn(start?.autoApprove ?? loaded.config.autoApprove);
     autoConfigured = true;
     // From the checkout's top level, also when started in a subdirectory.
     const skills = discoverSkills(topLevel(here), paths.home);
-    const { opened, events, notice } = which ? resume(loaded, which, started, skills) : create(loaded, start, skills);
+    const { opened, events, notice } = which ? resume(loaded, which, started, skills) : create(loaded, start, skills, id);
     const profile = fold(events).profile;
     const backend = await connect(loaded.profile(profile), opened.id).catch(e => {
       opened.release();
@@ -195,7 +210,8 @@ export async function openWorkspace(options: WorkspaceOptions) {
   // are logged here, so a resumed session still has them.
   function exitsLogged(registry: Background, log: SessionLog, events: () => SessionEvent[]): Processes {
     const listeners = new Set<Parameters<Processes['onExit']>[0]>();
-    registry.onExit((pid, end) => {
+    registry.onExit((pid, ended) => {
+      const end = settled(events(), pid, ended);
       if (listeners.size) return listeners.forEach(l => l(pid, end));
       const exited = exitOf(events(), pid, end);
       if (exited) log.append(exited);
@@ -248,7 +264,7 @@ export async function openWorkspace(options: WorkspaceOptions) {
         background: { registry: background, wait: loaded.config.bash?.backgroundWait ?? DEFAULT_BACKGROUND_WAIT },
       }),
       searcher: createSearcher({ cwd: dir, timeout: SEARCH_TIMEOUT }),
-      subagents: createSubagents({ cwd: dir, profile, config: loaded.config, registry: background }),
+      subagents: createSubagents({ cwd: dir, profile, config: loaded.config, registry: background, repository, worktrees, session: subagentSession }),
       approval: { split: split!, root: dir, readable: backgroundLogs(id), permissions: () => loaded.permissions },
       project: projectAt(dir, checkout),
       git: repository ? git : null,

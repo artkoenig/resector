@@ -2,6 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, realpathSync, watch } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import type { SubagentWorktree } from '../../core/log/events';
 
 // current: null on a detached HEAD. elsewhere: the branches checked out in another worktree, with its directory;
 // git refuses to switch to them.
@@ -117,3 +118,24 @@ export function removeWorktree(root: string, worktrees: string, session: string,
   const kept = spawnSync('git', ['branch', '-d', branch], { cwd: root }).status !== 0;
   return { branch, kept };
 }
+
+// The commit a new worktree made from here starts at.
+export const head = (root: string) => git(root, 'rev-parse', 'HEAD');
+
+// What is left of a Subagent's worktree at its end. Left clean and without a commit (its HEAD and its branch still at
+// the base) it is removed with its branch: null, as when both are gone already. Otherwise it stays, or its branch
+// alone; dirty: whether it has uncommitted changes.
+export function settleWorktree(root: string, { path, branch, base }: SubagentWorktree): { dirty: boolean } | null {
+  git(root, 'worktree', 'prune');
+  const present = existsSync(join(path, '.git'));
+  if (present && status(path)) return { dirty: true };
+  const kept = hasBranch(root, branch);
+  if (!kept || !atBase(root, { path, branch, base }, present)) return present || kept ? { dirty: false } : null;
+  if (present) git(root, 'worktree', 'remove', path);
+  git(root, 'branch', '-D', branch);
+  return null;
+}
+
+// Whether nothing was committed: the branch, and the worktree when it is still there, are at the base.
+const atBase = (root: string, { path, branch, base }: SubagentWorktree, present: boolean) =>
+  git(root, 'rev-parse', `refs/heads/${branch}`) === base && (!present || head(path) === base);

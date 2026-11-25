@@ -1,6 +1,7 @@
 // Subagent tests without a renderer: a `subagent` Tool Call, approved, starts one and the Tool Loop goes on.
 import { expect, test } from 'bun:test';
 import { TOOLS } from '../core/tools/catalog';
+import { titleOf } from './text';
 import { gateWith, ofType, results, settled, subagent, until } from './gate.harness';
 
 const PROMPT = "fix 'it' && say \"done\"\n$HOME";
@@ -150,4 +151,75 @@ test('a refused call left pending by Esc fails at the next Enter, the loop goes 
   expect(g.prompts).toEqual([]);
   expect(contents(g.events)).toEqual(['subagent.profile: unknown profile x (profiles: )\n[exit 1]']);
   expect(g.sent).toHaveLength(2);
+});
+
+const inWorktree = (prompt: string) => ({ name: 'subagent', arguments: JSON.stringify({ prompt, worktree: true }) });
+const WORKTREE = { path: '/home/worktrees/ses_4343', branch: 'resector/ses_4343', base: 'abc' };
+
+test('a call with worktree outside a git repository fails at once: nothing is started, nothing asked for', async () => {
+  const g = gateWith({ tools: TOOLS, repository: false });
+  g.reply({ calls: [inWorktree('fix')] }, { content: 'ok' });
+  g.gate.submit('go');
+  await settled(g.gate);
+  expect(g.prompts).toEqual([]);
+  expect(contents(g.events)).toEqual(['worktree: not a git repository\n[exit 1]']);
+  expect(ofType(g.events, 'BackgroundStarted')).toEqual([]);
+  expect(g.sent).toHaveLength(2);
+});
+
+test('a call with worktree is asked for with the argument; its Tool Result names the worktree and its branch', async () => {
+  const g = gateWith({ tools: TOOLS });
+  g.reply({ calls: [inWorktree('fix')] }, { content: 'started it' });
+  g.gate.submit('go');
+  await settled(g.gate);
+  expect(g.gate.status()?.text).toStartWith('? approve');
+  expect(titleOf(g.gate.context().blocks.find(b => b.id === 4)!)).toBe('subagent [worktree] fix');
+  g.gate.approve();
+  await settled(g.gate);
+  expect(g.events.filter(e => e.type === 'BlockAdded' && e.id >= 4 || e.type === 'BackgroundStarted').slice(0, 3)).toEqual([
+    { type: 'BlockAdded', id: 4, kind: 'Tool Call', origin: 'model', tool: 'subagent', content: 'fix', worktree: true },
+    {
+      type: 'BlockAdded', id: 5, kind: 'Tool Result', origin: 'tool', call: 4,
+      content: '[Subagent started: pid 4343 · log /home/background/4343.log · stop: kill -- -4343 · worktree /home/worktrees/ses_4343 · branch resector/ses_4343]',
+    },
+    { type: 'BackgroundStarted', call: 4, pid: 4343, log: '/home/background/4343.log', worktree: WORKTREE },
+  ]);
+  expect(JSON.stringify(g.sent[1]!.request)).toContain('\\"worktree\\":true');
+});
+
+test('a worktree every Subagent gets by the config shows on the call without the argument too', async () => {
+  const g = gateWith({ tools: TOOLS, headless: { worktree: true } });
+  g.reply({ calls: [subagent('fix')] }, { content: 'started it' });
+  g.gate.submit('go');
+  await settled(g.gate);
+  expect(titleOf(g.gate.context().blocks.find(b => b.id === 4)!)).toBe('subagent [worktree] fix');
+  g.gate.approve();
+  await settled(g.gate);
+  expect(ofType(g.events, 'BackgroundStarted')[0]).toMatchObject({ worktree: WORKTREE });
+});
+
+const exitNote = (g: ReturnType<typeof gateWith>) =>
+  g.events.flatMap(e => (e.type === 'BlockAdded' && e.origin === 'background' ? [e.content] : [])).at(-1);
+
+async function startedInWorktree() {
+  const g = gateWith({ tools: TOOLS, global: { subagent: 'allow' } });
+  g.reply({ calls: [inWorktree('fix')] }, { content: 'started it' }, { content: 'fine' });
+  g.gate.submit('go');
+  await settled(g.gate);
+  return g;
+}
+
+test('the exit Note names the worktree and its branch, and says when it has uncommitted changes', async () => {
+  const committed = await startedInWorktree();
+  committed.exit(4343, { exit: 0, worktree: { dirty: false } });
+  expect(exitNote(committed)).toBe('Subagent pid 4343 ended: exited with 0\nprompt: fix\nlog: /home/background/4343.log\nworktree: /home/worktrees/ses_4343 · branch: resector/ses_4343');
+  const changed = await startedInWorktree();
+  changed.exit(4343, { exit: 0, worktree: { dirty: true } });
+  expect(exitNote(changed)).toEndWith('\nworktree: /home/worktrees/ses_4343 · branch: resector/ses_4343 · uncommitted changes');
+});
+
+test('a worktree removed as empty: the exit Note names none', async () => {
+  const g = await startedInWorktree();
+  g.exit(4343, { exit: 0 });
+  expect(exitNote(g)).toBe('Subagent pid 4343 ended: exited with 0\nprompt: fix\nlog: /home/background/4343.log');
 });

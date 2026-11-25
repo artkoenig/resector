@@ -30,8 +30,8 @@ export const speedText = ({ generation, prompt, firstToken }: Speed): string | n
 // `off`, `on`, or `on:<effort>`.
 export const thinkingLabel = (thinking: Thinking) => (thinking === 'off' || thinking === 'on' ? thinking : `on:${thinking}`);
 
-type Titled = Pick<Block, 'kind' | 'content'> & Partial<Pick<Reviewed, 'title'>> & Partial<Pick<Block, 'call' | 'source' | 'compacted' | 'file' | 'skill' | 'origin' | 'tool'>>;
-type Called = Pick<Block, 'id' | 'content'> & Partial<Pick<Block, 'tool'>>;
+type Titled = Pick<Block, 'kind' | 'content'> & Partial<Pick<Reviewed, 'title'>> & Partial<Pick<Block, 'call' | 'source' | 'compacted' | 'file' | 'skill' | 'origin' | 'tool' | 'worktree'>>;
+type Called = Pick<Block, 'id' | 'content'> & Partial<Pick<Block, 'tool' | 'worktree'>>;
 const firstLine = (text: string) => (text.split('\n').find(l => l.trim()) ?? '').trim();
 
 // Display label only, never sent. A rename wins; default = first non-empty line of the content;
@@ -46,7 +46,7 @@ export function titleOf(block: Titled, blocks: readonly Called[] = []): string {
   return originTitle(block, blocks) ?? (firstLine(block.content) || '(empty)');
 }
 // A call as its title reads: a Question by its question texts.
-const callTitle = (call: Pick<Block, 'content'> & Partial<Pick<Block, 'tool'>>) =>
+const callTitle = (call: Pick<Block, 'content'> & Partial<Pick<Block, 'tool' | 'worktree'>>) =>
   firstLine(call.tool === 'question' ? `question ${questionTitle(call.content)}` : callText(call));
 // A Tool Result by its call; a Tool Call of another tool than bash by tool name and query.
 function toolTitle(block: Titled, blocks: readonly Called[]): string | null {

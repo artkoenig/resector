@@ -31,7 +31,7 @@ function addCall({ messages }: Request, ids: Map<number, string>, b: Block) {
   const last = messages.at(-1);
   const joined = last?.role === 'assistant' ? last : null;
   const earlier = joined?.tool_calls ?? [];
-  const call: ToolCall = { id: callId(earlier.length), type: 'function', function: { name: b.tool ?? 'bash', arguments: callArguments(b.tool ?? 'bash', b.content, b.background) } };
+  const call: ToolCall = { id: callId(earlier.length), type: 'function', function: { name: b.tool ?? 'bash', arguments: callArguments(b.tool ?? 'bash', b.content, b) } };
   ids.set(b.id, call.id);
   const message = { ...joined, role: 'assistant' as const, content: joined?.content ?? '', tool_calls: [...earlier, call] };
   if (joined) messages[messages.length - 1] = message;

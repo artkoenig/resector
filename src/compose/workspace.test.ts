@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path';
 import { startFakeLlamaCpp } from '../../test/fake-llamacpp';
 import { startTime } from '../adapters/bash/background';
 import { configPaths } from '../adapters/fs/config';
+import { ensureWorktree } from '../adapters/git/git';
 import { projectSessionsDir } from '../adapters/store/session-log';
 import { openSessionStore } from '../adapters/store/sessions';
 import type { SessionEvent } from '../core/log/events';
@@ -31,8 +32,9 @@ const config = (url: string, extra = '') => `{
 }`;
 
 // A workspace on a fresh project and config. sessions: logs already written; files: other files of the session store;
-// git: a repository with one commit.
-type Setup = { extra?: string; sessions?: Record<string, SessionEvent[]>; files?: Record<string, string>; git?: boolean };
+// git: a repository with one commit. sessions as a function: made once the project is there.
+type Sessions = Record<string, SessionEvent[]>;
+type Setup = { extra?: string; sessions?: Sessions | ((at: { project: string; worktrees: string }) => Sessions); files?: Record<string, string>; git?: boolean };
 async function workspace({ extra = '', sessions = {}, files = {}, git = false }: Setup = {}) {
   fake = startFakeLlamaCpp({ nCtx: 4096, model: 'qwen3-8b.gguf' });
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'resector-compose-')));
@@ -45,7 +47,8 @@ async function workspace({ extra = '', sessions = {}, files = {}, git = false }:
   const paths = configPaths({ home: join(root, 'home'), cwd: project, env: {} });
   put(paths.global, config(fake.url, extra));
   const sessionsDir = projectSessionsDir(paths);
-  for (const [id, events] of Object.entries(sessions)) put(join(sessionsDir, `${id}.jsonl`), events.map(e => JSON.stringify(e) + '\n').join(''));
+  const logged = typeof sessions === 'function' ? sessions({ project, worktrees: join(paths.projectHome.data, 'worktrees') }) : sessions;
+  for (const [id, events] of Object.entries(logged)) put(join(sessionsDir, `${id}.jsonl`), events.map(e => JSON.stringify(e) + '\n').join(''));
   for (const [name, text] of Object.entries(files)) put(join(sessionsDir, name), text);
   const store = openSessionStore(sessionsDir, { id: () => 'ses_new' });
   const ws = await openWorkspace({ paths, store, cwd: project, openFile: async () => {}, onReopen: () => {} });
@@ -214,4 +217,62 @@ test('a running Background Process is in its session\'s record until the session
   expect(JSON.parse(readFileSync(join(sessionsDir, `${id}.background`), 'utf8'))).toMatchObject([{ pid: result.background!.pid }]);
   await release();
   expect(existsSync(join(sessionsDir, `${id}.background`))).toBe(false);
+});
+
+const gitIn = (dir: string, ...args: string[]) => Bun.spawnSync(['git', ...args], { cwd: dir }).stdout.toString().trim();
+// A Subagent's worktree as its parent Session made it.
+function subagentWorktree(project: string, worktrees: string, session: string) {
+  ensureWorktree(project, worktrees, session);
+  return { path: join(worktrees, session), branch: `resector/${session}`, base: gitIn(project, 'rev-parse', 'HEAD') };
+}
+
+test('a Subagent\'s Session takes the id its parent picked and runs in the worktree made for it', async () => {
+  const { open, paths, project } = await workspace({ git: true });
+  const worktree = subagentWorktree(project, join(paths.projectHome.data, 'worktrees'), 'ses_child');
+  const { id, options } = await open({ id: 'ses_child', start: { worktree: true, autoApprove: true } });
+  expect(id).toBe('ses_child');
+  expect(options.approval.root).toBe(worktree.path);
+});
+
+test('an id picked for a Session that exists already is refused', async () => {
+  const { open } = await workspace({ sessions: { ses_old: chat('local') } });
+  expect(open({ id: 'ses_old', start: { autoApprove: true } })).rejects.toThrow('session ses_old exists');
+});
+
+// A Background Process that ends by itself, logged as a Subagent's start in `worktree`; resolves with its end as the
+// Gate hears it.
+async function endedIn(opened: Awaited<ReturnType<Awaited<ReturnType<typeof workspace>>['open']>>, worktree: ReturnType<typeof subagentWorktree>) {
+  const { options } = opened;
+  const end = new Promise(resolve => options.background!.onExit((_, end) => resolve(end)));
+  const result = await options.runner.run('sleep 0.4', { signal: new AbortController().signal, onOutput: () => {}, background: true });
+  options.log.append({ type: 'BackgroundStarted', call: 9, ...result.background!, worktree });
+  return end;
+}
+
+test('at a Subagent\'s end its worktree left empty is removed with its branch; one with changes stays, and its end says so', async () => {
+  const { open, paths, project } = await workspace({ git: true, extra: ', "bash": { "backgroundWait": 0.1 }' });
+  const worktrees = join(paths.projectHome.data, 'worktrees');
+  const opened = await open();
+  const empty = subagentWorktree(project, worktrees, 'ses_a');
+  expect(await endedIn(opened, empty)).toEqual({ exit: 0 });
+  expect(existsSync(empty.path)).toBe(false);
+  expect(gitIn(project, 'branch', '--format=%(refname:short)')).toBe('main');
+  const changed = subagentWorktree(project, worktrees, 'ses_b');
+  put(join(changed.path, 'new.txt'), 'new\n');
+  expect(await endedIn(opened, changed)).toEqual({ exit: 0, worktree: { dirty: true } });
+  expect(existsSync(changed.path)).toBe(true);
+});
+
+test('the worktree of a Subagent left by a crashed resector is settled at start: removed when empty', async () => {
+  const dead = Bun.spawnSync(['true']).pid;
+  let worktree: ReturnType<typeof subagentWorktree>;
+  const { log } = await workspace({
+    git: true, files: { 'ses_old.background': JSON.stringify([{ pid: dead, started: 'then' }]) },
+    sessions: ({ project, worktrees }) => {
+      worktree = subagentWorktree(project, worktrees, 'ses_sub');
+      return { ses_old: [...chat('local'), { type: 'BackgroundStarted', call: 9, pid: dead, log: '/logs/x.log', worktree }] };
+    },
+  });
+  expect(log('ses_old').at(-1)).toEqual({ type: 'BackgroundExited', call: 9, signal: 'orphaned' });
+  expect(existsSync(worktree!.path)).toBe(false);
 });
