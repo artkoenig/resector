@@ -303,9 +303,9 @@ test('text in the block table is not selectable: dragging over it copies nothing
 test('the mouse pointer is a text cursor over the preview, a resize cursor on the split handle, the arrow elsewhere', async () => {
   await start();
   const pointers: string[] = [];
-  const out = ui.renderer as unknown as { writeOut(data: string): boolean };
-  const write = out.writeOut.bind(out);
-  out.writeOut = data => (pointers.push(...[...data.matchAll(/\x1b\]22;([^\x1b]*)/g)].map(m => m[1]!)), write(data));
+  const out = (ui.renderer as unknown as { nativeSession: { write(bytes: Uint8Array): boolean } }).nativeSession;
+  const write = out.write.bind(out);
+  out.write = bytes => (pointers.push(...[...new TextDecoder().decode(bytes).matchAll(/\x1b\]22;([^\x1b]*)/g)].map(m => m[1]!)), write(bytes));
   const lines = (await frameMatching(ui, f => f.includes('You are an agent.'))).split('\n');
   const text = lines.findIndex(l => l.includes('You are an agent.'));
   const handle = lines.findIndex(l => /┃ System/.test(l)) - 1;

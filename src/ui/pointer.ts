@@ -9,8 +9,11 @@ const NAMES: Record<Pointer, string> = { arrow: 'left_ptr', text: 'xterm', 'row-
 // No pointer: back to the terminal's own.
 export const pointerSequence = (pointer?: Pointer) => `\x1b]22;${pointer ? NAMES[pointer] : ''}\x1b\\`;
 
-// OpenTUI's setMousePointer sends CSS names, which iTerm2 ignores; writeOut is its (private) way to the terminal,
-// ordered with the frames it writes.
+// OpenTUI's setMousePointer sends CSS names, which iTerm2 ignores; the native session's write is its (private) way
+// to the terminal, ordered with the frames it writes.
+type Output = { nativeSession: { write(bytes: Uint8Array): boolean } };
+const encoder = new TextEncoder();
+
 export function setPointer(renderer: CliRenderer, pointer?: Pointer) {
-  (renderer as unknown as { writeOut(data: string): boolean }).writeOut(pointerSequence(pointer));
+  (renderer as unknown as Output).nativeSession.write(encoder.encode(pointerSequence(pointer)));
 }
