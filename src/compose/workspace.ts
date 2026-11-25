@@ -15,7 +15,7 @@ import { listProjectFiles, probeEnvironment, projectFiles, projectImages, projec
 import { discoverSkills } from '../adapters/fs/skills';
 import { ensureWorktree, isRepository, listBranches, locateCheckout, mainCheckout, removeWorktree, settleWorktree, status, switchBranch, topLevel, watchHead, worktreeDirty } from '../adapters/git/git';
 import { createSearcher } from '../adapters/search/ddgr';
-import { sessionId, type SessionStore } from '../adapters/store/sessions';
+import type { SessionStore } from '../adapters/store/sessions';
 import type { Split } from '../core/approval/approval';
 import type { BackgroundEnd, SessionEvent } from '../core/log/events';
 import { fold } from '../core/log/fold';
@@ -105,12 +105,7 @@ export async function openWorkspace(options: WorkspaceOptions) {
     return { ...end, ...(left && { worktree: left }) };
   }
   // An id for a Subagent's Session, picked by its parent: no Session and no worktree has it.
-  function subagentSession(): string {
-    for (let at = Date.now(); ; at++) {
-      const id = sessionId(at);
-      if (!store.has(id) && !store.locked(id) && !existsSync(join(worktrees, id))) return id;
-    }
-  }
+  const subagentSession = () => store.vacant(id => existsSync(join(worktrees, id)));
   // The project as seen from where a session runs: its checkout or its worktree.
   const projectAt = (dir: string, checkout = here) => ({
     read: projectFiles(dir),

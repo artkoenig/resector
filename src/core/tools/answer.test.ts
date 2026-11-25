@@ -97,3 +97,11 @@ test('a Question without a valid Recommended Option is answered with the error a
     { type: 'BlockAdded', id: 7, kind: 'Tool Result', origin: 'tool', content: error, call: 5 },
   ]);
 });
+
+test('a subagent call asking for a worktree becomes a Tool Call marked so; one without is not marked', () => {
+  const subagent = (args: object) => ({ name: 'subagent', arguments: JSON.stringify({ prompt: 'fix', ...args }) });
+  expect(answerBlocks(result({ calls: [subagent({ worktree: true }), subagent({})] }), 3, ['subagent']).events).toEqual([
+    { type: 'BlockAdded', id: 3, kind: 'Tool Call', origin: 'model', tool: 'subagent', content: 'fix', worktree: true },
+    { type: 'BlockAdded', id: 4, kind: 'Tool Call', origin: 'model', tool: 'subagent', content: 'fix' },
+  ]);
+});

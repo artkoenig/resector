@@ -80,15 +80,24 @@ export async function run(command: Run, io: Io): Promise<number> {
   return EXIT[outcome.kind];
 }
 
+// Whether the run is a Subagent, and the Session id its parent picked for it. The id is for the Subagent itself: what
+// it starts does not inherit it. A run inside a Subagent is refused.
+function subagentRole(env: Io['env']): { subagent: boolean; picked?: string } | { usage: string } {
+  const mark = env[SUBAGENT_ENV];
+  const picked = env[SUBAGENT_SESSION_ENV];
+  delete env[SUBAGENT_SESSION_ENV];
+  if (!mark) return { subagent: false };
+  if (mark !== 'start') return { usage: 'a Subagent starts no Headless Runs' };
+  if (picked !== undefined && !/^ses_[a-z0-9]+$/.test(picked)) return { usage: `${SUBAGENT_SESSION_ENV}: no session id` };
+  return { subagent: true, ...(picked !== undefined && { picked }) };
+}
+
 // The run on a new session with the settings; without a config, or with flags naming what does not exist, it fails
 // before one is opened.
 async function headless({ prompt, flags }: Run, io: Io, reporter: Reporter): Promise<{ outcome: Outcome; id: string | null } | { usage: string }> {
-  const subagent = io.env[SUBAGENT_ENV];
-  if (subagent && subagent !== 'start') return { usage: 'a Subagent starts no Headless Runs' };
-  // The id its parent picked, only for the Subagent itself: not for what it starts.
-  const picked = subagent ? io.env[SUBAGENT_SESSION_ENV] : undefined;
-  delete io.env[SUBAGENT_SESSION_ENV];
-  if (picked !== undefined && !/^ses_[a-z0-9]+$/.test(picked)) return { usage: `${SUBAGENT_SESSION_ENV}: no session id` };
+  const role = subagentRole(io.env);
+  if ('usage' in role) return role;
+  const { subagent, picked } = role;
   const paths = configPaths({ home: io.home, cwd: io.cwd, env: io.env });
   const workspace = await openWorkspace({ paths, store: projectSessionStore(paths), cwd: io.cwd, openFile: async () => {}, onReopen: () => {} });
   const loaded = workspace.config();
@@ -151,7 +160,7 @@ async function headless({ prompt, flags }: Run, io: Io, reporter: Reporter): Pro
 }
 
 // Only a Subagent is asked for a summary.
-const summaryFor = (subagent: string | undefined, config: Config, { asking }: Reporter) =>
+const summaryFor = (subagent: boolean, config: Config, { asking }: Reporter) =>
   subagent ? { prompt: config.subagent?.summaryPrompt ?? DEFAULT_SUMMARY_PROMPT, asking } : undefined;
 
 type Reporter = ReturnType<typeof createReporter>;

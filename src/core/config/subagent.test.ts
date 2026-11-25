@@ -22,5 +22,7 @@ test('a worktree of its own needs a git repository: asked for by the call or by 
   expect(subagentRefusal(config(), 0, { worktree: true, repository: false })).toBe('worktree: not a git repository');
   expect(subagentRefusal(config(), 0, { worktree: true, repository: true })).toBeNull();
   expect(subagentRefusal(config(), 0, { repository: false })).toBeNull();
+  // Where it runs left out: a git repository.
+  expect(subagentRefusal({ ...config(), headless: { worktree: true } }, 0)).toBeNull();
   expect(subagentRefusal({ ...config(), headless: { worktree: true } }, 0, { repository: false })).toBe('worktree: not a git repository');
 });

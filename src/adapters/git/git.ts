@@ -129,9 +129,13 @@ export function settleWorktree(root: string, { path, branch, base }: SubagentWor
   git(root, 'worktree', 'prune');
   const present = existsSync(join(path, '.git'));
   if (present && status(path)) return { dirty: true };
-  const untouched = (!present || head(path) === base) && hasBranch(root, branch) && git(root, 'rev-parse', `refs/heads/${branch}`) === base;
-  if (!untouched) return present || hasBranch(root, branch) ? { dirty: false } : null;
+  const kept = hasBranch(root, branch);
+  if (!kept || !atBase(root, { path, branch, base }, present)) return present || kept ? { dirty: false } : null;
   if (present) git(root, 'worktree', 'remove', path);
   git(root, 'branch', '-D', branch);
   return null;
 }
+
+// Whether nothing was committed: the branch, and the worktree when it is still there, are at the base.
+const atBase = (root: string, { path, branch, base }: SubagentWorktree, present: boolean) =>
+  git(root, 'rev-parse', `refs/heads/${branch}`) === base && (!present || head(path) === base);

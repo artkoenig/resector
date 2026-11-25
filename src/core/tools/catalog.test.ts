@@ -59,7 +59,7 @@ const IMAGE = {
 
 const SUBAGENT = {
   name: 'subagent',
-  description: expect.stringMatching(/Start a subagent.*`worktree`.*changes files.*uncommitted changes are not in it.*git merge/s),
+  description: expect.stringMatching(/Start a subagent.*`worktree`.*changes files.*uncommitted changes are not in it.*git merge.*without commits or changes is removed/s),
   parameters: {
     type: 'object',
     properties: {

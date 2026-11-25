@@ -90,6 +90,11 @@ export function openSessionStore(dir: string, { id = newId } = {}) {
       if (as !== undefined && existsSync(logPath(as))) throw new Error(`session ${as} exists`);
       return lock(as ?? id());
     },
+    // An id to pick for a new Session: no Session has it, and nothing `taken` (a worktree left behind).
+    vacant(taken: (id: string) => boolean, from = Date.now()): string {
+      const free = (id: string) => !existsSync(logPath(id)) && !lockedByOther(id) && !taken(id);
+      for (let at = from; ; at++) if (free(sessionId(at))) return sessionId(at);
+    },
     open: (ref: SessionRef): OpenSession => lock(resolve(ref)),
     read: (id: string) => read(resolve(id)),
     exportLog: (ref: SessionRef): string => readFileSync(logPath(resolve(ref)), 'utf8'),
