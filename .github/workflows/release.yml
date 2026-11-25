@@ -68,3 +68,30 @@ jobs:
       - run: gh release create "$GITHUB_REF_NAME" *.tar.gz SHA256SUMS --repo "$GITHUB_REPOSITORY" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
+
+  # `brew install artkoenig/tap/resector`: the formula in the tap points to this release.
+  homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile # bunfig.toml preloads @opentui/solid
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - uses: actions/checkout@v4
+        with:
+          repository: artkoenig/homebrew-tap
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          path: tap
+      - run: |
+          mkdir -p tap/Formula
+          bun scripts/formula.ts "$GITHUB_REF_NAME" release/SHA256SUMS > tap/Formula/resector.rb
+          cd tap
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Formula/resector.rb
+          # A rerun of the job finds nothing to commit.
+          git diff --cached --quiet || { git commit -m "resector ${GITHUB_REF_NAME#v}" && git push; }
