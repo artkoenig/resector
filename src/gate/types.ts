@@ -63,9 +63,10 @@ export type AutoApprove = { on: () => boolean; set: (on: boolean) => void };
 export type Compactor = { profile: string; backend: Backend };
 // The project on disk: files for @path references and their completion, the environment Note's text now,
 // and $EDITOR on a file of the project (`e` on a reference).
-// images: image files and their copies in the Project Home; load: a copy as a data URL.
+// isText: a text file, by its beginning. images: image files and their copies in the Project Home; load: a copy as a data URL.
 export type Project = {
   read: ReadFile;
+  isText: (path: string) => boolean;
   images: ImageFiles & { load: (image: string) => string };
   list: () => string[];
   environment: () => string;

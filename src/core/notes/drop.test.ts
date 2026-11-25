@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { droppedImages, droppedPaths } from './drop';
+import { droppedFiles, droppedPaths } from './drop';
 
 test('a dropped path as terminals paste it: plain, shell-escaped, quoted or a file URL', () => {
   expect(droppedPaths('/a/shot.png')).toEqual(['/a/shot.png']);
@@ -30,26 +30,26 @@ test('no dropped paths: relative words, an open quote, empty text', () => {
   expect(droppedPaths('/a/x.png y.png')).toBeNull();
 });
 
-const exists = (files: string[]) => (path: string) => files.includes(path);
+const usable = (files: string[]) => (path: string) => files.includes(path);
 
-test('dropped images become @path references: relative inside the Project, absolute outside, quoted with spaces', () => {
-  const found = exists(['shot.png', 'docs/My Shot.jpg', '/Users/me/Desktop/a.webp']);
-  expect(droppedImages('/project/shot.png', '/project', found)).toBe('@shot.png');
-  expect(droppedImages('/project/docs/My\\ Shot.jpg /Users/me/Desktop/a.webp', '/project', found)).toBe('@"docs/My Shot.jpg" @/Users/me/Desktop/a.webp');
+test('dropped files become @path references: relative inside the Project, absolute outside, quoted with spaces', () => {
+  const found = usable(['shot.png', 'docs/My Shot.jpg', '/Users/me/Desktop/a.webp', 'notes.md', 'Makefile']);
+  expect(droppedFiles('/project/shot.png', '/project', found)).toBe('@shot.png');
+  expect(droppedFiles('/project/docs/My\\ Shot.jpg /Users/me/Desktop/a.webp', '/project', found)).toBe('@"docs/My Shot.jpg" @/Users/me/Desktop/a.webp');
+  expect(droppedFiles('/project/notes.md /project/shot.png /project/Makefile', '/project', found)).toBe('@notes.md @shot.png @Makefile');
 });
 
-test('a paste stays as it is unless every path is an existing image', () => {
-  const found = exists(['shot.png', 'notes.md']);
-  expect(droppedImages('/project/notes.md', '/project', found)).toBeNull();
-  expect(droppedImages('/project/shot.png /project/gone.png', '/project', found)).toBeNull();
-  expect(droppedImages('/project/shot.png /project/notes.md', '/project', found)).toBeNull();
-  expect(droppedImages('hello world', '/project', found)).toBeNull();
+test('a paste stays as it is unless every path is a usable file', () => {
+  const found = usable(['shot.png']);
+  expect(droppedFiles('/project/data.bin', '/project', found)).toBeNull();
+  expect(droppedFiles('/project/shot.png /project/gone.png', '/project', found)).toBeNull();
+  expect(droppedFiles('hello world', '/project', found)).toBeNull();
   // A path the reference syntax cannot write.
-  expect(droppedImages('\'/a/"b".png\'', '/project', () => true)).toBeNull();
-  expect(droppedImages('/a/shot.png:12-34', '/project', () => true)).toBeNull();
-  expect(droppedImages('/a/shot.png:1', '/project', () => true)).toBeNull();
+  expect(droppedFiles('\'/a/"b".png\'', '/project', () => true)).toBeNull();
+  expect(droppedFiles('/a/shot.png:12-34', '/project', () => true)).toBeNull();
+  expect(droppedFiles('/a/shot.png:1', '/project', () => true)).toBeNull();
 });
 
 test('the Project root itself is no prefix of a sibling directory', () => {
-  expect(droppedImages('/project-b/shot.png', '/project', exists(['/project-b/shot.png']))).toBe('@/project-b/shot.png');
+  expect(droppedFiles('/project-b/shot.png', '/project', usable(['/project-b/shot.png']))).toBe('@/project-b/shot.png');
 });

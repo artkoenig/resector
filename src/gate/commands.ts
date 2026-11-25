@@ -1,5 +1,5 @@
-// The input line: slash commands, text with @path references that becomes a User block and is sent, dropped image files.
-import { droppedImages } from '../core/notes/drop';
+// The input line: slash commands, text with @path references that becomes a User block and is sent, dropped files.
+import { droppedFiles } from '../core/notes/drop';
 import { references } from '../core/notes/files';
 import { count } from './text';
 import type { Kernel } from './kernel';
@@ -21,7 +21,7 @@ export const COMMANDS = [
 export type CommandName = (typeof COMMANDS)[number]['name'];
 
 // `inRepo`: the /git: commands are offered only in a git repository.
-export function createCommands(k: Kernel, sel: View, handlers: Record<CommandName, (arg: string) => void>, deps: { inRepo: boolean; send: () => void; root: string; exists: (path: string) => boolean }) {
+export function createCommands(k: Kernel, sel: View, handlers: Record<CommandName, (arg: string) => void>, deps: { inRepo: boolean; send: () => void; root: string; usable: (path: string) => boolean }) {
   const { nextId, append, setStatus } = k;
   // The commands offered: the /git: ones only in a git repository.
   const offered = COMMANDS.filter(c => deps.inRepo || !c.name.startsWith('/git:'));
@@ -54,8 +54,8 @@ export function createCommands(k: Kernel, sel: View, handlers: Record<CommandNam
     sel.setSelected(id);
   }
 
-  // A paste of dropped image files: the @path references to put in instead, null to paste it as it is.
-  const dropped = (pasted: string) => droppedImages(pasted, deps.root, deps.exists);
+  // A paste of dropped files: the @path references to put in instead, null to paste it as it is.
+  const dropped = (pasted: string) => droppedFiles(pasted, deps.root, deps.usable);
 
   return { api: { commands: offered, submit, dropped } };
 }

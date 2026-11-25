@@ -1,6 +1,6 @@
 // The project on disk: @path reads, the environment probe, project instructions.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import type { Environment } from '../../core/notes/environment';
@@ -23,6 +23,28 @@ const isFile = (file: string) => {
     return statSync(file).isFile();
   } catch {
     return false;
+  }
+};
+
+const SAMPLE = 64 * 1024;
+
+// Whether a path (as for projectFiles) is a text file: its beginning is UTF-8 without NUL. Only that is read, as a
+// model or a video may be gigabytes.
+export const projectTexts = (root: string) => (path: string): boolean => {
+  const file = resolve(root, path);
+  if (!isFile(file)) return false;
+  let fd: number | undefined;
+  try {
+    fd = openSync(file, 'r');
+    const sample = Buffer.alloc(SAMPLE);
+    const size = readSync(fd, sample, 0, SAMPLE, 0);
+    // A full sample may end inside a character.
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(sample.subarray(0, size), { stream: size === SAMPLE });
+    return !text.includes('\0');
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
   }
 };
 

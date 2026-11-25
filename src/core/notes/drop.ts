@@ -1,5 +1,4 @@
 // Dropped files: the text a terminal pastes for files dropped onto it, read back as their paths and @path references.
-import { isImage } from './images';
 import { parseReference, referencePath } from './files';
 
 // A shell word's parts: '…', "…", a backslash escape, a plain character.
@@ -37,12 +36,13 @@ export function droppedPaths(pasted: string): string[] | null {
   return paths.every(p => p !== null) ? (paths as string[]) : null;
 }
 
-// The @path references for a paste of dropped image files: relative to the Project root inside it, absolute outside.
-// null unless every path names an image that `exists` (paths as written in a reference) – the paste then stays as it is.
-export function droppedImages(pasted: string, root: string, exists: (path: string) => boolean): string | null {
+// The @path references for a paste of dropped files: relative to the Project root inside it, absolute outside.
+// null unless every path is `usable`, an image or text file that is there (paths as written in a reference) – the paste
+// then stays as it is.
+export function droppedFiles(pasted: string, root: string, usable: (path: string) => boolean): string | null {
   const inside = `${root}/`;
   const paths = droppedPaths(pasted)?.map(p => (p.startsWith(inside) ? p.slice(inside.length) : p));
   // A reference cannot write a quote, nor a path that reads as a line range.
-  const writable = (p: string) => isImage(p) && !p.includes('"') && parseReference(p).from === null && exists(p);
+  const writable = (p: string) => !p.includes('"') && parseReference(p).from === null && usable(p);
   return paths?.every(writable) ? paths.map(p => `@${referencePath(p)}`).join(' ') : null;
 }

@@ -193,7 +193,7 @@ export function App(props: ScreenOptions & { onQuit: () => void }) {
     a.setText(text);
     a.cursorOffset = text.length;
   });
-  // Image files dropped onto the input go in as their @path references, apart from the text before them.
+  // Files dropped onto the input go in as their @path references, apart from the text before them.
   const pasteInto = (event: PasteEvent) => {
     const references = mode() === 'input' && !phase() ? gate.dropped(decodePasteBytes(event.bytes)) : null;
     if (references === null) return;

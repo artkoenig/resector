@@ -1,6 +1,7 @@
 // Review Gate: the request cycle the user steers, composed of its slices over one kernel; it acts on the view's selection (View).
 import { createSignal } from 'solid-js';
 import * as compaction from '../core/compaction/compaction';
+import { isImage } from '../core/notes/images';
 import * as ops from '../core/context/operations';
 import { createBackgroundSlice } from './background';
 import { createCommands } from './commands';
@@ -50,7 +51,7 @@ export function createGate({ log, openSessions, runner, searcher, subagents, app
     '/sessions': openSessions, '/rename': settings.renameSession, '/tools': settings.toggleTool, '/filter': sel.filterBy, '/policy': policy.switchPolicy,
     '/auto': settings.switchAutoApprove, '/thinking': settings.setThinking, '/git:branch': repo.switchBranch, '/git:worktree': repo.switchWorktree,
     '/skill': skills.loadSkill,
-  }, { inRepo: !!git, send: () => void sender.api.send(), root: approval.root, exists: project.images.exists });
+  }, { inRepo: !!git, send: () => void sender.api.send(), root: approval.root, usable: path => (isImage(path) ? project.images.exists(path) : project.isText(path)) });
 
   rules.dropDenied();
   // Calls still pending when the Gate opens (resume) are decided like fresh ones.

@@ -186,3 +186,13 @@ test('an image dropped onto the Context opens the input with its @path reference
   await frameMatching(ui, f => f.includes('┃ @shot.png '));
   rmSync(join(project, 'shot.png'));
 });
+
+test('a text file dropped onto the input or the Context goes in as its @path reference', async () => {
+  writeFileSync(join(project, 'dropped.md'), 'text\n');
+  await start();
+  await ui.mockInput.pasteBracketedText(`${project}/dropped.md`);
+  await frameMatching(ui, f => f.includes('┃ @dropped.md '));
+  await ui.mockInput.pasteBracketedText(`file://${project}/dropped.md`);
+  await frameMatching(ui, f => f.includes('┃ @dropped.md @dropped.md '));
+  rmSync(join(project, 'dropped.md'));
+});
