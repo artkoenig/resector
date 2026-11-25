@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { TARGETS, assetName, versionFromTag } from './release';
+import { TARGETS, assetName, formula, versionFromTag } from './release';
 
 test('targets are the four NFR-5 platforms', () => {
   expect(TARGETS).toEqual(['darwin-arm64', 'darwin-x64', 'linux-x64', 'linux-arm64']);
@@ -20,4 +20,17 @@ test('a tag that disagrees with package.json is rejected', () => {
 
 test('asset names carry version and target', () => {
   expect(assetName('1.2.3', 'darwin-arm64')).toBe('resector-v1.2.3-darwin-arm64.tar.gz');
+});
+
+const sums = TARGETS.map((t, i) => `${String(i).repeat(64)}  ${assetName('1.2.3', t)}\n`);
+
+test('the formula pairs every target with its own checksum', () => {
+  const rb = formula('1.2.3', sums.join(''));
+  TARGETS.forEach((t, i) =>
+    expect(rb).toContain(`/releases/download/v1.2.3/resector-v1.2.3-${t}.tar.gz"\n      sha256 "${String(i).repeat(64)}"`));
+});
+
+test('a target without a checksum is rejected', () => {
+  expect(() => formula('1.2.3', sums.slice(1).join('')))
+    .toThrow('no checksum for resector-v1.2.3-darwin-arm64.tar.gz in SHA256SUMS');
 });
