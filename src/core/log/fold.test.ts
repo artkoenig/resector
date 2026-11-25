@@ -294,3 +294,8 @@ test('the Environment Note, Project Instructions and Skills are to keep; File Re
   // A new Revision (the refreshed Environment Note) keeps it.
   expect(block([...events, { type: 'Edit', id: 3, revision: 2, content: 'y' }], 3)!.keep).toBe(true);
 });
+
+test('callText: a subagent call in a worktree of its own says so', () => {
+  expect(callText({ tool: 'subagent', content: 'fix it' })).toBe('subagent fix it');
+  expect(callText({ tool: 'subagent', content: 'fix it', worktree: true })).toBe('subagent [worktree] fix it');
+});

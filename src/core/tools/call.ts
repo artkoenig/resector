@@ -1,5 +1,5 @@
 // A Tool Call as the model sends it: parsed into tool and content, sent back with its arguments; its result as text.
-import type { Stopped, Tool } from '../log/events';
+import type { Stopped, SubagentWorktree, Tool } from '../log/events';
 import { TOOL_NAMES } from './catalog';
 import { parseQuestions } from './question';
 
@@ -10,7 +10,8 @@ const ARGUMENT: Record<Exclude<Tool, 'question'>, string> = { bash: 'command', w
 // `leftover`: the command left processes running, which were killed when it ended.
 // `background`: it still runs as a Background Process: its process group and log file.
 export type RunResult = { output: string; exit: number | null; stopped: Stopped | null; leftover?: true; background?: Started };
-export type Started = { pid: number; log: string };
+// worktree: the one made for a Subagent.
+export type Started = { pid: number; log: string; worktree?: SubagentWorktree };
 // Lines of a Background Process's output its Tool Result shows; the rest is in its log.
 const BACKGROUND_LINES = 20;
 
@@ -19,8 +20,9 @@ export type RawCall = { name: string; arguments: string };
 
 // `tools`: the names in the Tools Block; a tool switched off is not run. A Question that cannot be asked is
 // `rejected`: its Tool Result tells the model why (it never reaches the user).
-// `background`: a bash call to run as a Background Process.
-export type ParsedCall = { tool: Tool; content: string; rejected?: string; background?: true } | { error: string };
+// `background`: a bash call to run as a Background Process. `worktree`: a subagent call to run in a worktree of its own.
+export type CallFlags = { background?: true; worktree?: true };
+export type ParsedCall = ({ tool: Tool; content: string; rejected?: string } & CallFlags) | { error: string };
 export function parseCall(call: RawCall, tools: string[]): ParsedCall {
   if (!TOOL_NAMES.includes(call.name)) return { error: `unknown tool ${call.name}` };
   const tool = call.name as Tool;
@@ -37,22 +39,25 @@ export function parseCall(call: RawCall, tools: string[]): ParsedCall {
   }
   const content = (args as Record<string, unknown> | null)?.[ARGUMENT[tool]];
   if (typeof content !== 'string') return { error: `no ${ARGUMENT[tool]} string` };
-  return { tool, content, ...(backgrounded(tool, args) && { background: true }) };
+  return { tool, content, ...flags(tool, args as Record<string, unknown>) };
 }
 
-// Only bash runs in the background, and only with `background: true`.
-const backgrounded = (tool: Tool, args: unknown) => tool === 'bash' && (args as Record<string, unknown>).background === true;
+// Only bash runs in the background and only a subagent in a worktree of its own, and only with `true`.
+const flags = (tool: Tool, args: Record<string, unknown>): CallFlags => ({
+  ...(tool === 'bash' && args.background === true && { background: true }),
+  ...(tool === 'subagent' && args.worktree === true && { worktree: true }),
+});
 
 // The arguments of a Tool Call as the model sent them.
-export const callArguments = (tool: Tool, content: string, background?: true): string =>
-  tool === 'question' ? content : JSON.stringify({ [ARGUMENT[tool]]: content, ...(background && { background }) });
+export const callArguments = (tool: Tool, content: string, { background, worktree }: CallFlags = {}): string =>
+  tool === 'question' ? content : JSON.stringify({ [ARGUMENT[tool]]: content, ...(background && { background }), ...(worktree && { worktree }) });
 
 // Tool Result content: the output as is, then a line saying how the run ended. A Subagent's is the line only.
 export function resultText({ output, exit, stopped, leftover, background }: RunResult, timeout: number, tool?: Tool): string {
   if (background) {
-    const { pid, log } = background;
+    const { pid, log, worktree } = background;
     const where = `pid ${pid} · log ${log} · stop: kill -- -${pid}`;
-    if (tool === 'subagent') return `[Subagent started: ${where}]`;
+    if (tool === 'subagent') return `[Subagent started: ${where}${worktree ? ` · worktree ${worktree.path} · branch ${worktree.branch}` : ''}]`;
     const last = output.trimEnd().split('\n').slice(-BACKGROUND_LINES).join('\n');
     return [last, `[running in the background: ${where}]`].filter(Boolean).join('\n');
   }

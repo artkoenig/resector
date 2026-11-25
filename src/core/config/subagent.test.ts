@@ -17,3 +17,10 @@ test('an unknown subagent.profile refuses every start, listing the valid names',
   expect(subagentRefusal(config({ profile: 'b' }), 0)).toBeNull();
   expect(subagentRefusal(config({ profile: 'constructor' }), 0)).toBe('subagent.profile: unknown profile constructor (profiles: a, b)');
 });
+
+test('a worktree of its own needs a git repository: asked for by the call or by headless.worktree', () => {
+  expect(subagentRefusal(config(), 0, { worktree: true, repository: false })).toBe('worktree: not a git repository');
+  expect(subagentRefusal(config(), 0, { worktree: true, repository: true })).toBeNull();
+  expect(subagentRefusal(config(), 0, { repository: false })).toBeNull();
+  expect(subagentRefusal({ ...config(), headless: { worktree: true } }, 0, { repository: false })).toBe('worktree: not a git repository');
+});

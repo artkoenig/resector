@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ensureWorktree, isRepository, locateCheckout, mainCheckout, topLevel, listBranches, removeWorktree, status, switchBranch, watchHead, worktreeDirty } from './git';
+import { ensureWorktree, isRepository, locateCheckout, mainCheckout, topLevel, listBranches, removeWorktree, settleWorktree, status, switchBranch, watchHead, worktreeDirty } from './git';
 
 // A repository with one commit on main.
 function repository(): string {
@@ -156,4 +156,65 @@ test("a session's checkout now: its real path, its top level when only a subdire
   expect(topLevel(join(root, 'sub'))).toBe(root);
   const plain = realpathSync(mkdtempSync(join(tmpdir(), 'resector-plain-')));
   expect(topLevel(plain)).toBe(plain);
+});
+
+// A Subagent's worktree as its parent Session made it.
+function subagentWorktree(parent: string, worktrees: string, session: string) {
+  const path = join(worktrees, session);
+  ensureWorktree(parent, worktrees, session);
+  return { path, branch: `resector/${session}`, base: gitIn(parent, 'rev-parse', 'HEAD') };
+}
+
+test('a worktree made from a Session Worktree starts from that worktree\'s HEAD, not the main checkout\'s', () => {
+  const root = repository();
+  const worktrees = worktreesDir();
+  const parent = ensureWorktree(root, worktrees, 'ses_parent');
+  writeFileSync(join(parent, 'a.txt'), 'parent\n');
+  commit(parent, 'parent');
+  const child = ensureWorktree(parent, worktrees, 'ses_child');
+  expect(gitIn(child, 'rev-parse', 'HEAD')).toBe(gitIn(parent, 'rev-parse', 'HEAD'));
+  expect(gitIn(child, 'rev-parse', 'HEAD')).not.toBe(gitIn(root, 'rev-parse', 'HEAD'));
+});
+
+test('a worktree left clean and without a commit is removed with its branch', () => {
+  const root = repository();
+  const worktree = subagentWorktree(root, worktreesDir(), 'ses_a');
+  expect(settleWorktree(root, worktree)).toBeNull();
+  expect(existsSync(worktree.path)).toBe(false);
+  expect(listBranches(root).all).toEqual(['main']);
+});
+
+test('a worktree with a commit or with uncommitted changes stays, and says which', () => {
+  const root = repository();
+  const worktrees = worktreesDir();
+  const committed = subagentWorktree(root, worktrees, 'ses_a');
+  writeFileSync(join(committed.path, 'a.txt'), 'changed\n');
+  commit(committed.path, 'change');
+  expect(settleWorktree(root, committed)).toEqual({ dirty: false });
+  const changed = subagentWorktree(root, worktrees, 'ses_b');
+  writeFileSync(join(changed.path, 'new.txt'), 'new\n');
+  expect(settleWorktree(root, changed)).toEqual({ dirty: true });
+  expect(listBranches(root).all).toEqual(['main', 'resector/ses_a', 'resector/ses_b']);
+  expect(existsSync(committed.path) && existsSync(changed.path)).toBe(true);
+});
+
+test('a worktree whose commit is on another branch stays; one already gone has nothing to settle', () => {
+  const root = repository();
+  const worktrees = worktreesDir();
+  const switched = subagentWorktree(root, worktrees, 'ses_a');
+  gitIn(switched.path, 'switch', '-q', '-c', 'other');
+  writeFileSync(join(switched.path, 'a.txt'), 'changed\n');
+  commit(switched.path, 'change');
+  expect(settleWorktree(root, switched)).toEqual({ dirty: false });
+  const gone = subagentWorktree(root, worktrees, 'ses_b');
+  rmSync(gone.path, { recursive: true });
+  expect(settleWorktree(root, gone)).toBeNull();
+  expect(listBranches(root).all).not.toContain('resector/ses_b');
+  // Removed by the Subagent after its commit: the branch is what is left.
+  const committed = subagentWorktree(root, worktrees, 'ses_c');
+  writeFileSync(join(committed.path, 'a.txt'), 'changed\n');
+  commit(committed.path, 'change');
+  gitIn(root, 'worktree', 'remove', committed.path);
+  expect(settleWorktree(root, committed)).toEqual({ dirty: false });
+  expect(listBranches(root).all).toContain('resector/ses_c');
 });

@@ -138,7 +138,7 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
 
   const runnerOf = ({ tool }: Block) => (tool === 'websearch' ? tools.searcher : tool === 'subagent' ? tools.subagents : tools.runner);
   // Why a `subagent` call starts none now; null for every other call.
-  const refusal = ({ tool }: Block) => (tool === 'subagent' ? tools.subagents.refused(runningSubagents(k.events())) : null);
+  const refusal = ({ tool, worktree }: Block) => (tool === 'subagent' ? tools.subagents.refused(runningSubagents(k.events()), worktree) : null);
   // Runs the call with its tool's runner; its output streams into a live Tool Result row, then the next call is decided.
   async function run(call: Block, notes: string[]) {
     const atOnce = AT_ONCE[call.tool as Tool];
@@ -153,7 +153,7 @@ export function createToolLoop(k: Kernel, sel: View, rules: Rules, git: GitSlice
     setStatus(null);
     try {
       const onOutput = (text: string) => setRunning({ ...running()!, output: running()!.output + text });
-      const result = await tool.run(call.content, { signal: abort.signal, onOutput, ...(call.background && { background: true }) });
+      const result = await tool.run(call.content, { signal: abort.signal, onOutput, ...(call.background && { background: true }), ...(call.worktree && { worktree: true }) });
       ran(call, result, tool.timeout, notes);
     } catch (e) {
       setRunning(null);

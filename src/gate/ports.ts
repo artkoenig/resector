@@ -39,11 +39,12 @@ export type Backend = {
 // Runs a command, streaming its output; aborting the signal kills it (adapters/bash, adapters/search).
 // timeout: seconds after which a run is stopped.
 // background: a bash call keeps running after the wait (adapters/bash/background); its result says so.
-export type RunOptions = { signal: AbortSignal; onOutput: (text: string) => void; background?: true };
+// worktree: a subagent call asks for a worktree of its own.
+export type RunOptions = { signal: AbortSignal; onOutput: (text: string) => void; background?: true; worktree?: true };
 export type Runner = { timeout: number; run(command: string, options: RunOptions): Promise<RunResult> };
 // Starts Subagents on their prompt (adapters/bash/subagent). refused: why not another one, with `running` of the
-// Session's running now; null when it may start.
-export type Subagents = Runner & { refused(running: number): string | null };
+// Session's running now and whether the call asks for a worktree; null when it may start.
+export type Subagents = Runner & { refused(running: number, worktree?: true): string | null };
 // The Session's Background Processes (adapters/bash/background): onExit tells when one's process group is empty, with
 // how it ended; returns the unsubscribe. log: a process's log file as written so far, null when it is gone. stop: the
 // user ends the one with process group `pid`; its exit follows as `signal: 'user'`.

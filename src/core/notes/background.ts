@@ -11,10 +11,14 @@ const startsOf = (events: SessionEvent[]) =>
   new Map(events.flatMap(e => (e.type === 'BackgroundStarted' ? [[e.call, e] as const] : [])));
 const hasExited = (events: SessionEvent[], call: number) => events.some(e => e.type === 'BackgroundExited' && e.call === call);
 
+// The Background Process running as process group `pid`.
+export const runningAs = (events: SessionEvent[], pid: number): Started | undefined =>
+  [...startsOf(events).values()].findLast(s => s.pid === pid && !hasExited(events, s.call));
+
 // The event for an exit of process group `pid`: of the Background Process running with it (the latest, a pid may be
 // reused); null when none runs (a call that ended within its wait never started one).
 export function exitOf(events: SessionEvent[], pid: number, end: BackgroundEnd): Exited | null {
-  const start = [...startsOf(events).values()].findLast(s => s.pid === pid && !hasExited(events, s.call));
+  const start = runningAs(events, pid);
   return start ? { type: 'BackgroundExited', call: start.call, ...end } : null;
 }
 
@@ -52,7 +56,7 @@ function noteOf(events: SessionEvent[], start: Started, end: BackgroundEnd): str
   const { pid, log, call } = start;
   const command = commandOf(events, start);
   if (!startsSubagent(events, call)) return exitNoteText({ pid, log, command }, end);
-  return subagentNoteText({ pid, log, prompt: command }, reason(end), 'signal' in end, end.report);
+  return subagentNoteText({ pid, log, prompt: command, worktree: start.worktree }, reason(end), 'signal' in end, end.report, end.worktree);
 }
 
 // The Notes still owed, in the order the exits were logged: every exit no Note was added for yet, whatever ended it.

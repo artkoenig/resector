@@ -8,7 +8,7 @@ import { projectSessionStore } from '../adapters/store/sessions';
 import { openTty } from '../adapters/terminal/tty';
 import { openWorkspace } from '../compose/workspace';
 import type { Config } from '../core/config/config';
-import { headlessSettings, SUBAGENT_ENV, type Flags } from '../core/config/headless';
+import { headlessSettings, SUBAGENT_ENV, SUBAGENT_SESSION_ENV, type Flags } from '../core/config/headless';
 import type { SessionEvent, SubagentReport } from '../core/log/events';
 import { DEFAULT_SUMMARY_PROMPT } from '../core/notes/subagent';
 import { subagentTools, TOOL_NAMES } from '../core/tools/catalog';
@@ -85,6 +85,10 @@ export async function run(command: Run, io: Io): Promise<number> {
 async function headless({ prompt, flags }: Run, io: Io, reporter: Reporter): Promise<{ outcome: Outcome; id: string | null } | { usage: string }> {
   const subagent = io.env[SUBAGENT_ENV];
   if (subagent && subagent !== 'start') return { usage: 'a Subagent starts no Headless Runs' };
+  // The id its parent picked, only for the Subagent itself: not for what it starts.
+  const picked = subagent ? io.env[SUBAGENT_SESSION_ENV] : undefined;
+  delete io.env[SUBAGENT_SESSION_ENV];
+  if (picked !== undefined && !/^ses_[a-z0-9]+$/.test(picked)) return { usage: `${SUBAGENT_SESSION_ENV}: no session id` };
   const paths = configPaths({ home: io.home, cwd: io.cwd, env: io.env });
   const workspace = await openWorkspace({ paths, store: projectSessionStore(paths), cwd: io.cwd, openFile: async () => {}, onReopen: () => {} });
   const loaded = workspace.config();
@@ -97,7 +101,7 @@ async function headless({ prompt, flags }: Run, io: Io, reporter: Reporter): Pro
     settings.tools = subagentTools(settings.tools);
     io.env[SUBAGENT_ENV] = 'inside';
   }
-  const opened = await workspace.open(loaded, { start: settings });
+  const opened = await workspace.open(loaded, { start: settings, ...(picked && { id: picked }) });
   reporter.opened(opened.id);
   const terminated = new AbortController();
   let released: Promise<void> | undefined;

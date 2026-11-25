@@ -42,8 +42,18 @@ const CATALOG: ToolDefinition[] = [
       'Start a subagent: a run of its own that works on the prompt in the background with the same project. It does not know ' +
       'this conversation, so the prompt must hold everything it needs. Returns at once with its pid and log file; it keeps ' +
       'running, and a Note with its summary tells you once it ended: do not poll, a session at rest gets it by itself. A headless run (-p) has to wait for it itself (e.g. sleep through bash): ' +
-      'when you answer without calls, the run ends and stops its subagents.',
-    parameters: { type: 'object', properties: { prompt: { type: 'string', description: 'the whole task, with all it needs to know' } }, required: ['prompt'] },
+      'when you answer without calls, the run ends and stops its subagents. Set `worktree` as soon as the subagent changes files: ' +
+      'it then works in a git worktree of its own, on a branch started from your HEAD; your uncommitted changes are not in it. ' +
+      'The result and the Note name the worktree and its branch; bringing its commits in is your work (e.g. git merge <branch>). ' +
+      'A worktree it leaves without commits or changes is removed.',
+    parameters: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: 'the whole task, with all it needs to know' },
+        worktree: { type: 'boolean', description: 'run it in a git worktree of its own, on a branch of its own' },
+      },
+      required: ['prompt'],
+    },
   },
 ];
 export const TOOL_NAMES = CATALOG.map(t => t.name);

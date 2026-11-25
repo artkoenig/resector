@@ -44,3 +44,14 @@ test('a long first line of the prompt is cut', () => {
 test('the built-in summary prompt asks what was done, found and is open, for files and commits', () => {
   for (const asked of ['done', 'found', 'open', 'files touched', 'commits', 'text only']) expect(DEFAULT_SUMMARY_PROMPT).toContain(asked);
 });
+
+test('a worktree left at the end: the head names it and its branch, and says when it has uncommitted changes', () => {
+  const worktree = { path: '/data/worktrees/ses_a', branch: 'resector/ses_a', base: 'abc' };
+  const report: SubagentReport = { ...base, outcome: 'answer', text: 'done' };
+  const ended = head('answer · 6 turns · 18.2k tokens');
+  const text = (left?: { dirty: boolean }) => subagentNoteText({ ...start, worktree }, 'exited with 0', false, report, left);
+  expect(text({ dirty: false })).toBe(`${ended}\nworktree: /data/worktrees/ses_a · branch: resector/ses_a\n\ndone`);
+  expect(text({ dirty: true })).toBe(`${ended}\nworktree: /data/worktrees/ses_a · branch: resector/ses_a · uncommitted changes\n\ndone`);
+  // Removed as empty: none to name.
+  expect(text()).toBe(`${ended}\n\ndone`);
+});

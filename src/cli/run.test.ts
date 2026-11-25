@@ -3,7 +3,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { startFakeLlamaCpp, type Reply } from '../../test/fake-llamacpp';
 import { configPaths } from '../adapters/fs/config';
 import { projectSessionsDir } from '../adapters/store/session-log';
@@ -29,11 +29,13 @@ function project({ config = true, headless = {}, permission, tty, bash, subagent
   const typed = join(root, 'tty');
   if (tty) writeFileSync(typed, tty.map(l => `${l}\n`).join(''));
   if (config) writeFileSync(env.RESECTOR_CONFIG, JSON.stringify({ profiles: Object.fromEntries(['local', ...(profiles ?? [])].map(name => [name, { backend: 'llamacpp', endpoint: fake.url, window: 2048 }])), defaultProfile: 'local', headless, permission, bash, subagent }));
-  const sessions = () => {
+  const logs = () => {
     const at = projectSessionsDir(configPaths({ home: env.HOME, cwd: dir, env }));
-    return (existsSync(at) ? readdirSync(at) : []).filter(f => f.endsWith('.jsonl')).map(f => readFileSync(join(at, f), 'utf8'));
+    return (existsSync(at) ? readdirSync(at) : []).filter(f => f.endsWith('.jsonl')).map(f => join(at, f));
   };
-  return { dir, env, sessions, typed: tty ? typed : null };
+  const sessions = () => logs().map(f => readFileSync(f, 'utf8'));
+  const ids = () => logs().map(f => basename(f, '.jsonl'));
+  return { dir, env, sessions, ids, typed: tty ? typed : null };
 }
 
 // Runs resector -p in this process, its Io the project's.
@@ -400,4 +402,29 @@ test('failing on the way, a Subagent\'s report keeps its progress', () => {
   reporter.logged({ type: 'RequestSent', hash: 'x', tokens: 70 });
   reporter.failed('resector: thrown');
   expect(readReport(dir, process.pid).report).toEqual({ session: 'ses_a', turns: 1, tokens: 70, outcome: 'error', text: 'resector: thrown' });
+});
+
+test('a Subagent\'s Session takes the id its parent picked; what it starts does not know of it', async () => {
+  const p = project();
+  Object.assign(p.env, { RESECTOR_SUBAGENT: 'start', RESECTOR_SUBAGENT_SESSION: 'ses_picked' });
+  reply({ chunks: ['ok'] });
+  reply({ chunks: ['the summary'] });
+  const { err, code } = await resectorHere(p, ['-p', 'hi']);
+  expect(code).toBe(0);
+  expect(err).not.toContain('resector:');
+  expect(p.ids()).toEqual(['ses_picked']);
+  expect(p.env).not.toHaveProperty('RESECTOR_SUBAGENT_SESSION');
+});
+
+test('an id that is none, or picked for a run that is no Subagent, is not taken', async () => {
+  const p = project();
+  Object.assign(p.env, { RESECTOR_SUBAGENT: 'start', RESECTOR_SUBAGENT_SESSION: '../x' });
+  expect(await resectorHere(p, ['-p', 'hi'])).toEqual({ out: '', err: 'resector: RESECTOR_SUBAGENT_SESSION: no session id\n', code: 2 });
+  expect(p.sessions()).toEqual([]);
+  const q = project();
+  Object.assign(q.env, { RESECTOR_SUBAGENT_SESSION: 'ses_picked' });
+  reply({ chunks: ['ok'] });
+  await resectorHere(q, ['-p', 'hi']);
+  expect(q.ids()).not.toContain('ses_picked');
+  expect(q.ids()).toHaveLength(1);
 });

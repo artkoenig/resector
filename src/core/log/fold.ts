@@ -7,9 +7,10 @@ export type Block = {
   origin: Origin;
   content: string;
   cutOff: boolean;
-  // Tool Call only: its tool, absent for bash; background: run as a Background Process.
+  // Tool Call only: its tool, absent for bash; background: run as a Background Process; worktree: a Subagent's own.
   tool?: Tool;
   background?: true;
+  worktree?: true;
   // Tool Call only, once started: its Background Process (process group, log), whether it still runs, how it ended.
   process?: { pid: number; log: string; running: boolean; end?: BackgroundEnd };
   // Both blocks of a Tool Pair whose Background Process runs: no Context operation touches them.
@@ -63,7 +64,8 @@ export function pairOf(blocks: Pick<Block, 'id' | 'kind' | 'call'>[], id: number
 }
 
 // A Tool Call as the user reads it: the bash command, or the tool name and its query.
-export const callText = ({ tool, content }: Pick<Block, 'tool' | 'content'>): string => (tool && tool !== 'bash' ? `${tool} ${content}` : content);
+export const callText = ({ tool, content, worktree }: Pick<Block, 'tool' | 'content' | 'worktree'>): string =>
+  tool && tool !== 'bash' ? `${tool} ${worktree ? '[worktree] ' : ''}${content}` : content;
 
 const NEW_ENTRY = { revision: 1, removed: false };
 
@@ -86,7 +88,7 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   BlockAdded: (state, e) => {
     const block = { id: e.id, kind: e.kind, origin: e.origin, content: e.content, cutOff: e.cutOff === true, ...(e.tool && { tool: e.tool }),
       ...(e.call !== undefined && { call: e.call }), ...(e.stopped && { stopped: e.stopped }), ...(e.file && { file: e.file }),
-      ...(e.background && { background: e.background }), ...kept(e) };
+      ...(e.background && { background: e.background }), ...(e.worktree && { worktree: e.worktree }), ...kept(e) };
     state.entries.set(e.id, { ...block, ...NEW_ENTRY });
     insert(state, e.call === undefined ? state.order.length : afterCalls(state.order.map(id => entry(state, id)), e.call), e.id);
   },
@@ -102,7 +104,7 @@ const APPLY: { [T in SessionEvent['type']]?: Apply<T> } = {
   },
   BackgroundStarted: (state, e) => void (entry(state, e.call).process = { pid: e.pid, log: e.log, running: true }),
   // Logged only for a started process.
-  BackgroundExited: (state, { type: _, call, report: __, ...end }) => {
+  BackgroundExited: (state, { type: _, call, report: __, worktree: ___, ...end }) => {
     const started = entry(state, call).process!;
     started.running = false;
     started.end = end as BackgroundEnd;
