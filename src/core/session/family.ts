@@ -18,7 +18,7 @@ export type Listed<S> = { session: S; depth: number };
 // The sessions with each Subagent's after its parent; otherwise in the order given. depth: 0 = no Subagent's.
 export function arranged<S extends { id: string; events: SessionEvent[] }>(sessions: S[]): Listed<S>[] {
   const parents = new Map<string, string>();
-  for (const s of sessions) for (const child of subagentsOf(s.events)) if (!parents.has(child)) parents.set(child, s.id);
+  for (const s of sessions) for (const child of subagentsOf(s.events)) parents.set(child, s.id);
   const below = (parent: string | undefined, depth: number): Listed<S>[] =>
     sessions.filter(s => parents.get(s.id) === parent).flatMap(session => [{ session, depth }, ...below(session.id, depth + 1)]);
   return below(undefined, 0);

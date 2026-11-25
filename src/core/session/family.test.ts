@@ -12,6 +12,11 @@ test('the Subagents of a Session are those its log names; other Background Proce
   expect(subagentsOf(starts('a', undefined, 'b'))).toEqual(['a', 'b']);
 });
 
+test('only a start names a Subagent, whatever other events carry', () => {
+  const exited = { type: 'BackgroundExited', call: 0, exit: 0, session: 'a' } as SessionEvent;
+  expect(subagentsOf([exited])).toEqual([]);
+});
+
 test('a family is the Session and every Session below it, each once', () => {
   const children: Record<string, string[]> = { p: ['a', 'b'], a: ['c'], c: ['p'] };
   expect(familyOf('p', id => children[id] ?? [])).toEqual(['p', 'a', 'b', 'c']);
