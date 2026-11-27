@@ -179,7 +179,13 @@ $ bun test src/core/tokens/split.test.ts
 
 With the `subagent` tool the model starts a run of its own on a prompt: a [Headless Run](#headless-resector--p) with the Session's model (or `subagent.profile`) and Auto-approve, as a Background Process ([ADR 0007](docs/adr/0007-subagents.md)). The Session goes on meanwhile; when it has ended, a Note gives the model the summary it wrote of its work (after an error or a kill: what ended it). It asks before starting one unless a rule says `"subagent": "allow"`, or Auto-approve is on; a Subagent starts none itself. `/tools subagent` switches it off.
 
+The Tool Result comes at once (pid, log, how to stop it), and the Session's run goes on. When the Subagent ends while the Session waits at the Review Gate, its Note is sent right away, as if you had pressed Enter; whatever stops Enter (a call awaiting approval, an open Question) holds it until then. In `resector -p` nothing waits for a Subagent: a run that answers without calls ends and stops its Subagents, so a model that needs their results waits itself (e.g. `sleep` through bash). `k` on its Tool Pair kills one; closing or switching the Session stops them all.
+
 With the argument `worktree` (or `headless.worktree`) the Subagent works in a git worktree of its own, on a branch started from the HEAD of where the Session runs; the Session's uncommitted changes are not in it. The result and the Note name worktree and branch, and the Note says when uncommitted changes are left; merging is the model's work through git. A worktree left clean and without a commit is removed with its branch.
+
+A Subagent's Session is an ordinary Session: `/sessions` lists it under its parent, where you can open and continue it. Deleting the parent deletes its Subagents' Sessions and worktrees with it; branches not merged are kept and reported.
+
+**Which server.** Best is a second [Model Profile](#configuration) on an instance of its own, set as `subagent.profile`: the two never compete for one cache. On one instance, oMLX needs nothing; start llama.cpp with a slot per client, `-np 2 -c <2 × window>` for a Session and one Subagent. resector pins a slot per Session, and with too few slots a Subagent can land on its parent's and evict its prefix cache. That this costs the whole prompt again is read from llama.cpp's source, not measured ([#178](https://github.com/artkoenig/resector/issues/178)).
 
 The `subagent` section of the [config](#configuration) (global, then project); Context Policy, thinking, tools, max turns and worktree come from `headless`:
 
