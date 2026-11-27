@@ -1,7 +1,7 @@
 // Compiles single-file binaries (NFR-5) and packs them as release assets in dist/.
 //   bun scripts/build.ts [--tag v1.2.3] [--target linux-x64 ...]
 // Cross-compiling embeds OpenTUI's native library only if every platform's
-// @opentui/core-* package is installed: run `bun install --os='*' --cpu='*'` first.
+// @opentui/core-* package is installed: run `bun install --os='*' --cpu='*' --libc='*'` first.
 import { $ } from 'bun';
 import solid from '@opentui/solid/bun-plugin';
 import { parseArgs } from 'node:util';

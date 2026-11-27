@@ -21,8 +21,8 @@ jobs:
       - run: bun install --frozen-lockfile
       # Full gate before release (architecture §7); no Stryker cache here, so mutation runs in full.
       - run: bun run gate
-      # Cross-compiling needs every platform's OpenTUI native package in node_modules.
-      - run: bun install --frozen-lockfile --os='*' --cpu='*'
+      # Cross-compiling needs every platform's OpenTUI native package in node_modules; --libc: the musl ones, which Bun skips on a glibc host.
+      - run: bun install --frozen-lockfile --os='*' --cpu='*' --libc='*'
       - run: bun scripts/build.ts --tag "$GITHUB_REF_NAME"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

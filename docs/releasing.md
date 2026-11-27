@@ -11,7 +11,7 @@ Users install with `brew install artkoenig/tap/resector` (`brew upgrade` updates
 ## Local build
 
 ```sh
-bun install --os='*' --cpu='*'   # every platform's OpenTUI native library, needed to cross-compile
+bun install --os='*' --cpu='*' --libc='*'   # every platform's OpenTUI native library, needed to cross-compile
 bun scripts/build.ts             # all targets → dist/; --target linux-x64 for one
 bun scripts/smoke.ts dist/linux-x64/resector <version>   # binary for this machine
 ```
